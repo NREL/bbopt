@@ -31,7 +31,7 @@ import os
 import importlib
 import numpy as np
 from pylab import *
-import cPickle as p
+import pickle as p
 
 from utility import *
 from TestLocalStochRBFrestart import TestLocalStochRBFrestart
@@ -50,7 +50,7 @@ def StochasticRBF(data_file, maxeval = None, Ntrials = None, \
         ## End Optimization
 
         # save solution to file
-        f = file('Result.data', 'w')
+        f = open('Result.data', mode='wb')
         p.dump(solution, f)
         f.close()
 
@@ -61,7 +61,7 @@ def StochasticRBF(data_file, maxeval = None, Ntrials = None, \
         return solution
 
     except myException as error:
-        print error.msg
+        print(error.msg)
 
 def perform_optimization(data, maxeval, Ntrials, NumberNewSampes):
     data.Ncand = 500 * data.dim
@@ -115,29 +115,29 @@ def read_check_data_file(data_file):
 
 def check_set_parameters(data, maxeval, Ntrials, PlotResult, NumberNewSamples):
     if maxeval == None:
-        print '''No maximal number of allowed function evaluations given.\
-                \n\tI use default value maxeval = 20 * dimension.'''
+        print('''No maximal number of allowed function evaluations given.\
+                \n\tI use default value maxeval = 20 * dimension.''')
         maxeval = 20 * data.dim
     if not isinstance(maxeval, int) or maxeval <= 0:
         raise myException('Maximal number of allowed function evaluations must be positive integer.\n')
 
     if Ntrials == None:
-        print '''No maximal number of trials given.\
-                \n\tI use default value NumberOfTrials=1.'''
+        print('''No maximal number of trials given.\
+                \n\tI use default value NumberOfTrials=1.''')
         Ntrials = 1
     if not isinstance(Ntrials, int) or Ntrials <= 0:
         raise myException('Maximal number of trials must be positive integer.\n')
 
     if PlotResult == None:
-        print '''No indication if result plot wanted.\
-                \n\tI use default value PlotResult=1.'''
+        print('''No indication if result plot wanted.\
+                \n\tI use default value PlotResult=1.''')
         PlotResult = 1
     elif abs(PlotResult) > 0:
         PlotResult = 1
 
     if NumberNewSamples == None:
-        print '''No number of desired new sample sites given.\
-                \n\tI use default value NumberNewSamples=1.'''
+        print('''No number of desired new sample sites given.\
+                \n\tI use default value NumberNewSamples=1.''')
         NumberNewSamples = 1
     if not isinstance(NumberNewSamples, int) or NumberNewSamples < 0:
         raise myException('Number of new sample sites must be positive integer.\n')
@@ -146,11 +146,11 @@ def check_set_parameters(data, maxeval, Ntrials, PlotResult, NumberNewSamples):
 
 
 if __name__ == "__main__":
-    print 'This is a simple demo for StochasticRBF'
+    print('This is a simple demo for StochasticRBF')
     solution = StochasticRBF("datainput_Branin", 200,3,1,1)
-    print 'BestValues', solution.BestValues
-    print 'BestPoints', solution.BestPoints
-    print 'NumFuncEval', solution.NumFuncEval
-    print 'AvgFUncEvalTime', solution.AvgFuncEvalTime
-    print 'DMatrix', solution.DMatrix.shape
-    print 'NumberOfRestarts', solution.NumberOfRestarts
+    print('BestValues', solution.BestValues)
+    print('BestPoints', solution.BestPoints)
+    print('NumFuncEval', solution.NumFuncEval)
+    print('AvgFUncEvalTime', solution.AvgFuncEvalTime)
+    print('DMatrix', solution.DMatrix.shape)
+    print('NumberOfRestarts', solution.NumberOfRestarts)

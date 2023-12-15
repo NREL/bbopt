@@ -62,7 +62,7 @@ def ComputeRBF(CandPoint, data):
         PolyPart = np.concatenate((np.ones((numpoints, 1)), CandPoint), axis = 1) * data.ctail
     elif data.polynomial == 'quadratic':
         temp = np.concatenate(np.concatenate((np.ones((numpoints, 1)), CandPoint), axis = 1), \
-                np.zeros((numpoints, (data.dim * (data.dim + 1)) / 2)), axis = 1)
+                np.zeros((numpoints, (data.dim * (data.dim + 1)) // 2)), axis = 1)
     else:
         raise myException('Error: Invalid polynomial tail.')
 

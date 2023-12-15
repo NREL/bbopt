@@ -43,8 +43,8 @@ def myfun(x):
     xlow=array([-5,0])
     xup=array([10,15])
     x = xlow+(xup-xlow)*x
-    print x[0,0]
-    print x[0,1]
+    print(x[0,0])
+    print(x[0,1])
     y=pow(x[0,1]-5.1*pow(x[0,0],2)/(4*pow(pi,2))+5*x[0,0]/pi-6,2) + 10*(1-1/(8*pi))*cos(x[0,0])+10
     #c = array([1, 1.2, 3, 3.2])
     #A = array([[3, 10, 30], [0.1, 10, 35], [3, 10, 30], [0.1, 10, 35]])
@@ -57,4 +57,4 @@ def myfun(x):
     return y
 
 if __name__ == '__main__':
-    print myfun(array([[0.5, 0.9]]))
+    print(myfun(array([[0.5, 0.9]])))

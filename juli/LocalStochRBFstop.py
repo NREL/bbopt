@@ -37,7 +37,8 @@ from phi import phi
 
 from multiprocessing import Pool
 
-def wrapper_func((x, objfunc)):
+def wrapper_func(xxx_todo_changeme):
+    (x, objfunc) = xxx_todo_changeme
     time_start = time.time()
     ret_value = objfunc(x)
     ret_time = time.time() - time_start
@@ -142,9 +143,9 @@ def LocalStochRBFstop(data, maxeval, NumberNewSamples):
     # do until max number of f-evals reached or local min found
     while data.m < maxeval and localminflag == 0:
         iterctr = iterctr + 1 # increment iteration counter
-        print '\n Iteration: %d \n' % iterctr
-        print '\n fEvals: %d \n' % data.m
-        print '\n Best value in this restart: %d \n' %data.Fbest
+        print('\n Iteration: %d \n' % iterctr)
+        print('\n fEvals: %d \n' % data.m)
+        print('\n Best value in this restart: %d \n' %data.Fbest)
 
         # number of new samples in an iteration
         NumberNewSamples = min(NumberNewSamples,maxeval - data.m)
@@ -227,16 +228,16 @@ def LocalStochRBFstop(data, maxeval, NumberNewSamples):
         if failctr >= failtolerance:
             if shrinkctr >= maxshrinkparam:
                 shrinkflag = 0
-                print 'Stopped reducing sigma because the maximum reduction has been reached.'
+                print('Stopped reducing sigma because the maximum reduction has been reached.')
             failctr = 0
 
             if shrinkflag == 1:
                 shrinkctr = shrinkctr + 1
                 sigma_stdev = sigma_stdev / 2
-                print 'Reducing sigma by a half!'
+                print('Reducing sigma by a half!')
             else:
                 localminflag = 1
-                print 'Algorithm is probably in a local minimum! Restarting the algorithm from scratch.'
+                print('Algorithm is probably in a local minimum! Restarting the algorithm from scratch.')
 
         if succctr >= succtolerance:
             sigma_stdev = min(2 * sigma_stdev, sigma_stdev_default)
@@ -263,7 +264,7 @@ def LocalStochRBFstop(data, maxeval, NumberNewSamples):
 
 if __name__ == "__main__":
     try:
-        print 'This is the test for LocalStochRBFstop'
+        print('This is the test for LocalStochRBFstop')
         from StochasticRBF import *
         from SLHDstandard import *
         data_file = "datainput_hartman3"
@@ -297,31 +298,31 @@ if __name__ == "__main__":
             [0.8125, 0.4375, 0.1875], 
             [0.9375, 0.6875, 0.9375]])
 
-        print data.xlow
-        print data.xup
-        print data.objfunction
-        print data.dim
-        print data.Ncand
-        print data.phifunction
-        print data.polynomial
-        print data.S
-        print 'LocalStochRBFstop Start'
+        print(data.xlow)
+        print(data.xup)
+        print(data.objfunction)
+        print(data.dim)
+        print(data.Ncand)
+        print(data.phifunction)
+        print(data.polynomial)
+        print(data.S)
+        print('LocalStochRBFstop Start')
         data = LocalStochRBFstop(data, maxeval - numevals, NumberNewSamples)
 
-        print 'Results'
-        print 'xlow', data.xlow
-        print 'xup', data.xup
-        print 'S', data.S.shape
-        print 'm', data.m
-        print 'Y', data.Y.shape
-        print 'xbest', data.xbest
-        print 'Fbest', data.Fbest
-        print 'lambda', data.llambda.shape
-        print 'ctail', data.ctail.shape
-        print 'NumberFevals', data.NumberFevals
+        print('Results')
+        print('xlow', data.xlow)
+        print('xup', data.xup)
+        print('S', data.S.shape)
+        print('m', data.m)
+        print('Y', data.Y.shape)
+        print('xbest', data.xbest)
+        print('Fbest', data.Fbest)
+        print('lambda', data.llambda.shape)
+        print('ctail', data.ctail.shape)
+        print('NumberFevals', data.NumberFevals)
 
     except myException as e:
-        print e.msg
+        print(e.msg)
 
 
 

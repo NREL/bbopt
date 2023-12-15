@@ -66,8 +66,8 @@ def InitialRBFMatrices(maxeval, data, PairwiseDistance):
         pdim = data.dim + 1
         P = np.concatenate((np.ones((maxeval, 1)), data.S), axis = 1)
     elif data.polynomial == 'quadratic':
-        pdim = (data.dim + 1) * (data.dim + 2) / 2
-        P = np.concatenate((np.concatenate((np.ones((maxeval, 1)), data.S), axis = 1), np.zeros((maxeval, (data.dim*(data.dim+1))/2))), axis = 1)
+        pdim = (data.dim + 1) * (data.dim + 2) // 2
+        P = np.concatenate((np.concatenate((np.ones((maxeval, 1)), data.S), axis = 1), np.zeros((maxeval, (data.dim*(data.dim+1))//2))), axis = 1)
     else:
         raise myException('Error: Invalid polynomial tail.')
     return np.asmatrix(PHI), np.asmatrix(phi0), np.asmatrix(P), pdim

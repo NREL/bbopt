@@ -42,9 +42,9 @@ def SLHDstandard(d, m):
 
     P[:,0] = np.arange(m)
     if m % 2 == 0:
-        k = m / 2
+        k = m // 2
     else:
-        k = (m - 1) / 2
+        k = (m - 1) // 2
         P[k, :] = (k + 1) * np.ones((1, d))
 
     for j in range(1, d):
@@ -62,14 +62,14 @@ def SLHDstandard(d, m):
     return InitialPoints
 
 if __name__ == "__main__":
-    print 'This is test for SLHDstandard'
+    print('This is test for SLHDstandard')
     dim = 3
     m = 2 * (dim + 1)
-    print 'dim is', dim
-    print 'm is', m
-    print 'set seed to 5'
+    print('dim is', dim)
+    print('m is', m)
+    print('set seed to 5')
     np.random.seed(5)
     for i in range(3):
-        print SLHDstandard(dim, m)
+        print(SLHDstandard(dim, m))
 
 

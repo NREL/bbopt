@@ -50,4 +50,4 @@ def myfun(x):
     return y
 
 if __name__ == '__main__':
-    print myfun(array([[0.5, 0.9]]))
+    print(myfun(array([[0.5, 0.9]])))

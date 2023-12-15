@@ -40,7 +40,7 @@ def datainput_hartman3():
     return data
 
 def myfun(x):
-    print x
+    print(x)
     c = array([1, 1.2, 3, 3.2])
     A = array([[3, 10, 30], [0.1, 10, 35], [3, 10, 30], [0.1, 10, 35]])
     P = array([[0.3689, 0.1170, 0.2673], 
@@ -51,4 +51,4 @@ def myfun(x):
     return y
 
 if __name__ == '__main__':
-    print myfun(array([0.5, 0.9, 0.3]))
+    print(myfun(array([0.5, 0.9, 0.3])))
