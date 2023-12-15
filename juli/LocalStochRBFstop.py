@@ -1,0 +1,335 @@
+#----------------********************************--------------------------
+# Copyright (C) 2013 Cornell University
+# This file is part of the program StochasticRBF.py
+#
+#    StochasticRBF.py is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation, either version 3 of the License, or
+#    (at your option) any later version.
+#
+#    StochasticRBF.py is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with StochasticRBF.py.  If not, see <http://www.gnu.org/licenses/>.
+#----------------********************************--------------------------
+
+
+
+#----------------*****  Contact Information *****--------------------------
+#   Primary Contact (Implementation Questions, Bug Reports, etc.):
+#   Juliane Mueller: juliane.mueller2901@gmail.com
+#       
+#   Secondary Contact:
+#       Christine A. Shoemaker: cas12@cornell.edu
+#       Haoyu Jia: leonjiahaoyu@gmail.com
+#----------------********************************--------------------------
+from utility import *
+import numpy as np
+import scipy.spatial as scp
+import time
+import math
+from InitialRBFMatrices import InitialRBFMatrices
+from Minimize_Merit_Function import Minimize_Merit_Function
+from phi import phi
+
+from multiprocessing import Pool
+
+def wrapper_func((x, objfunc)):
+    time_start = time.time()
+    ret_value = objfunc(x)
+    ret_time = time.time() - time_start
+    return ret_value, ret_time
+
+def LocalStochRBFstop(data, maxeval, NumberNewSamples):
+    '''LocalStochRBFstop is the local optimization routine. It iterates at most
+    until totally maxeval points have been evaluated, or, if a local minimum
+    has been found, the routine terminates in less than maxeval evaluations,
+    but will restart from scratch to use up all remaining function evaluation
+    points.
+
+    Input: 
+    Data: struct-variable with problem information (variable bounds,
+           objective/simulation function handle, etc.)
+    maxeval: maximum number of function evaluations for each trial
+    NumberNewSamples: number of points where objective/simulation function
+                       is evaluated in every iteration of the algorithm; if
+                       NumberNewSamples > 1, evaluations are in parallel, in
+                       which case Matlab Parallel Computing Toolbox is
+                       required.
+
+    Output:
+    Data: updated struct-variable containing the results of the current run
+           until stop at local minimum, or stop after maxeval evaluations
+    '''
+
+    xrange = data.xup - data.xlow # variable range in every dimension
+    minxrange = np.amin(xrange) # smallest variable range
+    m = data.S.shape[0] # number of points already sampled
+    #maxeval = 5
+    # scale design points to actual dimensions
+    data.S = np.multiply(np.tile(data.xup - data.xlow, (m, 1)), data.S) + np.tile(data.xlow, (m, 1))
+
+    data.m = min(m, maxeval) # in case number of point in initial experimental design exceed max. number of allowed evaluations
+    data.fevaltime = np.asmatrix(np.zeros((maxeval, 1))) # initialize vector with time for function evaluations
+    data.Y = np.asmatrix(np.zeros((maxeval, 1))) # initialize array with function values
+    data.S = data.S[:data.m, :] # in case Data.m>maxeval, throw additional points away
+    if maxeval > data.m:
+        # initialize array with sample points (first Data.m points are from initial experimental design)
+        data.S = np.concatenate((data.S, np.zeros((maxeval - data.m, data.dim))), axis = 0) 
+    
+    # For serial evaluation of points in initial starting desing:
+    # --------------------------SERIAL------------------------------------------
+    for ii in range(data.m): # go through all Data.m points
+        time1 = time.time() # start timer for recording function evaluation time
+        res = data.objfunction(np.array(data.S[ii, :])) #expensive simulation
+        data.fevaltime[ii] = time.time() - time1 # record time for expensive evaluation
+        data.Y[ii, 0] = res
+        if ii == 0: # initialize best point found so far = first evaluated point
+            data.xbest = data.S[0, :]
+            data.Fbest = data.Y[ii]
+        else:
+            if data.Y[ii] < data.Fbest:
+                data.Fbest = data.Y[ii]
+                data.xbest = data.S[ii, :]
+    #--------------------------END SERIAL----------------------------------------
+    # for parallel evaluation of points in initial starting design delete
+    # comments in the following and comment out the serial code above
+    #--------------------------PARALLEL------------------------------------------
+    #m = data.m
+    #Y = data.Y
+    #S = data.S
+    #Time = data.fevaltime
+
+    #pool = Pool()
+    #pool_res = pool.map_async(wrapper_func, ((i, data.objfunction) for i in S.tolist()))
+    #result = pool_res.get()
+    #for ii in range(len(result)):
+        #Y[ii, 0] = result[ii][0]
+        #Time[ii, 0] = result[ii][1]
+    #data.Fbest = np.amin(Y[0:m])
+    #IDfbest = np.argmin(Y[0:m])
+    #data.xbest = S(IDfbest, :)
+
+    #data.Y = Y
+    #data.fevaltime = Time
+    #--------------------------END PARALLEL--------------------------------------
+
+    # determine pairwise distance between points
+    PairwiseDistance = scp.distance.cdist(data.S[0:data.m, :], data.S[0:data.m, :], 'euclidean')
+    # initial RBF matrices
+    PHI, phi0, P, pdim = InitialRBFMatrices(maxeval, data, PairwiseDistance)
+    # tolerance parameters
+    data.tolerance = 0.001 * minxrange * np.linalg.norm(np.ones((1, data.dim)))
+
+    # algorithm parameters
+    sigma_stdev_default = 0.2 * minxrange
+    sigma_stdev = sigma_stdev_default # current mutation rate 
+    maxshrinkparam = 5 # maximal number of shrikage of standard deviation for normal distribution when generating the candidate points
+    failtolerance = max(5,data.dim)
+    succtolerance =3
+
+    # initializations
+    iterctr = 0 # number of iterations
+    shrinkctr = 0 # number of times sigma_stdev was shrunk
+    failctr = 0 # number of consecutive unsuccessful iterations
+    localminflag = 0  # indicates whether or not xbest is at a local minimum
+    succctr=0 # number of consecutive successful iterations
+
+    p = data.Y[0, 0]
+    # do until max number of f-evals reached or local min found
+    while data.m < maxeval and localminflag == 0:
+        iterctr = iterctr + 1 # increment iteration counter
+        print '\n Iteration: %d \n' % iterctr
+        print '\n fEvals: %d \n' % data.m
+        print '\n Best value in this restart: %d \n' %data.Fbest
+
+        # number of new samples in an iteration
+        NumberNewSamples = min(NumberNewSamples,maxeval - data.m)
+
+        # replace large function values by the median of all available function values
+        Ftransform = np.copy(np.asarray(data.Y)[0:data.m])
+        medianF = np.median(np.asarray(data.Y)[0:data.m])
+        Ftransform[Ftransform > medianF] = medianF
+
+        # fit the response surface
+        # Compute RBF parameters
+        a_part1 = np.concatenate((PHI[0:data.m, 0:data.m], P[0:data.m, :]), axis = 1)
+        a_part2 = np.concatenate((np.transpose(P[0:data.m, :]), np.zeros((pdim, pdim))), axis = 1)
+        a = np.concatenate((a_part1, a_part2), axis = 0)
+
+        eta = math.sqrt((1e-16) * np.linalg.norm(a, 1) * np.linalg.norm(a, np.inf))
+        coeff = np.linalg.solve((a + eta * np.eye(data.m + pdim)),\
+                np.concatenate((Ftransform, np.zeros((pdim, 1))), axis = 0))
+
+        # llambda is not a typo, lambda is a python keyword
+        data.llambda = coeff[0:data.m]
+        data.ctail = coeff[data.m: data.m + pdim]
+#-------------------------------------------------------------------------------------
+        # select the next function evaluation point:
+        # introduce candidate points  
+        x = np.tile(data.xlow, (data.Ncand, 1))
+        y = np.tile(data.xbest, (data.Ncand, 1)) + sigma_stdev * np.random.randn(data.Ncand, data.dim)
+        z = np.tile(data.xup, (data.Ncand, 1))
+        CandPoint = np.maximum(x, np.minimum(y, z))
+
+        xselected, normval = Minimize_Merit_Function(data, CandPoint, NumberNewSamples)
+
+        # more than one new point, do parallel evaluation
+        # instead of parfor in MATLAB, multiprocessing pool is used here
+        if xselected.shape[0] > 1:
+            Fselected = np.zeros((xselected.shape[0], 1))
+            Time = np.zeros((xselected.shape[0], 1))
+
+            pool = Pool()
+            pool_res = pool.map_async(wrapper_func, ((i, data.objfunction) for i in xselected.tolist()))
+            pool.close()
+            pool.join()
+            result = pool_res.get()
+            for ii in range(len(result)):
+                Fselected[ii, 0] = result[ii][0]
+                Time[ii, 0] = result[ii][1]
+
+            data.fevaltime[data.m:data.m+xselected.shape[0], 0] = Time
+            data.S[data.m:data.m+xselected.shape[0], :] = xselected
+            data.Y[data.m:data.m+xselected.shape[0], 0] = Fselected
+            data.m = data.m + xselected.shape[0]
+        else:
+            time1 = time.time()
+            Fselected = data.objfunction(xselected)
+            data.fevaltime[data.m, 0] = time.time() - time1
+            data.S[data.m, :] = xselected
+            data.Y[data.m, 0] = Fselected
+            data.m = data.m + 1
+
+        # determine best one of newly sampled points
+        minSelected = np.amin(Fselected)
+        IDminSelected = np.argmin(Fselected)
+        xMinSelected = xselected[IDminSelected, :]
+        if minSelected < data.Fbest:
+            if data.Fbest - minSelected > (1e-3)*math.fabs(data.Fbest):
+                # "significant" improvement
+                failctr = 0
+                succctr = succctr + 1
+            else:
+                failctr = failctr + 1
+                succctr = 0
+            data.xbest = xMinSelected
+            data.Fbest = minSelected
+        else:
+            failctr = failctr + 1
+            succctr = 0
+
+        # check if algorithm is in a local minimum
+        shrinkflag = 1
+        if failctr >= failtolerance:
+            if shrinkctr >= maxshrinkparam:
+                shrinkflag = 0
+                print 'Stopped reducing sigma because the maximum reduction has been reached.'
+            failctr = 0
+
+            if shrinkflag == 1:
+                shrinkctr = shrinkctr + 1
+                sigma_stdev = sigma_stdev / 2
+                print 'Reducing sigma by a half!'
+            else:
+                localminflag = 1
+                print 'Algorithm is probably in a local minimum! Restarting the algorithm from scratch.'
+
+        if succctr >= succtolerance:
+            sigma_stdev = min(2 * sigma_stdev, sigma_stdev_default)
+            succctr = 0
+        # update PHI matrix only if planning to do another iteration
+        if data.m < maxeval and localminflag == 0:
+            n_old = data.m - xselected.shape[0]
+            for kk in range(xselected.shape[0]):
+                #print kk
+                #print n_old+kk
+                new_phi = phi(normval[kk], data.phifunction)
+                PHI[n_old + kk, 0: n_old + kk] = new_phi
+                PHI[0:n_old+kk, n_old+kk] = np.asmatrix(new_phi).T
+                PHI[n_old+kk, n_old+kk] = phi0
+                P[n_old+kk, 1:data.dim+1] = xselected[kk, :]
+    data.S = data.S[0:data.m, :]
+    data.Y = data.Y[0:data.m, :]
+    data.fevaltime = data.fevaltime[0:data.m, :]
+    data.NumberFevals = data.m
+
+    return data
+
+
+
+if __name__ == "__main__":
+    try:
+        print 'This is the test for LocalStochRBFstop'
+        from StochasticRBF import *
+        from SLHDstandard import *
+        data_file = "datainput_hartman3"
+        maxeval = 200
+        Ntrials = 3
+        PlotResult = 1
+        NumberNewSamples = 2
+        data = read_check_data_file(data_file)
+        data.Ncand = 500 * data.dim
+        data.phifunction = 'cubic'
+        data.polynomial = 'linear'
+        m = 2 * (data.dim + 1)
+        numstart = 0 # collect all objective function values of the current trial here
+        Y_all = [] # collect all sample points of the current trial here
+        S_all = [] # best objective function value found so far in the current trial 
+        value = np.inf # best objective function value found so far in the current trial 
+        numevals = 0 # number of function evaluations done so far
+        Fevaltime_all = [] # collect all objective function evaluation times of the current trial here
+
+        rank_P = 0
+        while rank_P != data.dim + 1:
+            data.S = SLHDstandard(data.dim, m)
+            P = np.concatenate((np.ones((m, 1)), data.S), axis = 1)
+            rank_P = np.linalg.matrix_rank(P)
+        data.S = np.array([[0.0625, 0.3125, 0.0625], 
+            [0.1875, 0.5625, 0.8125], 
+            [0.3125, 0.8125, 0.3125], 
+            [0.4375, 0.0625, 0.5625], 
+            [0.5625, 0.9375, 0.4375], 
+            [0.6875, 0.1875, 0.6875], 
+            [0.8125, 0.4375, 0.1875], 
+            [0.9375, 0.6875, 0.9375]])
+
+        print data.xlow
+        print data.xup
+        print data.objfunction
+        print data.dim
+        print data.Ncand
+        print data.phifunction
+        print data.polynomial
+        print data.S
+        print 'LocalStochRBFstop Start'
+        data = LocalStochRBFstop(data, maxeval - numevals, NumberNewSamples)
+
+        print 'Results'
+        print 'xlow', data.xlow
+        print 'xup', data.xup
+        print 'S', data.S.shape
+        print 'm', data.m
+        print 'Y', data.Y.shape
+        print 'xbest', data.xbest
+        print 'Fbest', data.Fbest
+        print 'lambda', data.llambda.shape
+        print 'ctail', data.ctail.shape
+        print 'NumberFevals', data.NumberFevals
+
+    except myException as e:
+        print e.msg
+
+
+
+
+
+
+
+
+
+
+
