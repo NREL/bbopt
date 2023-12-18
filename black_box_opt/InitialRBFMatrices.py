@@ -26,9 +26,9 @@
 #       Haoyu Jia: leonjiahaoyu@gmail.com
 # ----------------********************************--------------------------
 import numpy as np
-from phi import phi
+from .phi import phi
 import math
-from utility import myException
+from .utility import myException
 
 
 def InitialRBFMatrices(maxeval, data, PairwiseDistance):

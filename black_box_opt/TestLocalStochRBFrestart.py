@@ -25,10 +25,10 @@
 #       Christine A. Shoemaker: cas12@cornell.edu
 #       Haoyu Jia: leonjiahaoyu@gmail.com
 # ----------------********************************--------------------------
-from utility import *
+from .utility import *
 import copy
 import numpy as np
-from LocalStochRBFrestart import LocalStochRBFrestart
+from .LocalStochRBFrestart import LocalStochRBFrestart
 
 
 def TestLocalStochRBFrestart(data, maxeval, Ntrials, NumberNewSamples):

@@ -1,3 +1,26 @@
+# ----------------********************************--------------------------
+# Copyright (C) 2023 National Renewable Energy Laboratory
+# This file is part of the program StochasticRBF.py
+#
+#    StochasticRBF.py is free software: you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation, either version 3 of the License, or
+#    (at your option) any later version.
+#
+#    StochasticRBF.py is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with StochasticRBF.py.  If not, see <http://www.gnu.org/licenses/>.
+# ----------------********************************--------------------------
+
+
+# ----------------*****  Contact Information *****--------------------------
+#   Primary Contact (Implementation Questions, Bug Reports, etc.):
+#   Weslley da Silva Pereira: weslley.dasilvapereira@nrel.gov
+# ----------------********************************--------------------------
 import numpy as np
 import pytest
 from black_box_opt.utility import Data, myException

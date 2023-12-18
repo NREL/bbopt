@@ -25,29 +25,42 @@
 #       Christine A. Shoemaker: cas12@cornell.edu
 #       Haoyu Jia: leonjiahaoyu@gmail.com
 # ----------------********************************--------------------------
-from utility import *
+from black_box_opt.utility import *
 from numpy import *
 from numpy.matlib import *
 from operator import mul
 
 
-def datainput_rastrigin():
+def datainput_Branin():
     data = Data()
-    n = 10
-    data.xlow = zeros(n)
-    data.xup = ones(n)
+    data.xlow = zeros(2)
+    data.xup = ones(2)
     data.objfunction = myfun
-    data.dim = n
+    data.dim = 2
     return data
 
 
 def myfun(x):
-    n = 10
-    xlow = np.asarray(-10 * ones(n))
-    xup = np.asarray(10 * ones(n))
+    xlow = array([-5, 0])
+    xup = array([10, 15])
     x = xlow + (xup - xlow) * x
-    y = 10 * n + sum(pow(x, 2) - 10 * cos(2 * pi * x))
-
+    print(x[0, 0])
+    print(x[0, 1])
+    y = (
+        pow(
+            x[0, 1] - 5.1 * pow(x[0, 0], 2) / (4 * pow(pi, 2)) + 5 * x[0, 0] / pi - 6, 2
+        )
+        + 10 * (1 - 1 / (8 * pi)) * cos(x[0, 0])
+        + 10
+    )
+    # c = array([1, 1.2, 3, 3.2])
+    # A = array([[3, 10, 30], [0.1, 10, 35], [3, 10, 30], [0.1, 10, 35]])
+    # P = array([[0.3689, 0.1170, 0.2673],
+    #    [0.4699, 0.4387, 0.747],
+    #    [0.1091, 0.8732, 0.5547],
+    #    [0.0382, 0.5743, 0.8828]])
+    # y = -sum(c * exp(-sum(A * (repmat(x, 4, 1) - P) ** 2, axis = 1)))
+    # print y
     return y
 
 

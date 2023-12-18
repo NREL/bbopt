@@ -25,11 +25,11 @@
 #       Christine A. Shoemaker: cas12@cornell.edu
 #       Haoyu Jia: leonjiahaoyu@gmail.com
 # ----------------********************************--------------------------
-from utility import *
+from .utility import *
 import copy
 import numpy as np
-from SLHDstandard import SLHDstandard
-from LocalStochRBFstop import LocalStochRBFstop
+from .SLHDstandard import SLHDstandard
+from .LocalStochRBFstop import LocalStochRBFstop
 
 
 def LocalStochRBFrestart(data, maxeval, NumberNewSamples):

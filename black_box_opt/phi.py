@@ -27,7 +27,7 @@
 # ----------------********************************--------------------------
 import numpy as np
 import math
-from utility import myException
+from .utility import myException
 
 
 def phi(r, type):

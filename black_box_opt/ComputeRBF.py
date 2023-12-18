@@ -27,8 +27,8 @@
 # ----------------********************************--------------------------
 import numpy as np
 import scipy.spatial as scp
-from phi import phi
-from utility import myException
+from .phi import phi
+from .utility import myException
 
 
 def ComputeRBF(CandPoint, data):

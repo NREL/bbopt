@@ -27,7 +27,7 @@
 # ----------------********************************--------------------------
 import numpy as np
 import math
-from ComputeRBF import ComputeRBF
+from .ComputeRBF import ComputeRBF
 
 
 def Minimize_Merit_Function(data, CandPoint, NumberNewSamples):

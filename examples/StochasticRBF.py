@@ -25,15 +25,13 @@
 #       Christine A. Shoemaker: cas12@cornell.edu
 #       Haoyu Jia: leonjiahaoyu@gmail.com
 # ----------------********************************--------------------------
-import sys
-import os
 import importlib
 import numpy as np
 from pylab import *
 import pickle as p
 
-from utility import *
-from TestLocalStochRBFrestart import TestLocalStochRBFrestart
+from black_box_opt.utility import *
+from black_box_opt.TestLocalStochRBFrestart import TestLocalStochRBFrestart
 
 
 def StochasticRBF(

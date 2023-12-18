@@ -25,14 +25,14 @@
 #       Christine A. Shoemaker: cas12@cornell.edu
 #       Haoyu Jia: leonjiahaoyu@gmail.com
 # ----------------********************************--------------------------
-from utility import *
+from .utility import *
 import numpy as np
 import scipy.spatial as scp
 import time
 import math
-from InitialRBFMatrices import InitialRBFMatrices
-from Minimize_Merit_Function import Minimize_Merit_Function
-from phi import phi
+from .InitialRBFMatrices import InitialRBFMatrices
+from .Minimize_Merit_Function import Minimize_Merit_Function
+from .phi import phi
 
 from multiprocessing import Pool
 
@@ -286,73 +286,3 @@ def LocalStochRBFstop(data, maxeval, NumberNewSamples):
     data.NumberFevals = data.m
 
     return data
-
-
-if __name__ == "__main__":
-    try:
-        print("This is the test for LocalStochRBFstop")
-        from StochasticRBF import *
-        from SLHDstandard import *
-
-        data_file = "datainput_hartman3"
-        maxeval = 200
-        Ntrials = 3
-        PlotResult = 1
-        NumberNewSamples = 2
-        data = read_check_data_file(data_file)
-        data.Ncand = 500 * data.dim
-        data.phifunction = "cubic"
-        data.polynomial = "linear"
-        m = 2 * (data.dim + 1)
-        numstart = 0  # collect all objective function values of the current trial here
-        Y_all = []  # collect all sample points of the current trial here
-        S_all = []  # best objective function value found so far in the current trial
-        value = (
-            np.inf
-        )  # best objective function value found so far in the current trial
-        numevals = 0  # number of function evaluations done so far
-        Fevaltime_all = []  # collect all objective function evaluation times of the current trial here
-
-        rank_P = 0
-        while rank_P != data.dim + 1:
-            data.S = SLHDstandard(data.dim, m)
-            P = np.concatenate((np.ones((m, 1)), data.S), axis=1)
-            rank_P = np.linalg.matrix_rank(P)
-        data.S = np.array(
-            [
-                [0.0625, 0.3125, 0.0625],
-                [0.1875, 0.5625, 0.8125],
-                [0.3125, 0.8125, 0.3125],
-                [0.4375, 0.0625, 0.5625],
-                [0.5625, 0.9375, 0.4375],
-                [0.6875, 0.1875, 0.6875],
-                [0.8125, 0.4375, 0.1875],
-                [0.9375, 0.6875, 0.9375],
-            ]
-        )
-
-        print(data.xlow)
-        print(data.xup)
-        print(data.objfunction)
-        print(data.dim)
-        print(data.Ncand)
-        print(data.phifunction)
-        print(data.polynomial)
-        print(data.S)
-        print("LocalStochRBFstop Start")
-        data = LocalStochRBFstop(data, maxeval - numevals, NumberNewSamples)
-
-        print("Results")
-        print("xlow", data.xlow)
-        print("xup", data.xup)
-        print("S", data.S.shape)
-        print("m", data.m)
-        print("Y", data.Y.shape)
-        print("xbest", data.xbest)
-        print("Fbest", data.Fbest)
-        print("lambda", data.llambda.shape)
-        print("ctail", data.ctail.shape)
-        print("NumberFevals", data.NumberFevals)
-
-    except myException as e:
-        print(e.msg)
