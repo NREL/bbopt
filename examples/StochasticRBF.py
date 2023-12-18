@@ -37,31 +37,27 @@ from black_box_opt.TestLocalStochRBFrestart import TestLocalStochRBFrestart
 def StochasticRBF(
     data_file, maxeval=None, Ntrials=None, PlotResult=None, NumberNewSamples=None
 ):
-    try:
-        ## Start input check
-        data = read_check_data_file(data_file)
-        maxeval, Ntrials, PlotResult, NumberNewSamples = check_set_parameters(
-            data, maxeval, Ntrials, PlotResult, NumberNewSamples
-        )
-        ## End input check
+    ## Start input check
+    data = read_check_data_file(data_file)
+    maxeval, Ntrials, PlotResult, NumberNewSamples = check_set_parameters(
+        data, maxeval, Ntrials, PlotResult, NumberNewSamples
+    )
+    ## End input check
 
-        ## Optimization
-        solution = perform_optimization(data, maxeval, Ntrials, NumberNewSamples)
-        ## End Optimization
+    ## Optimization
+    solution = perform_optimization(data, maxeval, Ntrials, NumberNewSamples)
+    ## End Optimization
 
-        # save solution to file
-        f = open("Result.data", mode="wb")
-        p.dump(solution, f)
-        f.close()
+    # save solution to file
+    f = open("Result.data", mode="wb")
+    p.dump(solution, f)
+    f.close()
 
-        ## Plot Result
-        if PlotResult:
-            plot_results(solution, maxeval, Ntrials)
-        ## End Plot Result
-        return solution
-
-    except myException as error:
-        print(error.msg)
+    ## Plot Result
+    if PlotResult:
+        plot_results(solution, maxeval, Ntrials)
+    ## End Plot Result
+    return solution
 
 
 def perform_optimization(data, maxeval, Ntrials, NumberNewSampes):
