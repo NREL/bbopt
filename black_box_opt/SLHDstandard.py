@@ -1,4 +1,4 @@
-#----------------********************************--------------------------
+# ----------------********************************--------------------------
 # Copyright (C) 2013 Cornell University
 # This file is part of the program StochasticRBF.py
 #
@@ -14,33 +14,32 @@
 #
 #    You should have received a copy of the GNU General Public License
 #    along with StochasticRBF.py.  If not, see <http://www.gnu.org/licenses/>.
-#----------------********************************--------------------------
+# ----------------********************************--------------------------
 
 
-
-#----------------*****  Contact Information *****--------------------------
+# ----------------*****  Contact Information *****--------------------------
 #   Primary Contact (Implementation Questions, Bug Reports, etc.):
 #   Juliane Mueller: juliane.mueller2901@gmail.com
-#       
+#
 #   Secondary Contact:
 #       Christine A. Shoemaker: cas12@cornell.edu
 #       Haoyu Jia: leonjiahaoyu@gmail.com
-#----------------********************************--------------------------
+# ----------------********************************--------------------------
 import numpy as np
 
-def SLHDstandard(d, m):
-    ''' SLHD creates a symmetric latin hypercube design. d is the dimension of the input and
 
-     m is the number of initial points to be selected.
-    '''
-    delta = (1.0 / m) * np.ones(d);
+def SLHDstandard(d, m):
+    """SLHD creates a symmetric latin hypercube design. d is the dimension of the input and
+
+    m is the number of initial points to be selected.
+    """
+    delta = (1.0 / m) * np.ones(d)
     X = np.zeros([m, d])
     for j in range(d):
         for i in range(m):
             X[i, j] = ((2.0 * (i + 1) - 1) / 2.0) * delta[j]
-    P = np.zeros([m, d], dtype = int);   
-
-    P[:,0] = np.arange(m)
+    P = np.zeros([m, d], dtype=int)
+    P[:, 0] = np.arange(m)
     if m % 2 == 0:
         k = m // 2
     else:
@@ -61,15 +60,14 @@ def SLHDstandard(d, m):
             InitialPoints[i, j] = X[P[i, j], j]
     return InitialPoints
 
+
 if __name__ == "__main__":
-    print('This is test for SLHDstandard')
+    print("This is test for SLHDstandard")
     dim = 3
     m = 2 * (dim + 1)
-    print('dim is', dim)
-    print('m is', m)
-    print('set seed to 5')
+    print("dim is", dim)
+    print("m is", m)
+    print("set seed to 5")
     np.random.seed(5)
     for i in range(3):
         print(SLHDstandard(dim, m))
-
-

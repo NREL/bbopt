@@ -127,3 +127,9 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# Poetry
+poetry.lock
+
+# MacOS
+.DS_Store

@@ -1,4 +1,4 @@
-#----------------********************************--------------------------
+# ----------------********************************--------------------------
 # Copyright (C) 2013 Cornell University
 # This file is part of the program StochasticRBF.py
 #
@@ -14,22 +14,22 @@
 #
 #    You should have received a copy of the GNU General Public License
 #    along with StochasticRBF.py.  If not, see <http://www.gnu.org/licenses/>.
-#----------------********************************--------------------------
+# ----------------********************************--------------------------
 
 
-
-#----------------*****  Contact Information *****--------------------------
+# ----------------*****  Contact Information *****--------------------------
 #   Primary Contact (Implementation Questions, Bug Reports, etc.):
 #   Juliane Mueller: juliane.mueller2901@gmail.com
-#       
+#
 #   Secondary Contact:
 #       Christine A. Shoemaker: cas12@cornell.edu
 #       Haoyu Jia: leonjiahaoyu@gmail.com
-#----------------********************************--------------------------
+# ----------------********************************--------------------------
 from utility import *
 import copy
 import numpy as np
 from LocalStochRBFrestart import LocalStochRBFrestart
+
 
 def TestLocalStochRBFrestart(data, maxeval, Ntrials, NumberNewSamples):
     solution = Solution()
