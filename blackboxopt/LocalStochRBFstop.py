@@ -31,10 +31,9 @@ __deprecated__ = False
 
 from .utility import *
 import numpy as np
-import scipy.spatial as scp
 import time
 import math
-from .InitialRBFMatrices import InitialRBFMatrices
+from .rbf import InitialRBFMatrices
 from .Minimize_Merit_Function import Minimize_Merit_Function
 
 from multiprocessing import Pool
@@ -132,12 +131,8 @@ def LocalStochRBFstop(data, maxeval, NumberNewSamples):
     # data.fevaltime = Time
     # --------------------------END PARALLEL--------------------------------------
 
-    # determine pairwise distance between points
-    PairwiseDistance = scp.distance.cdist(
-        data.S[0 : data.m, :], data.S[0 : data.m, :], "euclidean"
-    )
     # initial RBF matrices
-    PHI, phi0, P, pdim = InitialRBFMatrices(maxeval, data, PairwiseDistance)
+    PHI, phi0, P, pdim = InitialRBFMatrices(maxeval, data)
     # tolerance parameters
     data.tolerance = 0.001 * minxrange * np.linalg.norm(np.ones((1, data.dim)))
 

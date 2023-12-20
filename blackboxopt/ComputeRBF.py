@@ -31,6 +31,8 @@ __deprecated__ = False
 
 import numpy as np
 import scipy.spatial as scp
+
+from blackboxopt.rbf import RbfModel
 from .utility import myException, phi
 
 
@@ -54,7 +56,9 @@ def ComputeRBF(CandPoint, data):
     Normvalue = np.transpose(scp.distance.cdist(CandPoint, data.S[0 : data.m, :]))
 
     # compute radial basis function value for distances
-    U_Y = phi(Normvalue, data.phifunction)
+    rbf_model = RbfModel()
+    rbf_model.type = data.phifunction
+    U_Y = rbf_model.phi(Normvalue)
 
     # determine the polynomial tail (depending on rbf model)
     if data.polynomial == "none":

@@ -32,35 +32,6 @@ __deprecated__ = False
 import numpy as np
 
 
-def phi(r, rbf_type: str):
-    """Determines phi-value of distance r between 2 points (depends on chosen RBF model).
-
-    Parameters
-    ----------
-    r : array_like
-        Distances between 2 points.
-    rbf_type : str
-        RBF model type.
-
-    Returns
-    -------
-    out: array_like
-        Phi-value according to RBF model.
-    """
-    if rbf_type == "linear":
-        return r
-    elif rbf_type == "cubic":
-        return np.power(r, 3)
-    elif rbf_type == "thinplate":
-        return np.where(
-            r >= 0,
-            np.multiply(np.power(r, 2), np.log(r + np.finfo(np.double).tiny)),
-            0,
-        )
-    else:
-        raise ValueError("Unknown rbf_type")
-
-
 def SLHDstandard(d: int, m: int) -> np.ndarray:
     """Creates a Symmetric Latin Hypercube Design.
 
