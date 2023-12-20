@@ -25,7 +25,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #       Christine A. Shoemaker: cas12@cornell.edu
 #       Haoyu Jia: leonjiahaoyu@gmail.com
 from StochasticRBF import *
-from blackboxopt.SLHDstandard import *
+from blackboxopt.utility import *
 from blackboxopt.LocalStochRBFstop import *
 
 if __name__ == "__main__":

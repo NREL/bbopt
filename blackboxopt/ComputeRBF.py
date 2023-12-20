@@ -31,8 +31,7 @@ __deprecated__ = False
 
 import numpy as np
 import scipy.spatial as scp
-from .phi import phi
-from .utility import myException
+from .utility import myException, phi
 
 
 def ComputeRBF(CandPoint, data):

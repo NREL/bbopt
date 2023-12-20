@@ -30,9 +30,8 @@ __version__ = "0.1.0"
 __deprecated__ = False
 
 import numpy as np
-from .phi import phi
 import math
-from .utility import myException
+from .utility import myException, phi
 
 
 def InitialRBFMatrices(maxeval, data, PairwiseDistance):

@@ -31,11 +31,6 @@ from blackboxopt.utility import *
 
 class TestData:
     def test_validate(self):
-        """
-        xcvxcvcxvxcv
-
-        """
-
         # Create a Data object
         data = Data()
 
@@ -112,3 +107,15 @@ def test_phi():
         assert str(e) == "Unknown rbf_type"
     else:
         assert False, "Expected ValueError not raised"
+
+
+@pytest.mark.parametrize("dim", [1, 2, 3])
+def test_SLHDstandard(dim):
+    m = 2 * (dim + 1)
+
+    # Set seed to 5 for reproducibility
+    np.random.seed(5)
+
+    for i in range(3):
+        slhd = SLHDstandard(dim, m)
+        # TODO: Maybe do some test here with slhd

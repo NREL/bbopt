@@ -36,7 +36,6 @@ import time
 import math
 from .InitialRBFMatrices import InitialRBFMatrices
 from .Minimize_Merit_Function import Minimize_Merit_Function
-from .phi import phi
 
 from multiprocessing import Pool
 

@@ -32,7 +32,6 @@ __deprecated__ = False
 from .utility import *
 import copy
 import numpy as np
-from .SLHDstandard import SLHDstandard
 from .LocalStochRBFstop import LocalStochRBFstop
 
 
