@@ -25,7 +25,8 @@ __deprecated__ = False
 
 import numpy as np
 import pytest
-from blackboxopt.utility import Data, myException
+import sys
+from blackboxopt.utility import *
 
 
 class TestData:
@@ -83,3 +84,31 @@ class TestData:
         data.xup = np.matrix([1, 2])
         data.xlow = np.matrix([1, 1])
         data.validate()
+
+
+def test_phi():
+    r_linear = np.array([1.0, 2.0, 3.0])
+    result_linear = phi(r_linear, "linear")
+    expected_linear = np.array([1.0, 2.0, 3.0])
+    np.testing.assert_array_equal(np.array(result_linear), expected_linear)
+    assert phi(4.0, "linear") == 4.0
+
+    r_cubic = np.array([1.0, 2.0, 3.0])
+    result_cubic = phi(r_cubic, "cubic")
+    expected_cubic = np.array([1.0, 8.0, 27.0])
+    np.testing.assert_array_equal(np.array(result_cubic), expected_cubic)
+    assert phi(4.0, "cubic") == 64.0
+
+    r_thinplate = np.array([1.0, 2.0, 3.0])
+    result_thinplate = phi(r_thinplate, "thinplate")
+    expected_thinplate = np.array([0.0, 2.77258872, 9.8875106])
+    np.testing.assert_allclose(np.array(result_thinplate), expected_thinplate)
+    assert phi(4.0, "thinplate") == (4 * 4 * np.log(4 + sys.float_info.min))
+
+    r_invalid_type = np.array([1.0, 2.0, 3.0])
+    try:
+        phi(r_invalid_type, "invalid_type")
+    except ValueError as e:
+        assert str(e) == "Unknown rbf_type"
+    else:
+        assert False, "Expected ValueError not raised"

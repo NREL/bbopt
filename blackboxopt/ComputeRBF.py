@@ -75,7 +75,7 @@ def ComputeRBF(CandPoint, data):
             axis=1,
         )
     else:
-        raise myException("Error: Invalid polynomial tail.")
+        raise ValueError("Invalid polynomial tail.")
 
     RBFvalue = np.asmatrix(U_Y).T * np.asmatrix(data.llambda) + PolyPart
 
