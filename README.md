@@ -1,4 +1,4 @@
-# black-box-opt
+# Black-box Opt
 
 Surrogate models and active learning for scientific applications
 

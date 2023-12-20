@@ -1,20 +1,20 @@
-# ----------------********************************--------------------------
-# Copyright (C) 2013 Cornell University
-# This file is part of the program StochasticRBF.py
-#
-#    StochasticRBF.py is free software: you can redistribute it and/or modify
-#    it under the terms of the GNU General Public License as published by
-#    the Free Software Foundation, either version 3 of the License, or
-#    (at your option) any later version.
-#
-#    StochasticRBF.py is distributed in the hope that it will be useful,
-#    but WITHOUT ANY WARRANTY; without even the implied warranty of
-#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-#    GNU General Public License for more details.
-#
-#    You should have received a copy of the GNU General Public License
-#    along with StochasticRBF.py.  If not, see <http://www.gnu.org/licenses/>.
-# ----------------********************************--------------------------
+"""TODO: <one line to give the program's name and a brief idea of what it does.>
+Copyright (C) 2023 National Renewable Energy Laboratory
+Copyright (C) 2013 Cornell University
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program.  If not, see <http://www.gnu.org/licenses/>.
+"""
 
 
 # ----------------*****  Contact Information *****--------------------------
@@ -24,14 +24,13 @@
 #   Secondary Contact:
 #       Christine A. Shoemaker: cas12@cornell.edu
 #       Haoyu Jia: leonjiahaoyu@gmail.com
-# ----------------********************************--------------------------
 import importlib
 import numpy as np
 from pylab import *
 import pickle as p
 
-from black_box_opt.utility import *
-from black_box_opt.TestLocalStochRBFrestart import TestLocalStochRBFrestart
+from blackboxopt.utility import *
+from blackboxopt.TestLocalStochRBFrestart import TestLocalStochRBFrestart
 
 
 def StochasticRBF(
@@ -52,6 +51,7 @@ def StochasticRBF(
     f = open("Result.data", mode="wb")
     p.dump(solution, f)
     f.close()
+    # TODO: Is it the best option?
 
     ## Plot Result
     if PlotResult:
@@ -166,8 +166,8 @@ def check_set_parameters(data, maxeval, Ntrials, PlotResult, NumberNewSamples):
 if __name__ == "__main__":
     print("This is a simple demo for StochasticRBF")
     solution = StochasticRBF("datainput_Branin", 200, 3, 1, 1)
-    print("BestValues", solution.BestValues)
-    print("BestPoints", solution.BestPoints)
+    print("BestValues", solution.BestValues)  # with each restart
+    print("BestPoints", solution.BestPoints)  # with each restart
     print("NumFuncEval", solution.NumFuncEval)
     print("AvgFUncEvalTime", solution.AvgFuncEvalTime)
     print("DMatrix", solution.DMatrix.shape)
