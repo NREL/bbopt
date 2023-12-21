@@ -40,6 +40,18 @@ RbfPolynomial = Enum("RbfPolynomial", ["NONE", "CONSTANT", "LINEAR", "QUADRATIC"
 class RbfModel:
     type: RbfType = RbfType.CUBIC
     polynomial: RbfPolynomial = RbfPolynomial.QUADRATIC
+    sampled_points: np.ndarray = np.array([])
+
+    def get_dim(self) -> int:
+        """Get the dimension of the domain space"""
+        if self.sampled_points.ndim == 1:
+            return 1
+        elif self.sampled_points.ndim == 2:
+            return self.sampled_points.shape[1]
+        else:
+            raise ValueError(
+                "Invalid matrix size for sampled points. It must be either a 1D or 2D array"
+            )
 
     def phi(self, r):
         """Applies the function phi to the distance r.
@@ -47,12 +59,12 @@ class RbfModel:
         Parameters
         ----------
         r : array_like
-            Distances between 2 points.
+            Distance(s) between points.
 
         Returns
         -------
         out: array_like
-            Phi-value according to RBF model.
+            Phi-value of the distances provided on input.
         """
         if self.type == RbfType.LINEAR:
             return r
@@ -67,68 +79,87 @@ class RbfModel:
         else:
             raise ValueError("Unknown rbf_type")
 
-    def InitialRBFMatrices(self, maxeval: int, sampled_points):
-        """Set up matrices for computing parameters of RBF model based on points in the initial experimental design.
+    def eval_phi_sample(self, metric="euclidean") -> np.ndarray:
+        """Returns a matrix containing the phi-value of the distances of all sampled points to each other.
 
         Parameters
         ----------
-        maxeval : int
-            Maximum number of allowed function evaluations.
-        sampled_points : array_like
-            m-by-d matrix with the sampled points. one point per row, where d is the dimension of the sampled space.
+        metric : str or callable, optional
+            The distance metric to use. If a string, the distance function can be
+            'braycurtis', 'canberra', 'chebyshev', 'cityblock', 'correlation',
+            'cosine', 'dice', 'euclidean', 'hamming', 'jaccard', 'jensenshannon',
+            'kulczynski1', 'mahalanobis', 'matching', 'minkowski',
+            'rogerstanimoto', 'russellrao', 'seuclidean', 'sokalmichener',
+            'sokalsneath', 'sqeuclidean', 'yule'.
 
         Returns
         -------
-        numpy.matrix
-            Matrix containing pairwise distances of all points to each other, will be updated in following iterations.
-        numpy.matrix
-            PHI-value of two equal points (depends on RBF model!).
-        numpy.matrix
-            Sample site matrix, needed for determining parameters of the polynomial tail.
-        int
-            Dimension of P-matrix (number of columns).
+        out: numpy.ndarray
+            Matrix containing the phi-value of the distances of all sampled points to each other.
         """
-        m = sampled_points.shape[0]
-        if sampled_points.ndim == 1:
-            dim = 1
-        elif sampled_points.ndim == 2:
-            dim = sampled_points.shape[1]
-        else:
-            raise ValueError(
-                "Invalid matrix size for sampled points. It must be either a 1D or 2D array"
-            )
-
-        # Determine pairwise distance between points
-        PHI = np.zeros((maxeval, maxeval))
-        PHI[0:m, 0:m] = scp.distance.cdist(
-            sampled_points[0:m, :], sampled_points[0:m, :], "euclidean"
+        return self.phi(
+            scp.distance.cdist(self.sampled_points, self.sampled_points, metric)
         )
-        # Update PairwiseDistance based on the RBF model
-        PHI[0:m, 0:m] = self.phi(PHI[0:m, 0:m])
 
-        # phi-value where the distance of 2 points = 0 (diagonal entries)
-        phi0 = self.phi(0)
+    def get_ptail(self, x) -> np.ndarray:
+        """Returns a sample site matrix, needed for determining parameters of the polynomial tail.
+
+        Parameters
+        ----------
+        x : array_like
+            Input vector of coordinates
+
+        Returns
+        -------
+        out: numpy.ndarray
+            Site matrix, needed for determining parameters of the polynomial tail.
+        """
+        m = x.shape[0]
+        dim = self.get_dim()
 
         # Set up the polynomial tail matrix P
         if self.polynomial == RbfPolynomial.NONE:
-            pdim = 0
-            P = np.array([])
+            return np.array([])
         elif self.polynomial == RbfPolynomial.CONSTANT:
-            pdim = 1
-            P = np.ones((maxeval, 1))
+            return np.ones((m, 1))
         elif self.polynomial == RbfPolynomial.LINEAR:
-            pdim = dim + 1
-            P = np.concatenate((np.ones((maxeval, 1)), sampled_points), axis=1)
+            return np.concatenate((np.ones((m, 1)), x), axis=1)
         elif self.polynomial == RbfPolynomial.QUADRATIC:
-            pdim = ((dim + 1) * (dim + 2)) // 2
-            P = np.concatenate(
+            return np.concatenate(
                 (
-                    np.concatenate((np.ones((maxeval, 1)), sampled_points), axis=1),
-                    np.zeros((maxeval, (dim * (dim + 1)) // 2)),
+                    np.concatenate((np.ones((m, 1)), x), axis=1),
+                    np.zeros((m, (dim * (dim + 1)) // 2)),
                 ),
                 axis=1,
             )
         else:
             raise ValueError("Invalid polynomial tail")
 
-        return np.asmatrix(PHI), phi0, np.asmatrix(P), pdim
+    def eval(self, x, alpha, beta):
+        """Evaluates the model at one or multiple points.
+
+        Parameters
+        ----------
+        x : array_like
+            m-by-d matrix with m point coordinates in a d-dimensional space.
+        alpha : array_like
+            Coefficients of the RBF model associated to the phi function.
+        beta : array_like
+            Coefficients of the RBF model associated to the polynomial tail.
+
+        Returns
+        -------
+        numpy.ndarray
+            Value for the RBF model on each of the input points.
+        numpy.ndarray
+            Matrix with distances of all points to sampled points i the RBF model.
+        """
+        # compute pairwise distances between candidates and sampled points
+        Dist = scp.distance.cdist(self.sampled_points, x)
+
+        if self.polynomial == RbfPolynomial.NONE:
+            y = np.matmul(self.phi(Dist).T, alpha)
+        else:
+            y = np.matmul(self.phi(Dist).T, alpha) + self.get_ptail(x) * beta
+
+        return y, Dist

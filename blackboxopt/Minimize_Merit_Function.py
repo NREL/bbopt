@@ -31,7 +31,7 @@ __deprecated__ = False
 
 import numpy as np
 import math
-from .ComputeRBF import ComputeRBF
+from .rbf import RbfModel
 
 
 def Minimize_Merit_Function(data, CandPoint, NumberNewSamples):
@@ -53,7 +53,13 @@ def Minimize_Merit_Function(data, CandPoint, NumberNewSamples):
     other selected candidate points, needed for updating PHI matrix later
     """
 
-    CandValue, NormValue = ComputeRBF(CandPoint, data)
+    # Init RBF model
+    rbf_model = RbfModel()
+    rbf_model.type = data.phifunction
+    rbf_model.polynomial = data.polynomial
+    rbf_model.sampled_points = data.S[0 : data.m, :]
+
+    CandValue, NormValue = rbf_model.eval(CandPoint, data.llambda, data.ctail)
     MinCandValue = np.amin(CandValue)
     MaxCandValue = np.amax(CandValue)
 

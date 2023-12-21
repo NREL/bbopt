@@ -31,6 +31,7 @@ import pickle as p
 
 from blackboxopt.utility import *
 from blackboxopt.TestLocalStochRBFrestart import TestLocalStochRBFrestart
+from blackboxopt.rbf import RbfPolynomial, RbfType, RbfModel
 
 
 def StochasticRBF(
@@ -62,8 +63,8 @@ def StochasticRBF(
 
 def perform_optimization(data, maxeval, Ntrials, NumberNewSampes):
     data.Ncand = 500 * data.dim
-    data.phifunction = "cubic"
-    data.polynomial = "linear"
+    data.phifunction = RbfType.CUBIC
+    data.polynomial = RbfPolynomial.LINEAR
     solution = TestLocalStochRBFrestart(data, maxeval, Ntrials, NumberNewSampes)
     return solution
 

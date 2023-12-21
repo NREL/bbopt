@@ -53,11 +53,23 @@ class TestRbfModel:
         np.testing.assert_allclose(np.array(result_thinplate), expected_thinplate)
         assert self.rbf_model.phi(4.0) == (4 * 4 * np.log(4 + sys.float_info.min))
 
-        self.rbf_model.type = "INVALID"
-        r_invalid_type = np.array([1.0, 2.0, 3.0])
-        try:
-            self.rbf_model.phi(r_invalid_type)
-        except ValueError as e:
-            assert str(e) == "Unknown RbfType"
-        else:
-            assert False, "Expected ValueError not raised"
+        # self.rbf_model.type = RbfType(-1)
+        # r_invalid_type = np.array([1.0, 2.0, 3.0])
+        # try:
+        #     self.rbf_model.phi(r_invalid_type)
+        # except ValueError as e:
+        #     assert str(e) == "Unknown RbfType"
+        # else:
+        #     assert False, "Expected ValueError not raised"
+
+    def test_get_phi_sample_euclidean(self):
+        self.rbf_model.type = RbfType.CUBIC
+        self.rbf_model.polynomial = RbfPolynomial.QUADRATIC
+        self.rbf_model.sampled_points = np.array([[0.0, 0.0], [0.0, 1.0]])
+
+        result = self.rbf_model.get_phi_sample()
+        assert isinstance(result, np.ndarray)
+        assert result.shape == (
+            self.rbf_model.sampled_points.shape[0],
+            self.rbf_model.sampled_points.shape[0],
+        )

@@ -27,6 +27,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 from StochasticRBF import *
 from blackboxopt.utility import *
 from blackboxopt.LocalStochRBFstop import *
+from blackboxopt.rbf import RbfPolynomial, RbfType, RbfModel
 
 if __name__ == "__main__":
     try:
@@ -39,8 +40,8 @@ if __name__ == "__main__":
         NumberNewSamples = 2
         data = read_check_data_file(data_file)
         data.Ncand = 500 * data.dim
-        data.phifunction = "cubic"
-        data.polynomial = "linear"
+        data.phifunction = RbfType.CUBIC
+        data.polynomial = RbfPolynomial.LINEAR
         m = 2 * (data.dim + 1)
         numstart = 0  # collect all objective function values of the current trial here
         Y_all = []  # collect all sample points of the current trial here
@@ -74,8 +75,8 @@ if __name__ == "__main__":
         print(data.objfunction)
         print(data.dim)
         print(data.Ncand)
-        print(data.phifunction)
-        print(data.polynomial)
+        # print(data.phifunction)
+        # print(data.polynomial)
         print(data.S)
         print("LocalStochRBFstop Start")
         data = LocalStochRBFstop(data, maxeval - numevals, NumberNewSamples)

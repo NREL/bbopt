@@ -33,7 +33,7 @@ from .utility import *
 import numpy as np
 import time
 import math
-from .rbf import InitialRBFMatrices
+from .rbf import RbfModel
 from .Minimize_Merit_Function import Minimize_Merit_Function
 
 from multiprocessing import Pool
@@ -132,7 +132,15 @@ def LocalStochRBFstop(data, maxeval, NumberNewSamples):
     # --------------------------END PARALLEL--------------------------------------
 
     # initial RBF matrices
-    PHI, phi0, P, pdim = InitialRBFMatrices(maxeval, data)
+    rbf_model = RbfModel()
+    rbf_model.type = data.phifunction
+    rbf_model.polynomial = data.polynomial
+    rbf_model.sampled_points = data.S[0 : data.m, :]
+    PHI = np.zeros((maxeval, maxeval))
+    PHI[0 : data.m, 0 : data.m] = rbf_model.eval_phi_sample()
+    P = rbf_model.get_ptail(data.S)
+    phi0 = rbf_model.phi(0.0)  # Phi-value of two equal points.
+    pdim = P.shape[1]
     # tolerance parameters
     data.tolerance = 0.001 * minxrange * np.linalg.norm(np.ones((1, data.dim)))
 
@@ -273,9 +281,9 @@ def LocalStochRBFstop(data, maxeval, NumberNewSamples):
             for kk in range(xselected.shape[0]):
                 # print kk
                 # print n_old+kk
-                new_phi = phi(normval[kk], data.phifunction)
+                new_phi = rbf_model.phi(normval[kk]).reshape(n_old + kk)
                 PHI[n_old + kk, 0 : n_old + kk] = new_phi
-                PHI[0 : n_old + kk, n_old + kk] = np.asmatrix(new_phi).T
+                PHI[0 : n_old + kk, n_old + kk] = new_phi
                 PHI[n_old + kk, n_old + kk] = phi0
                 P[n_old + kk, 1 : data.dim + 1] = xselected[kk, :]
     data.S = data.S[0 : data.m, :]
