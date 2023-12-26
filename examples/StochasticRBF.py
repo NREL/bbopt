@@ -165,6 +165,8 @@ def check_set_parameters(data, maxeval, Ntrials, PlotResult, NumberNewSamples):
 
 
 if __name__ == "__main__":
+    np.random.seed(3)
+
     print("This is a simple demo for StochasticRBF")
     solution = StochasticRBF("datainput_Branin", 200, 3, 1, 1)
     print("BestValues", solution.BestValues)  # with each restart

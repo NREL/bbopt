@@ -29,12 +29,15 @@ __credits__ = [
 __version__ = "0.1.0"
 __deprecated__ = False
 
+from ast import Num
+
+from matplotlib.pylab import norm
 from .utility import *
 import numpy as np
 import time
 import math
 from .rbf import RbfModel
-from .Minimize_Merit_Function import Minimize_Merit_Function
+from .optimize import Minimize_Merit_Function
 
 from multiprocessing import Pool
 
@@ -81,12 +84,10 @@ def LocalStochRBFstop(data, maxeval, NumberNewSamples):
     data.m = min(
         m, maxeval
     )  # in case number of point in initial experimental design exceed max. number of allowed evaluations
-    data.fevaltime = np.asmatrix(
-        np.zeros((maxeval, 1))
+    data.fevaltime = np.zeros(
+        maxeval
     )  # initialize vector with time for function evaluations
-    data.Y = np.asmatrix(
-        np.zeros((maxeval, 1))
-    )  # initialize array with function values
+    data.Y = np.zeros(maxeval)  # initialize array with function values
     data.S = data.S[: data.m, :]  # in case Data.m>maxeval, throw additional points away
     if maxeval > data.m:
         # initialize array with sample points (first Data.m points are from initial experimental design)
@@ -100,7 +101,7 @@ def LocalStochRBFstop(data, maxeval, NumberNewSamples):
         time1 = time.time()  # start timer for recording function evaluation time
         res = data.objfunction(np.array(data.S[ii, :]))  # expensive simulation
         data.fevaltime[ii] = time.time() - time1  # record time for expensive evaluation
-        data.Y[ii, 0] = res
+        data.Y[ii] = res
         if ii == 0:  # initialize best point found so far = first evaluated point
             data.xbest = data.S[0, :]
             data.Fbest = data.Y[ii]
@@ -158,7 +159,7 @@ def LocalStochRBFstop(data, maxeval, NumberNewSamples):
     localminflag = 0  # indicates whether or not xbest is at a local minimum
     succctr = 0  # number of consecutive successful iterations
 
-    p = data.Y[0, 0]
+    p = data.Y[0]
     # do until max number of f-evals reached or local min found
     while data.m < maxeval and localminflag == 0:
         iterctr = iterctr + 1  # increment iteration counter
@@ -170,8 +171,8 @@ def LocalStochRBFstop(data, maxeval, NumberNewSamples):
         NumberNewSamples = min(NumberNewSamples, maxeval - data.m)
 
         # replace large function values by the median of all available function values
-        Ftransform = np.copy(np.asarray(data.Y)[0 : data.m])
-        medianF = np.median(np.asarray(data.Y)[0 : data.m])
+        Ftransform = np.copy(data.Y[0 : data.m])
+        medianF = np.median(data.Y[0 : data.m])
         Ftransform[Ftransform > medianF] = medianF
 
         # fit the response surface
@@ -187,7 +188,7 @@ def LocalStochRBFstop(data, maxeval, NumberNewSamples):
         eta = math.sqrt((1e-16) * np.linalg.norm(a, 1) * np.linalg.norm(a, np.inf))
         coeff = np.linalg.solve(
             (a + eta * np.eye(data.m + pdim)),
-            np.concatenate((Ftransform, np.zeros((pdim, 1))), axis=0),
+            np.concatenate((Ftransform, np.zeros(pdim))),
         )
 
         # llambda is not a typo, lambda is a python keyword
@@ -203,13 +204,28 @@ def LocalStochRBFstop(data, maxeval, NumberNewSamples):
         z = np.tile(data.xup, (data.Ncand, 1))
         CandPoint = np.maximum(x, np.minimum(y, z))
 
-        xselected, normval = Minimize_Merit_Function(data, CandPoint, NumberNewSamples)
+        # Init RBF model
+        rbf_model = RbfModel()
+        rbf_model.type = data.phifunction
+        rbf_model.polynomial = data.polynomial
+        rbf_model.sampled_points = data.S[0 : data.m, :]
+        CandValue, NormValue = rbf_model.eval(CandPoint, data.llambda, data.ctail)
+        selindex = Minimize_Merit_Function(
+            CandPoint, CandValue, NormValue, NumberNewSamples, data.tolerance
+        )
+        xselected = np.reshape(
+            CandPoint[selindex, :], (selindex.size, CandPoint.shape[1])
+        )
+        normval = np.reshape(
+            NormValue[:, selindex], (NormValue.shape[0], selindex.size)
+        ).T
+        assert NumberNewSamples == xselected.shape[0]
 
         # more than one new point, do parallel evaluation
         # instead of parfor in MATLAB, multiprocessing pool is used here
         if xselected.shape[0] > 1:
-            Fselected = np.zeros((xselected.shape[0], 1))
-            Time = np.zeros((xselected.shape[0], 1))
+            Fselected = np.zeros(xselected.shape[0])
+            Time = np.zeros(xselected.shape[0])
 
             pool = Pool()
             pool_res = pool.map_async(
@@ -219,19 +235,19 @@ def LocalStochRBFstop(data, maxeval, NumberNewSamples):
             pool.join()
             result = pool_res.get()
             for ii in range(len(result)):
-                Fselected[ii, 0] = result[ii][0]
-                Time[ii, 0] = result[ii][1]
+                Fselected[ii] = result[ii][0]
+                Time[ii] = result[ii][1]
 
-            data.fevaltime[data.m : data.m + xselected.shape[0], 0] = Time
+            data.fevaltime[data.m : data.m + xselected.shape[0]] = Time
             data.S[data.m : data.m + xselected.shape[0], :] = xselected
-            data.Y[data.m : data.m + xselected.shape[0], 0] = Fselected
+            data.Y[data.m : data.m + xselected.shape[0]] = Fselected
             data.m = data.m + xselected.shape[0]
         else:
             time1 = time.time()
             Fselected = data.objfunction(xselected)
-            data.fevaltime[data.m, 0] = time.time() - time1
+            data.fevaltime[data.m] = time.time() - time1
             data.S[data.m, :] = xselected
-            data.Y[data.m, 0] = Fselected
+            data.Y[data.m] = Fselected
             data.m = data.m + 1
 
         # determine best one of newly sampled points
@@ -281,14 +297,14 @@ def LocalStochRBFstop(data, maxeval, NumberNewSamples):
             for kk in range(xselected.shape[0]):
                 # print kk
                 # print n_old+kk
-                new_phi = rbf_model.phi(normval[kk]).reshape(n_old + kk)
+                new_phi = rbf_model.phi(normval[kk])
                 PHI[n_old + kk, 0 : n_old + kk] = new_phi
                 PHI[0 : n_old + kk, n_old + kk] = new_phi
                 PHI[n_old + kk, n_old + kk] = phi0
                 P[n_old + kk, 1 : data.dim + 1] = xselected[kk, :]
     data.S = data.S[0 : data.m, :]
-    data.Y = data.Y[0 : data.m, :]
-    data.fevaltime = data.fevaltime[0 : data.m, :]
+    data.Y = data.Y[0 : data.m]
+    data.fevaltime = data.fevaltime[0 : data.m]
     data.NumberFevals = data.m
 
     return data

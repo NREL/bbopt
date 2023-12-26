@@ -49,35 +49,35 @@ class TestData:
             with pytest.raises(myException):
                 data.validate()
 
-        # Test that validate() raises an exception when xlow is not a matrix
+        # Test that validate() raises an exception when xlow is not a np.array
         data.dim = 1
         data.xlow = [1]
         with pytest.raises(myException):
             data.validate()
 
-        # Test that validate() raises an exception when xup is not a matrix
-        data.xlow = np.matrix([1])
+        # Test that validate() raises an exception when xup is not a np.array
+        data.xlow = np.array([1])
         data.xup = [1]
         with pytest.raises(myException):
             data.validate()
 
         # Test that validate() raises an exception when xlow and xup are not
         # vectors of the same length
-        data.xup = np.matrix([1, 2])
+        data.xup = np.array([1, 2])
         with pytest.raises(myException):
             data.validate()
 
         # Test that validate() raises an exception when xlow[i] > xup[i]
         data.dim = 2
-        data.xup = np.matrix([1, 2])
-        data.xlow = np.matrix([2, 1])
+        data.xup = np.array([1, 2])
+        data.xlow = np.array([2, 1])
         with pytest.raises(myException):
             data.validate()
 
         # Test that validate() does not raise an exception when xlow[i] <= xup[i]
         data.dim = 2
-        data.xup = np.matrix([1, 2])
-        data.xlow = np.matrix([1, 1])
+        data.xup = np.array([1, 2])
+        data.xlow = np.array([1, 1])
         data.validate()
 
 

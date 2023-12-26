@@ -41,11 +41,11 @@ def TestLocalStochRBFrestart(data, maxeval, Ntrials, NumberNewSamples):
     solution.BestValues = np.zeros((Ntrials, 1))
     solution.NumFuncEval = np.zeros((Ntrials, 1))
     solution.AvgFuncEvalTime = np.zeros((Ntrials, 1))
-    solution.FuncVal = np.asmatrix(np.zeros((maxeval, Ntrials)))
+    solution.FuncVal = np.zeros((maxeval, Ntrials))
     solution.DMatrix = np.zeros((maxeval, data.dim, Ntrials))
     solution.NumberOfRestarts = np.zeros((Ntrials, 1))
 
-    a = np.asmatrix(np.zeros((maxeval, Ntrials)))
+    a = np.zeros((maxeval, Ntrials))
     for j in range(Ntrials):
         # np.random.seed(j + 1)
 

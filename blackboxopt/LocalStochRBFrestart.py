@@ -75,8 +75,8 @@ def LocalStochRBFrestart(data, maxeval, NumberNewSamples):
             S_all = data.S
             init = False
         else:
-            Fevaltime_all = np.concatenate((Fevaltime_all, data.fevaltime), axis=0)
-            Y_all = np.concatenate((Y_all, data.Y), axis=0)
+            Fevaltime_all = np.concatenate((Fevaltime_all, data.fevaltime))
+            Y_all = np.concatenate((Y_all, data.Y))
             S_all = np.concatenate((S_all, data.S), axis=0)
         numevals = numevals + data.NumberFevals
 

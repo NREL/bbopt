@@ -30,52 +30,59 @@ __version__ = "0.1.0"
 __deprecated__ = False
 
 import numpy as np
-import math
-from .rbf import RbfModel
 
 
-def Minimize_Merit_Function(data, CandPoint, NumberNewSamples):
-    """Minimize_Merit_Function computes the distance and response surface
+def Minimize_Merit_Function(
+    CandPoint: np.ndarray,
+    CandValue: np.ndarray,
+    NormValue: np.ndarray,
+    NumberNewSamples: int,
+    tol: float,
+) -> np.ndarray | np.intp:
+    """Select points for next costly evaluation and Computes the distance and response surface
     criteria for every candidate point. The values are scaled to [0,1], and
     the candidate with the best weighted score of both criteria becomes the
     new sample point. If there are more than one new sample point to be
     selected, the distances of the candidate points to the previously
     selected candidate point have to be taken into account.
 
-    Input:
-    Data: struct-variable with all problem information
-    CandPoint: matrix with candidate points
-    NumberNewSamples: number of points to be selected for next costly evaluation
+    Parameters
+    ----------
+    CandPoint : numpy.ndarray
+        Matrix with candidate points.
+    CandValue : numpy.ndarray
+        Esimated values for the objective function on each candidate point.
+    NormValue : numpy.ndarray
+        Distances between candidate points and previously evaluated sampled points.
+    NumberNewSamples : int
+        Number of points to be selected for the next costly evaluation.
+    tol : float
+        Tolerance value for excluding candidate points that are too close to already sampled points.
 
-    Output:
-    xselected: matrix with all seleced points for next evaluation
-    normval: cell array with distances to previously evaluated points and
-    other selected candidate points, needed for updating PHI matrix later
+    Returns
+    -------
+    numpy.ndarray
+        Matrix with all selected points for the next evaluation.
+    dict
+        Distances to previously evaluated points and other selected candidate points.
     """
+    assert CandValue.ndim == 1
 
-    # Init RBF model
-    rbf_model = RbfModel()
-    rbf_model.type = data.phifunction
-    rbf_model.polynomial = data.polynomial
-    rbf_model.sampled_points = data.S[0 : data.m, :]
-
-    CandValue, NormValue = rbf_model.eval(CandPoint, data.llambda, data.ctail)
     MinCandValue = np.amin(CandValue)
     MaxCandValue = np.amax(CandValue)
 
     if MinCandValue == MaxCandValue:
-        ScaledCandValue = np.ones((CandValue.shape[0], 1))
+        ScaledCandValue = np.ones(CandValue.size)
     else:
         ScaledCandValue = (CandValue - MinCandValue) / (MaxCandValue - MinCandValue)
 
-    normval = {}
     if NumberNewSamples == 1:
         valueweight = 0.95
-        CandMinDist = np.asmatrix(np.amin(NormValue, axis=0)).T
+        CandMinDist = np.amin(NormValue, axis=0)
         MaxCandMinDist = np.amax(CandMinDist)
         MinCandMinDist = np.amin(CandMinDist)
         if MaxCandMinDist == MinCandMinDist:
-            ScaledCandMinDist = np.ones((CandMinDist.shape[0], 1))
+            ScaledCandMinDist = np.ones(CandMinDist.size)
         else:
             ScaledCandMinDist = (MaxCandMinDist - CandMinDist) / (
                 MaxCandMinDist - MinCandMinDist
@@ -88,16 +95,12 @@ def Minimize_Merit_Function(data, CandPoint, NumberNewSamples):
 
         # assign bad scores to candidate points that are too close to already sampled
         # points
-        CandTotalValue[CandMinDist < data.tolerance] = np.inf
+        CandTotalValue[CandMinDist < tol] = np.inf
 
-        MinCandTotalValue = np.amin(CandTotalValue)
-        selindex = np.argmin(CandTotalValue)
-        xselected = np.array(CandPoint[selindex, :])
-
-        # MATLAB code used cell struct here. Here we use Python buildin map to
-        # achieve the same functionality, and the key start from 0
-        normval[0] = np.asmatrix((NormValue[:, selindex])).T
+        return np.argmin(CandTotalValue)
     else:  # more than one new sample point wanted
+        selindex = np.zeros(NumberNewSamples, dtype=int)
+
         wp_id = -1
         weightpattern = np.array([0.3, 0.5, 0.8, 0.95])
         for ii in range(NumberNewSamples):
@@ -108,11 +111,11 @@ def Minimize_Merit_Function(data, CandPoint, NumberNewSamples):
             # This part is the same as NumberNewSamples == 1 case
             # This coding style is poor, but this is how they wrote the MATLAB code..
             if ii == 0:  # select first candidate point
-                CandMinDist = np.asmatrix(np.amin(NormValue, axis=0)).T
+                CandMinDist = np.amin(NormValue, axis=0)
                 MaxCandMinDist = np.amax(CandMinDist)
                 MinCandMinDist = np.amin(CandMinDist)
                 if MaxCandMinDist == MinCandMinDist:
-                    ScaledCandMinDist = np.ones((CandMinDist.shape[0], 1))
+                    ScaledCandMinDist = np.ones(CandMinDist.size)
                 else:
                     ScaledCandMinDist = (MaxCandMinDist - CandMinDist) / (
                         MaxCandMinDist - MinCandMinDist
@@ -126,39 +129,32 @@ def Minimize_Merit_Function(data, CandPoint, NumberNewSamples):
 
                 # assign bad scores to candidate points that are too close to already sampled
                 # points
-                CandTotalValue[CandMinDist < data.tolerance] = np.inf
+                CandTotalValue[CandMinDist < tol] = np.inf
 
-                MinCandTotalValue = np.amin(CandTotalValue)
-                selindex = np.argmin(CandTotalValue)
-                xselected = np.array(CandPoint[selindex, :])
-
-                # MATLAB code used cell struct here. Here we use Python buildin map to
-                # achieve the same functionality
-                # Do not need to transpose here, because slice just give 1d array
-                normval[0] = np.asmatrix(NormValue[:, selindex]).T
+                selindex[0] = np.argmin(CandTotalValue)
             else:
                 # compute distance of all candidate points to the previously selected
                 # candidate point
                 NormValueP = np.sqrt(
                     np.sum(
-                        np.asarray(
-                            (
-                                np.tile(xselected[ii - 1, :], (CandPoint.shape[0], 1))
-                                - CandPoint
+                        (
+                            np.tile(
+                                CandPoint[selindex[ii - 1], :],
+                                (CandPoint.shape[0], 1),
                             )
+                            - CandPoint
                         )
                         ** 2,
                         axis=1,
                     )
                 )
-                NormValue = np.concatenate((NormValue, np.asmatrix(NormValueP)), axis=0)
 
                 # re-scale distance values to [0,1]
-                CandMinDist = np.asmatrix(np.amin(NormValue, axis=0)).T
+                CandMinDist = np.minimum(CandMinDist, NormValueP)
                 MaxCandMinDist = np.amax(CandMinDist)
                 MinCandMinDist = np.amin(CandMinDist)
                 if MaxCandMinDist == MinCandMinDist:
-                    ScaledCandMinDist = np.ones((CandMinDist.shape[0], 1))
+                    ScaledCandMinDist = np.ones(CandMinDist.size)
                 else:
                     ScaledCandMinDist = (MaxCandMinDist - CandMinDist) / (
                         MaxCandMinDist - MinCandMinDist
@@ -172,13 +168,8 @@ def Minimize_Merit_Function(data, CandPoint, NumberNewSamples):
 
                 # assign bad values to points that are too close to already
                 # evaluated/chosen points
-                CandTotalValue[CandMinDist < data.tolerance] = np.inf
+                CandTotalValue[CandMinDist < tol] = np.inf
 
-                MinCandTotalValue = np.amin(CandTotalValue)
-                selindex = np.argmin(CandTotalValue)
-                xselected = np.concatenate(
-                    (xselected, np.array(CandPoint[selindex, :])), axis=0
-                )
-                normval[ii] = np.asmatrix(NormValue[:, selindex]).T
+                selindex[ii] = np.argmin(CandTotalValue)
 
-    return xselected, normval
+        return selindex

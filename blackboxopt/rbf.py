@@ -135,7 +135,7 @@ class RbfModel:
         else:
             raise ValueError("Invalid polynomial tail")
 
-    def eval(self, x, alpha, beta):
+    def eval(self, x, alpha, beta) -> tuple[np.ndarray, np.ndarray]:
         """Evaluates the model at one or multiple points.
 
         Parameters
@@ -160,6 +160,6 @@ class RbfModel:
         if self.polynomial == RbfPolynomial.NONE:
             y = np.matmul(self.phi(Dist).T, alpha)
         else:
-            y = np.matmul(self.phi(Dist).T, alpha) + self.get_ptail(x) * beta
+            y = np.matmul(self.phi(Dist).T, alpha) + np.dot(self.get_ptail(x), beta)
 
         return y, Dist
