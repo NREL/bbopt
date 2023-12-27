@@ -25,16 +25,14 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #       Christine A. Shoemaker: cas12@cornell.edu
 #       Haoyu Jia: leonjiahaoyu@gmail.com
 from blackboxopt.utility import *
-from numpy import *
-from numpy.matlib import *
-from operator import mul
+import numpy as np
 
 
 def datainput_rastrigin():
     data = Data()
     n = 10
-    data.xlow = zeros(n)
-    data.xup = ones(n)
+    data.xlow = np.zeros(n)
+    data.xup = np.ones(n)
     data.objfunction = myfun
     data.dim = n
     return data
@@ -42,13 +40,13 @@ def datainput_rastrigin():
 
 def myfun(x):
     n = 10
-    xlow = np.asarray(-10 * ones(n))
-    xup = np.asarray(10 * ones(n))
-    x = xlow + (xup - xlow) * x
-    y = 10 * n + sum(pow(x, 2) - 10 * cos(2 * pi * x))
+    xlow = np.asarray(-10 * np.ones(n))
+    xup = np.asarray(10 * np.ones(n))
+    x = xlow + np.multiply(xup - xlow, x)
+    y = 10 * n + sum(pow(x, 2) - 10 * np.cos(2 * np.pi * x))
 
     return y
 
 
 if __name__ == "__main__":
-    print(myfun(array([[0.5, 0.9]])))
+    print(myfun(np.array([[0.5, 0.9]])))

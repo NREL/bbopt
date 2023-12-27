@@ -210,8 +210,12 @@ def LocalStochRBFstop(data, maxeval, NumberNewSamples):
         rbf_model.polynomial = data.polynomial
         rbf_model.sampled_points = data.S[0 : data.m, :]
         CandValue, NormValue = rbf_model.eval(CandPoint, data.llambda, data.ctail)
-        selindex = Minimize_Merit_Function(
-            CandPoint, CandValue, NormValue, NumberNewSamples, data.tolerance
+        selindex, distNewSamples = Minimize_Merit_Function(
+            CandPoint,
+            CandValue,
+            np.min(NormValue, axis=0),
+            NumberNewSamples,
+            data.tolerance,
         )
         xselected = np.reshape(
             CandPoint[selindex, :], (selindex.size, CandPoint.shape[1])
@@ -297,7 +301,9 @@ def LocalStochRBFstop(data, maxeval, NumberNewSamples):
             for kk in range(xselected.shape[0]):
                 # print kk
                 # print n_old+kk
-                new_phi = rbf_model.phi(normval[kk])
+                new_phi = rbf_model.phi(
+                    np.concatenate((normval[kk], distNewSamples[kk, 0:kk]))
+                )
                 PHI[n_old + kk, 0 : n_old + kk] = new_phi
                 PHI[0 : n_old + kk, n_old + kk] = new_phi
                 PHI[n_old + kk, n_old + kk] = phi0

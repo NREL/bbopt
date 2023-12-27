@@ -30,6 +30,8 @@ from blackboxopt.LocalStochRBFstop import *
 from blackboxopt.rbf import RbfPolynomial, RbfType, RbfModel
 
 if __name__ == "__main__":
+    np.random.seed(3)
+
     try:
         print("This is the test for LocalStochRBFstop")
 

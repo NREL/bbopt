@@ -25,15 +25,14 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #       Christine A. Shoemaker: cas12@cornell.edu
 #       Haoyu Jia: leonjiahaoyu@gmail.com
 from blackboxopt.utility import *
-from numpy import *
-from numpy.matlib import *
-from operator import mul
+import numpy as np
+import numpy.matlib as matlib
 
 
 def datainput_hartman3():
     data = Data()
-    data.xlow = zeros(3)
-    data.xup = ones(3)
+    data.xlow = np.zeros(3)
+    data.xup = np.ones(3)
     data.objfunction = myfun
     data.dim = 3
     return data
@@ -41,9 +40,9 @@ def datainput_hartman3():
 
 def myfun(x):
     print(x)
-    c = array([1, 1.2, 3, 3.2])
-    A = array([[3, 10, 30], [0.1, 10, 35], [3, 10, 30], [0.1, 10, 35]])
-    P = array(
+    c = np.array([1, 1.2, 3, 3.2])
+    A = np.array([[3, 10, 30], [0.1, 10, 35], [3, 10, 30], [0.1, 10, 35]])
+    P = np.array(
         [
             [0.3689, 0.1170, 0.2673],
             [0.4699, 0.4387, 0.747],
@@ -51,9 +50,9 @@ def myfun(x):
             [0.0382, 0.5743, 0.8828],
         ]
     )
-    y = -sum(c * exp(-sum(A * (repmat(x, 4, 1) - P) ** 2, axis=1)))
+    y = -sum(c * np.exp(-np.sum(A * (matlib.repmat(x, 4, 1) - P) ** 2, axis=1)))
     return y
 
 
 if __name__ == "__main__":
-    print(myfun(array([0.5, 0.9, 0.3])))
+    print(myfun(np.array([0.5, 0.9, 0.3])))

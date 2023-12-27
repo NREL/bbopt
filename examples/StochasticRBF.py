@@ -31,7 +31,7 @@ import pickle as p
 
 from blackboxopt.utility import *
 from blackboxopt.TestLocalStochRBFrestart import TestLocalStochRBFrestart
-from blackboxopt.rbf import RbfPolynomial, RbfType, RbfModel
+from blackboxopt.rbf import RbfPolynomial, RbfType
 
 
 def StochasticRBF(
