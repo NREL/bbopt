@@ -26,8 +26,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #       Haoyu Jia: leonjiahaoyu@gmail.com
 from StochasticRBF import *
 from blackboxopt.utility import *
-from blackboxopt.LocalStochRBFstop import *
 from blackboxopt.rbf import RbfPolynomial, RbfType, RbfModel
+from blackboxopt.optimize import minimize
 
 if __name__ == "__main__":
     np.random.seed(3)
@@ -81,19 +81,39 @@ if __name__ == "__main__":
         # print(data.polynomial)
         print(data.S)
         print("LocalStochRBFstop Start")
-        data = LocalStochRBFstop(data, maxeval - numevals, NumberNewSamples)
+
+        data.S = np.add(np.multiply(data.xup - data.xlow, data.S), data.xlow)
+
+        rbfModel = RbfModel()
+        rbfModel.type = data.phifunction
+        rbfModel.polynomial = data.polynomial
+        rbfModel.x = data.S
+        rbfModel.m = data.S.shape[0]
+
+        optres = minimize(
+            data.objfunction,
+            bounds=(
+                (data.xlow[0], data.xup[0]),
+                (data.xlow[1], data.xup[1]),
+                (data.xlow[2], data.xup[2]),
+            ),
+            maxeval=maxeval - numevals,
+            surrogateModel=rbfModel,
+            nCandidatesPerIteration=data.Ncand,
+            newSamplesPerIteration=NumberNewSamples,
+        )
 
         print("Results")
         print("xlow", data.xlow)
         print("xup", data.xup)
-        print("S", data.S.shape)
-        print("m", data.m)
-        print("Y", data.Y.shape)
-        print("xbest", data.xbest)
-        print("Fbest", data.Fbest)
-        print("lambda", data.llambda.shape)
-        print("ctail", data.ctail.shape)
-        print("NumberFevals", data.NumberFevals)
+        print("S", optres.samples.shape)
+        print("m", optres.samples.shape[0])
+        print("Y", optres.fsamples.shape)
+        print("xbest", optres.x)
+        print("Fbest", optres.fx)
+        print("lambda", rbfModel.m)
+        print("ctail", rbfModel._beta.shape)
+        print("NumberFevals", optres.nfev)
 
     except myException as e:
         print(e.msg)

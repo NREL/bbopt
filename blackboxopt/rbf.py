@@ -40,18 +40,38 @@ RbfPolynomial = Enum("RbfPolynomial", ["NONE", "CONSTANT", "LINEAR", "QUADRATIC"
 class RbfModel:
     type: RbfType = RbfType.CUBIC
     polynomial: RbfPolynomial = RbfPolynomial.QUADRATIC
-    sampled_points: np.ndarray = np.array([])
+    x: np.ndarray = np.array([])
+    m: int = 0
+
+    _alpha: np.ndarray = np.array([])
+    _beta: np.ndarray = np.array([])
+    _PHI: np.ndarray = np.array([])
+    _P: np.ndarray = np.array([])
 
     def get_dim(self) -> int:
         """Get the dimension of the domain space"""
-        if self.sampled_points.ndim == 1:
+        if self.x.ndim == 1:
             return 1
-        elif self.sampled_points.ndim == 2:
-            return self.sampled_points.shape[1]
+        elif self.x.ndim == 2:
+            return self.x.shape[1]
         else:
             raise ValueError(
                 "Invalid matrix size for sampled points. It must be either a 1D or 2D array"
             )
+
+    def get_pdim(self) -> int:
+        """Get the dimension of the polynomial space"""
+        dim = self.get_dim()
+        if self.polynomial == RbfPolynomial.NONE:
+            return 0
+        elif self.polynomial == RbfPolynomial.CONSTANT:
+            return 1
+        elif self.polynomial == RbfPolynomial.LINEAR:
+            return 1 + dim
+        elif self.polynomial == RbfPolynomial.QUADRATIC:
+            return ((dim + 1) * (dim + 2)) // 2
+        else:
+            raise ValueError("Invalid polynomial degree")
 
     def phi(self, r):
         """Applies the function phi to the distance r.
@@ -98,7 +118,7 @@ class RbfModel:
             Matrix containing the phi-value of the distances of all sampled points to each other.
         """
         return self.phi(
-            scp.distance.cdist(self.sampled_points, self.sampled_points, metric)
+            scp.distance.cdist(self.x[0 : self.m, :], self.x[0 : self.m, :], metric)
         )
 
     def get_ptail(self, x) -> np.ndarray:
@@ -135,7 +155,7 @@ class RbfModel:
         else:
             raise ValueError("Invalid polynomial tail")
 
-    def eval(self, x, alpha, beta) -> tuple[np.ndarray, np.ndarray]:
+    def eval(self, x) -> tuple[np.ndarray, np.ndarray]:
         """Evaluates the model at one or multiple points.
 
         Parameters
@@ -155,11 +175,76 @@ class RbfModel:
             Matrix with distances of all points to sampled points i the RBF model.
         """
         # compute pairwise distances between candidates and sampled points
-        Dist = scp.distance.cdist(self.sampled_points, x)
+        Dist = scp.distance.cdist(self.x[0 : self.m, :], x)
 
         if self.polynomial == RbfPolynomial.NONE:
-            y = np.matmul(self.phi(Dist).T, alpha)
+            y = np.matmul(self.phi(Dist).T, self._alpha[0 : self.m])
         else:
-            y = np.matmul(self.phi(Dist).T, alpha) + np.dot(self.get_ptail(x), beta)
+            y = np.matmul(self.phi(Dist).T, self._alpha[0 : self.m]) + np.dot(
+                self.get_ptail(x), self._beta
+            )
 
         return y, Dist
+
+    def update_coefficients(self, fx: np.ndarray) -> None:
+        m = fx.size
+        pdim = self._P.shape[1]
+        assert m == self.m
+
+        # replace large function values by the median of all available function values
+        gx = np.copy(fx)
+        medianF = np.median(fx)
+        gx[gx > medianF] = medianF
+
+        A = np.concatenate(
+            (
+                np.concatenate((self._PHI[0:m, 0:m], self._P[0:m, :]), axis=1),
+                np.concatenate((self._P[0:m, :].T, np.zeros((pdim, pdim))), axis=1),
+            ),
+            axis=0,
+        )
+
+        eta = np.sqrt((1e-16) * np.linalg.norm(A, 1) * np.linalg.norm(A, np.inf))
+        coeff = np.linalg.solve(
+            (A + eta * np.eye(m + pdim)),
+            np.concatenate((gx, np.zeros(pdim))),
+        )
+        self._alpha[0:m] = coeff[0:m]
+        self._beta = coeff[m:]
+
+    def set_coefficients(self, fx: np.ndarray, maxeval: int = 0) -> None:
+        dim = self.get_dim()
+        m = fx.size
+        assert m == self.m
+
+        # Reserve space
+        M = max(maxeval, m)
+        self.x = np.concatenate((self.x[0:m, :], np.zeros((M - m, dim))))
+        self._alpha = np.zeros(M)
+        self._PHI = np.zeros((M, M))
+        self._P = np.zeros((M, self.get_pdim()))
+
+        # Set matrices _PHI and _P for the first time
+        self._PHI[0:m, 0:m] = self.eval_phi_sample()
+        self._P[0:m, :] = self.get_ptail(self.x[0:m, :])
+
+        self.update_coefficients(fx)
+
+    def update(self, xNew: np.ndarray, distNew: np.ndarray, fx: np.ndarray) -> None:
+        m = fx.size
+        dim = self.get_dim()
+        assert (m - self.m) * dim == xNew.size
+
+        # Update matrices _PHI and _P
+        new_phi = self.phi(distNew)
+        self._PHI[0:m, self.m : m] = new_phi
+        self._PHI[self.m : m, 0 : self.m] = new_phi[0 : self.m, :].T
+        self._P[self.m : m, 0] = 1
+        self._P[self.m : m, 1 : dim + 1] = xNew
+
+        # Update x and m
+        self.x[self.m : m, :] = xNew
+        self.m = m
+
+        # Update coeficients
+        self.update_coefficients(fx)

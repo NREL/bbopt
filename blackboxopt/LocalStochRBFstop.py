@@ -29,9 +29,6 @@ __credits__ = [
 __version__ = "0.1.0"
 __deprecated__ = False
 
-from ast import Num
-
-from matplotlib.pylab import norm
 from .utility import *
 import numpy as np
 import time
@@ -136,7 +133,7 @@ def LocalStochRBFstop(data, maxeval, NumberNewSamples):
     rbf_model = RbfModel()
     rbf_model.type = data.phifunction
     rbf_model.polynomial = data.polynomial
-    rbf_model.sampled_points = data.S[0 : data.m, :]
+    rbf_model.x = data.S[0 : data.m, :]
     PHI = np.zeros((maxeval, maxeval))
     PHI[0 : data.m, 0 : data.m] = rbf_model.eval_phi_sample()
     P = rbf_model.get_ptail(data.S)
@@ -208,7 +205,7 @@ def LocalStochRBFstop(data, maxeval, NumberNewSamples):
         rbf_model = RbfModel()
         rbf_model.type = data.phifunction
         rbf_model.polynomial = data.polynomial
-        rbf_model.sampled_points = data.S[0 : data.m, :]
+        rbf_model.x = data.S[0 : data.m, :]
         CandValue, NormValue = rbf_model.eval(CandPoint, data.llambda, data.ctail)
         selindex, distNewSamples = Minimize_Merit_Function(
             CandPoint,

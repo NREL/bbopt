@@ -32,7 +32,8 @@ __deprecated__ = False
 from .utility import *
 import copy
 import numpy as np
-from .LocalStochRBFstop import LocalStochRBFstop
+from .rbf import RbfModel
+from .optimize import minimize
 
 
 def LocalStochRBFrestart(data, maxeval, NumberNewSamples):
@@ -60,25 +61,40 @@ def LocalStochRBFrestart(data, maxeval, NumberNewSamples):
             P = np.concatenate((np.ones((m, 1)), data.S), axis=1)
             rank_P = np.linalg.matrix_rank(P)
 
+        data.S = np.add(np.multiply(data.xup - data.xlow, data.S), data.xlow)
+
+        rbfModel = RbfModel()
+        rbfModel.type = data.phifunction
+        rbfModel.polynomial = data.polynomial
+        rbfModel.x = data.S
+        rbfModel.m = data.S.shape[0]
+
         # for the current number of starts, run local optimization
-        data = LocalStochRBFstop(data, maxeval - numevals, NumberNewSamples)
+        optres = minimize(
+            data.objfunction,
+            bounds=tuple((data.xlow[i], data.xup[i]) for i in range(data.dim)),
+            maxeval=maxeval - numevals,
+            surrogateModel=rbfModel,
+            nCandidatesPerIteration=data.Ncand,
+            newSamplesPerIteration=NumberNewSamples,
+        )
 
         # update best solution found if current solution is better than best
         # point found so far
-        if data.Fbest < value:
-            solution = data.xbest  # best point
-            value = data.Fbest  # best function value
+        if optres.fx < value:
+            solution = optres.x  # best point
+            value = optres.fx  # best function value
 
         if init:  # Fevaltime_all == None:
-            Fevaltime_all = data.fevaltime
-            Y_all = data.Y
-            S_all = data.S
+            Fevaltime_all = optres.fevaltime
+            Y_all = optres.fsamples
+            S_all = optres.samples
             init = False
         else:
-            Fevaltime_all = np.concatenate((Fevaltime_all, data.fevaltime))
-            Y_all = np.concatenate((Y_all, data.Y))
-            S_all = np.concatenate((S_all, data.S), axis=0)
-        numevals = numevals + data.NumberFevals
+            Fevaltime_all = np.concatenate((Fevaltime_all, optres.fevaltime))
+            Y_all = np.concatenate((Y_all, optres.fsamples))
+            S_all = np.concatenate((S_all, optres.samples), axis=0)
+        numevals = numevals + optres.nfev  # update number of function evaluations
 
     data.S = S_all
     data.Y = Y_all

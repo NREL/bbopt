@@ -65,11 +65,11 @@ class TestRbfModel:
     def test_get_phi_sample_euclidean(self):
         self.rbf_model.type = RbfType.CUBIC
         self.rbf_model.polynomial = RbfPolynomial.QUADRATIC
-        self.rbf_model.sampled_points = np.array([[0.0, 0.0], [0.0, 1.0]])
+        self.rbf_model.x = np.array([[0.0, 0.0], [0.0, 1.0]])
 
         result = self.rbf_model.eval_phi_sample()
         assert isinstance(result, np.ndarray)
         assert result.shape == (
-            self.rbf_model.sampled_points.shape[0],
-            self.rbf_model.sampled_points.shape[0],
+            self.rbf_model.x.shape[0],
+            self.rbf_model.x.shape[0],
         )
