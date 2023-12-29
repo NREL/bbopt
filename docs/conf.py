@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.abspath(".."))
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
 project = "Black-box Opt"
-copyright = "2023, Weslley S. Pereira"
+copyright = "2023, National Renewable Energy Laboratory"
 author = "Weslley S. Pereira"
 release = "0.1.0"
 
@@ -31,5 +31,5 @@ exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 # -- Options for HTML output -------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#options-for-html-output
 
-html_theme = "alabaster"
+html_theme = "sphinx_rtd_theme"
 html_static_path = ["_static"]

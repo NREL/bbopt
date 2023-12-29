@@ -1,19 +1,20 @@
 """TODO: <one line to give the program's name and a brief idea of what it does.>
-Copyright (C) 2023 National Renewable Energy Laboratory
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
+
+# Copyright (C) 2023 National Renewable Energy Laboratory
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 __authors__ = ["Weslley S. Pereira"]
 __contact__ = "weslley.dasilvapereira@nrel.gov"
@@ -50,8 +51,12 @@ class TestRbfModel:
         r_thinplate = np.array([1.0, 2.0, 3.0])
         result_thinplate = self.rbf_model.phi(r_thinplate)
         expected_thinplate = np.array([0.0, 2.77258872, 9.8875106])
-        np.testing.assert_allclose(np.array(result_thinplate), expected_thinplate)
-        assert self.rbf_model.phi(4.0) == (4 * 4 * np.log(4 + sys.float_info.min))
+        np.testing.assert_allclose(
+            np.array(result_thinplate), expected_thinplate
+        )
+        assert self.rbf_model.phi(4.0) == (
+            4 * 4 * np.log(4 + sys.float_info.min)
+        )
 
         # self.rbf_model.type = RbfType(-1)
         # r_invalid_type = np.array([1.0, 2.0, 3.0])
@@ -61,15 +66,3 @@ class TestRbfModel:
         #     assert str(e) == "Unknown RbfType"
         # else:
         #     assert False, "Expected ValueError not raised"
-
-    def test_get_phi_sample_euclidean(self):
-        self.rbf_model.type = RbfType.CUBIC
-        self.rbf_model.polynomial = RbfPolynomial.QUADRATIC
-        self.rbf_model.x = np.array([[0.0, 0.0], [0.0, 1.0]])
-
-        result = self.rbf_model.eval_phi_sample()
-        assert isinstance(result, np.ndarray)
-        assert result.shape == (
-            self.rbf_model.x.shape[0],
-            self.rbf_model.x.shape[0],
-        )

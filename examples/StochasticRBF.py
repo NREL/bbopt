@@ -1,20 +1,21 @@
 """TODO: <one line to give the program's name and a brief idea of what it does.>
-Copyright (C) 2023 National Renewable Energy Laboratory
-Copyright (C) 2013 Cornell University
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
+
+# Copyright (C) 2023 National Renewable Energy Laboratory
+# Copyright (C) 2013 Cornell University
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 
 # ----------------*****  Contact Information *****--------------------------
@@ -72,7 +73,11 @@ def TestLocalStochRBFrestart(data, maxeval, Ntrials, NumberNewSamples):
 
 
 def StochasticRBF(
-    data_file, maxeval=None, Ntrials=None, PlotResult=None, NumberNewSamples=None
+    data_file,
+    maxeval=None,
+    Ntrials=None,
+    PlotResult=None,
+    NumberNewSamples=None,
 ):
     ## Start input check
     data = read_check_data_file(data_file)
@@ -102,14 +107,18 @@ def perform_optimization(data, maxeval, Ntrials, NumberNewSampes):
     data.Ncand = 500 * data.dim
     data.phifunction = RbfType.CUBIC
     data.polynomial = RbfPolynomial.LINEAR
-    solution = TestLocalStochRBFrestart(data, maxeval, Ntrials, NumberNewSampes)
+    solution = TestLocalStochRBFrestart(
+        data, maxeval, Ntrials, NumberNewSampes
+    )
     return solution
 
 
 def plot_results(solution, maxeval, Ntrials):
     Y_cur_best = np.zeros((maxeval, Ntrials))
     for ii in range(Ntrials):  # go through all trials
-        Y_cur = solution.FuncVal[:, ii]  # unction values of current trial (trial ii)
+        Y_cur = solution.FuncVal[
+            :, ii
+        ]  # unction values of current trial (trial ii)
         Y_cur_best[0, ii] = Y_cur[
             0
         ]  # first best function value is first function value computed
@@ -178,7 +187,9 @@ def check_set_parameters(data, maxeval, Ntrials, PlotResult, NumberNewSamples):
         )
         Ntrials = 1
     if not isinstance(Ntrials, int) or Ntrials <= 0:
-        raise myException("Maximal number of trials must be positive integer.\n")
+        raise myException(
+            "Maximal number of trials must be positive integer.\n"
+        )
 
     if PlotResult == None:
         print(
@@ -196,7 +207,9 @@ def check_set_parameters(data, maxeval, Ntrials, PlotResult, NumberNewSamples):
         )
         NumberNewSamples = 1
     if not isinstance(NumberNewSamples, int) or NumberNewSamples < 0:
-        raise myException("Number of new sample sites must be positive integer.\n")
+        raise myException(
+            "Number of new sample sites must be positive integer.\n"
+        )
 
     return maxeval, Ntrials, PlotResult, NumberNewSamples
 

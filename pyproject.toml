@@ -14,7 +14,22 @@ scipy = "^1.11.4"
 pytest = "^7.4.3"
 sphinx = "^7.2.6"
 myst-parser = "^2.0.0"
+sphinx-rtd-theme = "^2.0.0"
+ruff = "^0.1.9"
 
+[tool.ruff]
+line-length = 79
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "W"]
+ignore = []
+
+[tool.ruff.format]
+docstring-code-format = true
+docstring-code-line-length = 60
+
+[tool.ruff.lint.pycodestyle]
+max-doc-length = 80
 
 [build-system]
 requires = ["poetry-core"]

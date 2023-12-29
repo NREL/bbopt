@@ -1,20 +1,21 @@
 """TODO: <one line to give the program's name and a brief idea of what it does.>
-Copyright (C) 2023 National Renewable Energy Laboratory
-Copyright (C) 2013 Cornell University
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
+
+# Copyright (C) 2023 National Renewable Energy Laboratory
+# Copyright (C) 2013 Cornell University
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 __authors__ = ["Juliane Mueller", "Christine A. Shoemaker", "Haoyu Jia"]
 __contact__ = "juliane.mueller@nrel.gov"
@@ -85,7 +86,8 @@ def SLHDstandard(d: int, m: int, bounds: tuple = ()) -> np.ndarray:
     if bounds:
         for j in range(d):
             InitialPoints[:, j] = (
-                InitialPoints[:, j] * (bounds[j][1] - bounds[j][0]) + bounds[j][0]
+                InitialPoints[:, j] * (bounds[j][1] - bounds[j][0])
+                + bounds[j][0]
             )
 
     return InitialPoints
@@ -120,8 +122,10 @@ class Data:
                 "Vector length of lower and upper bounds must equal problem dimension\n"
             )
         comp_list = np.less_equal(self.xlow, self.xup).tolist()
-        if any(i == False for i in comp_list):
-            raise myException("Lower bounds have to be lower than upper bounds.\n")
+        if any(i is False for i in comp_list):
+            raise myException(
+                "Lower bounds have to be lower than upper bounds.\n"
+            )
 
 
 class Solution:

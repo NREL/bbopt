@@ -1,20 +1,21 @@
 """TODO: <one line to give the program's name and a brief idea of what it does.>
-Copyright (C) 2023 National Renewable Energy Laboratory
-Copyright (C) 2013 Cornell University
-
-This program is free software: you can redistribute it and/or modify
-it under the terms of the GNU General Public License as published by
-the Free Software Foundation, either version 3 of the License, or
-(at your option) any later version.
-
-This program is distributed in the hope that it will be useful,
-but WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
-GNU General Public License for more details.
-
-You should have received a copy of the GNU General Public License
-along with this program.  If not, see <http://www.gnu.org/licenses/>.
 """
+
+# Copyright (C) 2023 National Renewable Energy Laboratory
+# Copyright (C) 2013 Cornell University
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 __authors__ = ["Juliane Mueller", "Christine A. Shoemaker", "Haoyu Jia"]
 __contact__ = "juliane.mueller@nrel.gov"
@@ -29,12 +30,12 @@ __credits__ = [
 __version__ = "0.1.0"
 __deprecated__ = False
 
-from matplotlib.pylab import f
 import numpy as np
 import scipy.spatial as scp
 import time
-from multiprocessing import Pool
-import os
+
+# from multiprocessing import Pool
+# import os
 from dataclasses import dataclass
 
 from .rbf import RbfModel
@@ -94,9 +95,10 @@ def Minimize_Merit_Function(
 
     The points are chosen from x such that they minimize the expression
     :math:`w f_s(x) + (1-w) (-d_s(x))`, where
-    - `w` is a weight.
-    - `f_s(x)` is the estimated value for the objective function on x, scaled to [0,1].
-    - `d_s(x)` is the minimum distance between x and the previously selected evaluation points, scaled to [-1,0].
+
+    - :math:`w` is a weight.
+    - :math:`f_s(x)` is the estimated value for the objective function on x, scaled to [0,1].
+    - :math:`d_s(x)` is the minimum distance between x and the previously selected evaluation points, scaled to [-1,0].
 
     If there are more than one new sample point to be
     selected, the distances of the candidate points to the previously
@@ -280,7 +282,9 @@ def minimize(
 
     # output variables
     samples = np.zeros((maxeval, dim))  # Matrix with all sampled points
-    fsamples = np.zeros(maxeval)  # Vector with function values on sampled points
+    fsamples = np.zeros(
+        maxeval
+    )  # Vector with function values on sampled points
     fevaltime = np.zeros(maxeval)  # Vector with function evaluation times
     xbest = np.zeros(dim)  # Best point found so far
     fxbest = np.inf  # Best function value found so far
@@ -291,7 +295,9 @@ def minimize(
         numevals < maxeval and nGlobalIter < maxit
     ):  # do until max. number of allowed f-evals reached
         iBest = 0  # Index of the best point found so far in the current trial
-        maxlocaleval = maxeval - numevals  # Number of remaining function evaluations
+        maxlocaleval = (
+            maxeval - numevals
+        )  # Number of remaining function evaluations
         y = np.zeros(
             maxlocaleval
         )  # Vector with function values on sampled points in the current trial
@@ -332,7 +338,9 @@ def minimize(
         iterctr = 0  # number of iterations
         shrinkctr = 0  # number of times sigma_stdev was shrunk
         failctr = 0  # number of consecutive unsuccessful iterations
-        localminflag = 0  # indicates whether or not xbest is at a local minimum
+        localminflag = (
+            0  # indicates whether or not xbest is at a local minimum
+        )
         succctr = 0  # number of consecutive successful iterations
 
         # do until max number of f-evals reached or local min found
@@ -356,17 +364,17 @@ def minimize(
             selindex, distNewSamples = Minimize_Merit_Function(
                 CandPoint,
                 CandValue,
-                np.min(distMatrix, axis=0),
+                np.min(distMatrix, axis=1),
                 NumberNewSamples,
                 tol,
             )
             xselected = np.reshape(CandPoint[selindex, :], (selindex.size, -1))
             distselected = np.concatenate(
                 (
-                    np.reshape(distMatrix[:, selindex], (-1, selindex.size)),
+                    np.reshape(distMatrix[selindex, :], (selindex.size, -1)),
                     distNewSamples,
                 ),
-                axis=0,
+                axis=1,
             )
 
             # Compute f(xselected)
