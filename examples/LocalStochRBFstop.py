@@ -26,9 +26,9 @@
 #       Christine A. Shoemaker: cas12@cornell.edu
 #       Haoyu Jia: leonjiahaoyu@gmail.com
 from StochasticRBF import *
-from blackboxopt.utility import *
 from blackboxopt.rbf import RbfPolynomial, RbfType, RbfModel
 from blackboxopt.optimize import minimize
+from blackboxopt.utility import SLHDstandard
 
 if __name__ == "__main__":
     np.random.seed(3)
@@ -85,11 +85,8 @@ if __name__ == "__main__":
 
         data.S = np.add(np.multiply(data.xup - data.xlow, data.S), data.xlow)
 
-        rbfModel = RbfModel()
-        rbfModel.type = data.phifunction
-        rbfModel.polynomial = data.polynomial
-        rbfModel.x = data.S
-        rbfModel.m = data.S.shape[0]
+        rbfModel = RbfModel(data.phifunction, data.polynomial)
+        rbfModel.update(data.S)
 
         optres = minimize(
             data.objfunction,
@@ -113,8 +110,8 @@ if __name__ == "__main__":
         print("Y", optres.fsamples.shape)
         print("xbest", optres.x)
         print("Fbest", optres.fx)
-        print("lambda", rbfModel.m)
-        print("ctail", rbfModel._beta.shape)
+        print("lambda", rbfModel.nsamples())
+        print("ctail", rbfModel.pdim())
         print("NumberFevals", optres.nfev)
 
     except myException as e:

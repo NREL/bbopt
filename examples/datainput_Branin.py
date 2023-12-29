@@ -1,4 +1,4 @@
-"""TODO: <one line to give the program's name and a brief idea of what it does.>
+"""Data class for the Branin problem definition.
 """
 
 # Copyright (C) 2023 National Renewable Energy Laboratory
@@ -17,25 +17,25 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+__authors__ = ["Juliane Mueller", "Christine A. Shoemaker", "Haoyu Jia"]
+__contact__ = "juliane.mueller@nrel.gov"
+__maintainer__ = "Weslley S. Pereira"
+__email__ = "weslley.dasilvapereira@nrel.gov"
+__credits__ = [
+    "Juliane Mueller",
+    "Christine A. Shoemaker",
+    "Haoyu Jia",
+    "Weslley S. Pereira",
+]
+__version__ = "0.1.0"
+__deprecated__ = False
 
-# ----------------*****  Contact Information *****--------------------------
-#   Primary Contact (Implementation Questions, Bug Reports, etc.):
-#   Juliane Mueller: juliane.mueller2901@gmail.com
-#
-#   Secondary Contact:
-#       Christine A. Shoemaker: cas12@cornell.edu
-#       Haoyu Jia: leonjiahaoyu@gmail.com
-from blackboxopt.utility import *
 import numpy as np
+from data import Data
 
 
 def datainput_Branin():
-    data = Data()
-    data.xlow = np.zeros(2)
-    data.xup = np.ones(2)
-    data.objfunction = myfun
-    data.dim = 2
-    return data
+    return Data(xlow=np.zeros(2), xup=np.ones(2), objfunction=myfun, dim=2)
 
 
 def myfun(x):

@@ -1,4 +1,4 @@
-"""TODO: <one line to give the program's name and a brief idea of what it does.>
+"""Radial Basis Function model.
 """
 
 # Copyright (C) 2023 National Renewable Energy Laboratory
@@ -34,6 +34,8 @@ import numpy as np
 from enum import Enum
 from scipy.spatial.distance import cdist
 
+from .utility import SLHDstandard
+
 RbfType = Enum("RbfType", ["LINEAR", "CUBIC", "THINPLATE"])
 RbfPolynomial = Enum(
     "RbfPolynomial", ["NONE", "CONSTANT", "LINEAR", "QUADRATIC"]
@@ -59,29 +61,94 @@ class RbfModel:
         - RbfPolynomial.CONSTANT: Constant polynomial tail.
         - RbfPolynomial.LINEAR: Linear polynomial tail.
         - RbfPolynomial.QUADRATIC: Quadratic polynomial tail.
-
-    m : int
-        Number of sampled points.
-
-    x : numpy.ndarray
-        m-by-d matrix with m point coordinates in a d-dimensional space.
     """
 
     def __init__(
         self,
         rbf_type: RbfType = RbfType.CUBIC,
         polynomial: RbfPolynomial = RbfPolynomial.QUADRATIC,
-        m: int = 0,
-        x: np.ndarray = np.array([]),
     ):
         self.type = rbf_type
         self.polynomial = polynomial
-        self.m = m
-        self.x = x
-        self._alpha = np.array([])
-        self._beta = np.array([])
+
+        self._m = 0
+        self._x = np.array([])
+        self._fx = np.array([])
+        self._coef = np.array([])
         self._PHI = np.array([])
         self._P = np.array([])
+
+    def reserve(self, maxeval: int, dim: int) -> None:
+        """Reserve space for the RBF model.
+
+        If the input maxeval is smaller than the current number of samples,
+        nothing is done.
+
+        Parameters
+        ----------
+        maxeval : int
+            Maximum number of function evaluations allowed.
+        dim : int
+            Dimension of the domain space.
+        """
+        if maxeval < self._m:
+            return
+
+        if self._x.size == 0:
+            self._x = np.empty((maxeval, dim))
+        else:
+            additional_rows = max(0, maxeval - self._x.shape[0])
+            self._x = np.concatenate(
+                (self._x, np.empty((additional_rows, dim))), axis=0
+            )
+
+        if self._fx.size == 0:
+            self._fx = np.empty(maxeval)
+        else:
+            additional_values = max(0, maxeval - self._fx.shape[0])
+            self._fx = np.concatenate(
+                (self._fx, np.empty(additional_values)), axis=0
+            )
+
+        if self._coef.size == 0:
+            self._coef = np.empty(maxeval + self.pdim())
+        else:
+            additional_values = max(0, maxeval + self.pdim() - self._coef.size)
+            self._coef = np.concatenate(
+                (self._coef, np.empty(additional_values)), axis=0
+            )
+
+        if self._PHI.size == 0:
+            self._PHI = np.empty((maxeval, maxeval))
+        else:
+            additional_rows = max(0, maxeval - self._PHI.shape[0])
+            additional_cols = max(0, maxeval - self._PHI.shape[1])
+            new_rows = max(maxeval, self._PHI.shape[0])
+            self._PHI = np.concatenate(
+                (
+                    np.concatenate(
+                        (
+                            self._PHI,
+                            np.empty((additional_rows, self._PHI.shape[1])),
+                        ),
+                        axis=0,
+                    ),
+                    np.empty((new_rows, additional_cols)),
+                ),
+                axis=1,
+            )
+
+        if self._P.size == 0:
+            self._P = np.empty((maxeval, self.pdim()))
+        else:
+            additional_rows = max(0, maxeval - self._P.shape[0])
+            self._P = np.concatenate(
+                (
+                    self._P,
+                    np.empty((additional_rows, self.pdim())),
+                ),
+                axis=0,
+            )
 
     def dim(self) -> int:
         """Get the dimension of the domain space.
@@ -91,10 +158,10 @@ class RbfModel:
         out: int
             Dimension of the domain space.
         """
-        if self.x.ndim == 1:
+        if self._x.ndim == 1:
             return 1
-        elif self.x.ndim == 2:
-            return self.x.shape[1]
+        elif self._x.ndim == 2:
+            return self._x.shape[1]
         else:
             return 0
 
@@ -159,8 +226,8 @@ class RbfModel:
         out: numpy.ndarray
             Site matrix, needed for determining parameters of the polynomial tail.
         """
-        m = x.shape[0]
         dim = self.dim()
+        m = x.size // dim
         assert x.shape[1] == dim
 
         # Set up the polynomial tail matrix P
@@ -198,25 +265,36 @@ class RbfModel:
             and the j-th sampled point.
         """
         # compute pairwise distances between candidates and sampled points
-        D = cdist(x, self.x[0 : self.m, :])
+        D = cdist(x, self._x[0 : self._m, :])
 
         if self.polynomial == RbfPolynomial.NONE:
-            y = np.matmul(self.phi(D), self._alpha[0 : self.m])
+            y = np.matmul(self.phi(D), self._coef[0 : self._m])
         else:
-            y = np.matmul(self.phi(D), self._alpha[0 : self.m]) + np.dot(
-                self.pbasis(x), self._beta
+            Px = self.pbasis(x)
+            y = np.matmul(self.phi(D), self._coef[0 : self._m]) + np.dot(
+                Px, self._coef[self._m : self._m + Px.shape[1]]
             )
 
         return y, D
 
-    def update_coefficients(self, fx: np.ndarray) -> None:
-        m = fx.size
-        pdim = self._P.shape[1]
-        assert m == self.m
+    def update_coefficients(self, fx: np.ndarray = np.array([])) -> None:
+        """Updates the coefficients of the RBF model.
+
+        Parameters
+        ----------
+        fx : np.ndarray, optional
+            Function values of the last sampled points. If not provided, all
+            function values are taken from the attribute _fx.
+        """
+        m = self._m
+        pdim = self.pdim()
+
+        # Replace last function values by new function values
+        self._fx[m - fx.size : m] = fx
 
         # replace large function values by the median of all available function values
-        gx = np.copy(fx)
-        medianF = np.median(fx)
+        gx = np.copy(self._fx[0:m])
+        medianF = np.median(gx)
         gx[gx > medianF] = medianF
 
         A = np.concatenate(
@@ -232,50 +310,138 @@ class RbfModel:
         eta = np.sqrt(
             (1e-16) * np.linalg.norm(A, 1) * np.linalg.norm(A, np.inf)
         )
-        coeff = np.linalg.solve(
+        self._coef = np.linalg.solve(
             (A + eta * np.eye(m + pdim)),
             np.concatenate((gx, np.zeros(pdim))),
         )
-        self._alpha[0:m] = coeff[0:m]
-        self._beta = coeff[m:]
-
-    def set_coefficients(self, fx: np.ndarray, maxeval: int = 0) -> None:
-        dim = self.dim()
-        m = fx.size
-        assert m == self.m
-
-        # Reserve space
-        M = max(maxeval, m)
-        self.x = np.concatenate((self.x[0:m, :], np.zeros((M - m, dim))))
-        self._alpha = np.zeros(M)
-        self._PHI = np.zeros((M, M))
-        self._P = np.zeros((M, self.pdim()))
-
-        # Set matrices _PHI and _P for the first time
-        self._PHI[0:m, 0:m] = self.phi(
-            cdist(self.x[0 : self.m, :], self.x[0 : self.m, :])
-        )
-
-        self._P[0:m, :] = self.pbasis(self.x[0:m, :])
-
-        self.update_coefficients(fx)
 
     def update(
-        self, xNew: np.ndarray, distNew: np.ndarray, fx: np.ndarray
+        self,
+        xNew: np.ndarray,
+        fxNew: np.ndarray = np.array([]),
+        distNew: np.ndarray = np.array([]),
     ) -> None:
-        m = fx.size
-        dim = self.dim()
-        assert (m - self.m) * dim == xNew.size
+        """Updates the RBF model with new points.
+
+        Parameters
+        ----------
+        xNew : np.ndarray
+            m-by-d matrix with m point coordinates in a d-dimensional space.
+        fxNew : np.ndarray, optional
+            Function values of the points in xNew.
+        distNew : np.ndarray, optional
+            (self.nsamples() + m)-by-m matrix with distances between points in
+            xNew and points in (self.samples(), xNew). If not provided, the
+            distances are computed.
+        """
+        oldm = self._m
+        newm = xNew.shape[0]
+        dim = xNew.shape[1]
+        m = oldm + newm
+
+        if oldm > 0:
+            assert dim == self.dim()
+
+        # Compute distances between new points and sampled points
+        if distNew.size == 0:
+            if oldm == 0:
+                distNew = cdist(xNew, xNew)
+            else:
+                distNew = cdist(
+                    xNew, np.concatenate((self._x[0:oldm, :], xNew), axis=0)
+                )
+
+        self.reserve(m, dim)
 
         # Update matrices _PHI and _P
-        self._PHI[self.m : m, 0:m] = self.phi(distNew)
-        self._PHI[0 : self.m, self.m : m] = self._PHI[self.m : m, 0 : self.m].T
-        self._P[self.m : m, 0] = 1
-        self._P[self.m : m, 1 : dim + 1] = xNew
+        self._PHI[oldm:m, 0:m] = self.phi(distNew)
+        self._PHI[0:oldm, oldm:m] = self._PHI[oldm:m, 0:oldm].T
+        self._P[oldm:m, :] = self.pbasis(xNew)
 
-        # Update x and m
-        self.x[self.m : m, :] = xNew
-        self.m = m
+        # Update x
+        self._x[oldm:m, :] = xNew
 
-        # Update coeficients
-        self.update_coefficients(fx)
+        # Update m
+        self._m = m
+
+        # Update fx and coeficients
+        if fxNew.size > 0:
+            self._fx[oldm:m] = fxNew
+            self.update_coefficients()
+
+    def create_initial_design(self, dim: int, bounds: tuple) -> None:
+        """Creates an initial set of samples for the RBF model.
+
+        The points are generated using a symmetric Latin hypercube design.
+
+        Parameters
+        ----------
+        dim : int
+            Dimension of the domain space.
+        bounds : tuple
+            Tuple of lower and upper bounds for each dimension of the domain
+            space.
+        """
+        m = 2 * (dim + 1)  # number of points in initial experimental design
+        self.reserve(m, dim)
+
+        self._m = m
+        self._x[0:m, :] = SLHDstandard(dim, m, bounds=bounds)
+        if self.type == RbfType.CUBIC or self.type == RbfType.THINPLATE:
+            # for cubic and thin-plate spline RBF: rank_P must be Data.dim+1
+            P = np.concatenate((np.ones((m, 1)), self._x[0:m, :]), axis=1)
+            while np.linalg.matrix_rank(P) != dim + 1:
+                self._x[0:m, :] = SLHDstandard(dim, m, bounds=bounds)
+                P = np.concatenate((np.ones((m, 1)), self._x[0:m, :]), axis=1)
+
+        # Compute distances between new points and sampled points
+        distNew = cdist(self._x[0:m, :], self._x[0:m, :])
+
+        # Update matrices _PHI and _P
+        self._PHI[0:m, 0:m] = self.phi(distNew)
+        self._PHI[0:0, 0:m] = self._PHI[0:m, 0:0].T
+        self._P[0:m, :] = self.pbasis(self._x[0:m, :])
+
+    def nsamples(self) -> int:
+        """Get the number of sampled points.
+
+        Returns
+        -------
+        out: int
+            Number of sampled points.
+        """
+        return self._m
+
+    def reset(self) -> None:
+        """Resets the RBF model."""
+        self._m = 0
+        self._x = np.array([])
+        self._fx = np.array([])
+        self._coef = np.array([])
+        self._PHI = np.array([])
+        self._P = np.array([])
+
+    def samples(self) -> np.ndarray:
+        """Get the sampled points.
+
+        Returns
+        -------
+        out: np.ndarray
+            m-by-d matrix with m point coordinates in a d-dimensional space.
+        """
+        return self._x[0 : self._m, :]
+
+    def sample(self, i: int) -> np.ndarray:
+        """Get the i-th sampled point.
+
+        Parameters
+        ----------
+        i : int
+            Index of the sampled point.
+
+        Returns
+        -------
+        out: np.ndarray
+            i-th sampled point.
+        """
+        return self._x[i, :]

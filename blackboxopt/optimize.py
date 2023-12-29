@@ -1,4 +1,4 @@
-"""TODO: <one line to give the program's name and a brief idea of what it does.>
+"""Optimization algorithms for blackboxopt.
 """
 
 # Copyright (C) 2023 National Renewable Energy Laboratory
@@ -39,7 +39,6 @@ import time
 from dataclasses import dataclass
 
 from .rbf import RbfModel
-from .utility import SLHDstandard
 
 
 @dataclass
@@ -64,26 +63,16 @@ class OptimizeResult:
         All objective function evaluation times.
     """
 
-    def __init__(
-        self,
-        x: np.ndarray,
-        fx: float,
-        nit: int,
-        nfev: int,
-        samples: np.ndarray,
-        fsamples: np.ndarray,
-        fevaltime: np.ndarray,
-    ):
-        self.x = x
-        self.fx = fx
-        self.nit = nit
-        self.nfev = nfev
-        self.samples = samples
-        self.fsamples = fsamples
-        self.fevaltime = fevaltime
+    x: np.ndarray
+    fx: float
+    nit: int
+    nfev: int
+    samples: np.ndarray
+    fsamples: np.ndarray
+    fevaltime: np.ndarray
 
 
-def Minimize_Merit_Function(
+def find_best(
     x: np.ndarray,
     fx: np.ndarray,
     dist: np.ndarray,
@@ -182,7 +171,7 @@ def Minimize_Merit_Function(
             # compute distance of all candidate points to the previously selected
             # candidate point
             newDist = scp.distance.cdist(
-                x[selindex[ii - 1], :].reshape(1, x.shape[1]), x, "euclidean"
+                x[selindex[ii - 1], :].reshape(1, -1), x
             )[0]
             dist = np.minimum(dist, newDist)
 
@@ -210,7 +199,9 @@ def __eval_fun_and_timeit(args):
     Returns
     -------
     tuple
-        Tuple with the function output and the time it took to evaluate the function."""
+        Tuple with the function output and the time it took to evaluate the
+        function.
+    """
     fun, x = args
     t0 = time.time()
     res = fun(x)
@@ -229,7 +220,7 @@ def minimize(
 ) -> OptimizeResult:
     """Minimize a scalar function of one or more variables using a surrogate model.
 
-    On exit, the surrogate model is updated with the new samples.
+    On exit, the surrogate model is updated with the samples from the last iteration.
 
     Parameters
     ----------
@@ -261,24 +252,13 @@ def minimize(
 
     assert dim > 0
 
-    def create_initial_design(surrogateModel):
-        m = 2 * (dim + 1)  # number of points in initial experimental design
-        surrogateModel.m = m
-        surrogateModel.x = SLHDstandard(dim, m, bounds=bounds)
-        if isinstance(surrogateModel, RbfModel):
-            # for cubic and thin-plate spline RBF: rank_P must be Data.dim+1
-            P = np.concatenate((np.ones((m, 1)), surrogateModel.x), axis=1)
-            while np.linalg.matrix_rank(P) != dim + 1:
-                surrogateModel.x = SLHDstandard(dim, m, bounds=bounds)
-                P = np.concatenate((np.ones((m, 1)), surrogateModel.x), axis=1)
-
-    m = min(surrogateModel.m, maxeval)  # Number of initial samples
-
     if nCandidatesPerIteration == -1:
         nCandidatesPerIteration = 500 * dim
 
     if maxit == -1:
         maxit = maxeval
+
+    surrogateModel.reserve(maxeval, dim)
 
     # output variables
     samples = np.zeros((maxeval, dim))  # Matrix with all sampled points
@@ -302,9 +282,11 @@ def minimize(
             maxlocaleval
         )  # Vector with function values on sampled points in the current trial
 
+        # Number of initial samples
+        m = min(surrogateModel.nsamples(), maxeval)
         if m == 0:
-            create_initial_design(surrogateModel)
-            m = surrogateModel.m
+            surrogateModel.create_initial_design(dim, bounds)
+            m = surrogateModel.nsamples()
 
         # Compute f(x0)
         # pool = Pool(min(os.cpu_count(), m))
@@ -318,12 +300,12 @@ def minimize(
         # fevaltime[0:m] = [result[i][1] for i in range(m)]
         for i in range(m):
             y[i], fevaltime[numevals + i] = __eval_fun_and_timeit(
-                (fun, surrogateModel.x[i, :])
+                (fun, surrogateModel.sample(i))
             )
         iBest = np.argmin(y[0:m])
 
         # Set coefficients of the surrogate model
-        surrogateModel.set_coefficients(y[0:m], maxeval=maxlocaleval)
+        surrogateModel.update_coefficients(y[0:m])
 
         # algorithm parameters
         minxrange = np.min(xup - xlow)
@@ -355,13 +337,14 @@ def minimize(
 
             # Introduce candidate points using stochastic perturbation
             CandPoint = np.tile(
-                surrogateModel.x[iBest, :], (nCandidatesPerIteration, 1)
+                surrogateModel.sample(iBest),
+                (nCandidatesPerIteration, 1),
             ) + sigma_stdev * np.random.randn(nCandidatesPerIteration, dim)
             CandPoint = np.maximum(xlow, np.minimum(CandPoint, xup))
 
             # select the next function evaluation points:
             CandValue, distMatrix = surrogateModel.eval(CandPoint)
-            selindex, distNewSamples = Minimize_Merit_Function(
+            selindex, distNewSamples = find_best(
                 CandPoint,
                 CandValue,
                 np.min(distMatrix, axis=1),
@@ -440,20 +423,30 @@ def minimize(
 
             # Update surrogate model if there is another local iteration
             if m < maxlocaleval and localminflag == 0:
-                surrogateModel.update(xselected, distselected, y[0:m])
-            else:
-                surrogateModel.x[m - selindex.size : m, :] = xselected
+                surrogateModel.update(
+                    xselected, y[m - selindex.size : m], distselected
+                )
 
-        samples[numevals : numevals + m, :] = surrogateModel.x[0:m, :]
+        samples[
+            numevals : numevals + surrogateModel.nsamples(), :
+        ] = surrogateModel.samples()
+        samples[
+            numevals + surrogateModel.nsamples() : numevals + m, :
+        ] = xselected
         fsamples[numevals : numevals + m] = y[0:m]
         numevals = numevals + m
 
         if y[iBest] < fxbest:
-            xbest = surrogateModel.x[iBest, :]
+            if iBest > (surrogateModel.nsamples() - 1):
+                xbest = xselected[iBest - surrogateModel.nsamples(), :]
+            else:
+                xbest = surrogateModel.samples()[iBest, :]
             fxbest = y[iBest]
 
         nGlobalIter = nGlobalIter + 1
-        m = 0
+
+        if numevals < maxeval and nGlobalIter < maxit:
+            surrogateModel.reset()
 
     return OptimizeResult(
         x=xbest,

@@ -30,9 +30,25 @@ import numpy as np
 from pylab import *
 import pickle as p
 
-from blackboxopt.utility import *
 from blackboxopt.rbf import RbfPolynomial, RbfType, RbfModel
 from blackboxopt.optimize import minimize
+
+
+class myException(Exception):
+    def __init__(self, msg):
+        Exception.__init__(self)
+        self.msg = msg
+
+
+class Solution:
+    def __init__(self):
+        self.BestValues = None
+        self.BestPoints = None
+        self.NumFuncEval = None
+        self.AvgFuncEvalTime = None
+        self.FuncVal = None
+        self.DMatrix = None
+        self.NumberOfRestarts = None
 
 
 def TestLocalStochRBFrestart(data, maxeval, Ntrials, NumberNewSamples):
@@ -164,7 +180,12 @@ def read_check_data_file(data_file):
             \n\tSee example files and tutorial for information how to define the function."""
         )
 
-    data.validate()
+    if data.is_valid() is False:
+        raise myException(
+            """The data file is not valid. Please, look at the documentation of\
+            \n\tthe class Data for more information."""
+        )
+
     return data
 
 

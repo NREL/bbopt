@@ -1,4 +1,4 @@
-"""TODO: <one line to give the program's name and a brief idea of what it does.>
+"""Utility functions for blackboxopt.
 """
 
 # Copyright (C) 2023 National Renewable Energy Laboratory
@@ -91,49 +91,3 @@ def SLHDstandard(d: int, m: int, bounds: tuple = ()) -> np.ndarray:
             )
 
     return InitialPoints
-
-
-class myException(Exception):
-    def __init__(self, msg):
-        Exception.__init__(self)
-        self.msg = msg
-
-
-class Data:
-    def __init__(self):
-        ## User defined parameters
-        self.xlow = np.array([])
-        self.xup = np.array([])
-        self.objfunction = None
-        self.dim = -1
-
-    def validate(self):
-        if self.dim == -1:
-            raise myException("You must provide the problem dimension.\n")
-        if not isinstance(self.dim, int) or self.dim <= 0:
-            raise myException("Dimension must be positive integer.")
-        if (
-            not isinstance(self.xlow, np.ndarray)
-            or not isinstance(self.xup, np.ndarray)
-            or self.xlow.size != self.dim
-            or self.xup.size != self.dim
-        ):
-            raise myException(
-                "Vector length of lower and upper bounds must equal problem dimension\n"
-            )
-        comp_list = np.less_equal(self.xlow, self.xup).tolist()
-        if any(i is False for i in comp_list):
-            raise myException(
-                "Lower bounds have to be lower than upper bounds.\n"
-            )
-
-
-class Solution:
-    def __init__(self):
-        self.BestValues = None
-        self.BestPoints = None
-        self.NumFuncEval = None
-        self.AvgFuncEvalTime = None
-        self.FuncVal = None
-        self.DMatrix = None
-        self.NumberOfRestarts = None
