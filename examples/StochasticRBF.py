@@ -30,8 +30,45 @@ from pylab import *
 import pickle as p
 
 from blackboxopt.utility import *
-from blackboxopt.TestLocalStochRBFrestart import TestLocalStochRBFrestart
-from blackboxopt.rbf import RbfPolynomial, RbfType
+from blackboxopt.rbf import RbfPolynomial, RbfType, RbfModel
+from blackboxopt.optimize import minimize
+
+
+def TestLocalStochRBFrestart(data, maxeval, Ntrials, NumberNewSamples):
+    solution = Solution()
+    solution.BestPoints = np.zeros((Ntrials, data.dim))
+    solution.BestValues = np.zeros((Ntrials, 1))
+    solution.NumFuncEval = np.zeros((Ntrials, 1))
+    solution.AvgFuncEvalTime = np.zeros((Ntrials, 1))
+    solution.FuncVal = np.zeros((maxeval, Ntrials))
+    solution.DMatrix = np.zeros((maxeval, data.dim, Ntrials))
+    solution.NumberOfRestarts = np.zeros((Ntrials, 1))
+
+    for j in range(Ntrials):
+        # np.random.seed(j + 1)
+
+        # Call the surrogate optimization function
+        rbfModel = RbfModel()
+        rbfModel.type = data.phifunction
+        rbfModel.polynomial = data.polynomial
+        optres = minimize(
+            data.objfunction,
+            bounds=tuple((data.xlow[i], data.xup[i]) for i in range(data.dim)),
+            maxeval=maxeval,
+            surrogateModel=rbfModel,
+            nCandidatesPerIteration=data.Ncand,
+            newSamplesPerIteration=NumberNewSamples,
+        )
+
+        # Gather results in "solution" struct-variable
+        solution.BestValues[j] = optres.fx
+        solution.BestPoints[j, :] = optres.x
+        solution.NumFuncEval[j] = optres.nfev
+        solution.AvgFuncEvalTime[j] = np.mean(optres.fevaltime)
+        solution.FuncVal[:, j] = np.copy(optres.fsamples)
+        solution.DMatrix[:, :, j] = np.copy(optres.samples)
+        solution.NumberOfRestarts[j] = optres.nit
+    return solution
 
 
 def StochasticRBF(

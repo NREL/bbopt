@@ -29,15 +29,19 @@ __credits__ = [
 __version__ = "0.1.0"
 __deprecated__ = False
 
+from matplotlib.pylab import f
 import numpy as np
 import scipy.spatial as scp
 import time
 from multiprocessing import Pool
 import os
+from dataclasses import dataclass
 
 from .rbf import RbfModel
+from .utility import SLHDstandard
 
 
+@dataclass
 class OptimizeResult:
     """Represents the optimization result.
 
@@ -48,7 +52,7 @@ class OptimizeResult:
     fx : float
         The value of the objective function at the solution.
     nit : int
-        Number of iterations performed by the optimizer.
+        Number of iterations performed.
     nfev : int
         Number of function evaluations done.
     samples : numpy.ndarray
@@ -216,11 +220,14 @@ def minimize(
     fun,
     bounds: tuple,
     maxeval: int,
+    maxit: int = -1,
     surrogateModel=RbfModel(),
     nCandidatesPerIteration: int = -1,
     newSamplesPerIteration: int = 1,
 ) -> OptimizeResult:
     """Minimize a scalar function of one or more variables using a surrogate model.
+
+    On exit, the surrogate model is updated with the new samples.
 
     Parameters
     ----------
@@ -231,6 +238,8 @@ def minimize(
         corresponding to the lower and upper bound for the variable.
     maxeval : int
         Maximum number of function evaluations.
+    maxit : int, optional
+        Maximum number of algorithm iterations. The default is -1, which means that the algorithm will not use this parameter.
     surrogateModel : RbfModel, optional
         Surrogate model to be used. The default is RbfModel().
     nCandidatesPerIteration : int, optional
@@ -244,161 +253,206 @@ def minimize(
     OptimizeResult
         The optimization result.
     """
-    # Dimension of the problem
-    dim = len(bounds)
-
-    # Determine m, the number of samples on input
-    if surrogateModel.x.size > 0:
-        assert surrogateModel.x.size >= dim
-        if surrogateModel.x.size > dim:
-            assert surrogateModel.x.shape[1] == dim
-            m = surrogateModel.x.shape[0]
-        else:
-            m = 1
-    else:
-        m = 0
-    m = min(m, maxeval)
-
-    # Output
-    iBest = 0
-    y = np.zeros(maxeval)
-    fevaltime = np.zeros(maxeval)
-
-    # Compute f(x0)
-    for i in range(m):
-        y[i], fevaltime[i] = __eval_fun_and_timeit((fun, surrogateModel.x[i, :]))
-        if i > 0:
-            if y[i] < y[iBest]:
-                iBest = i
-
-    # Set coefficients of the surrogate model
-    surrogateModel.set_coefficients(y[0:m], maxeval=maxeval)
-
-    # algorithm parameters
+    dim = len(bounds)  # Dimension of the problem
     xlow = np.array([bounds[i][0] for i in range(dim)])
     xup = np.array([bounds[i][1] for i in range(dim)])
-    minxrange = np.min(xup - xlow)
-    tol = 0.001 * minxrange * np.sqrt(float(dim))
-    sigma_stdev_default = 0.2 * minxrange
-    sigma_stdev = sigma_stdev_default  # current mutation rate
-    maxshrinkparam = 5  # maximal number of shrikage of standard deviation for normal distribution when generating the candidate points
-    failtolerance = max(5, dim)
-    succtolerance = 3
 
-    # initializations
-    iterctr = 0  # number of iterations
-    shrinkctr = 0  # number of times sigma_stdev was shrunk
-    failctr = 0  # number of consecutive unsuccessful iterations
-    localminflag = 0  # indicates whether or not xbest is at a local minimum
-    succctr = 0  # number of consecutive successful iterations
+    assert dim > 0
 
-    # do until max number of f-evals reached or local min found
-    while m < maxeval and localminflag == 0:
-        iterctr = iterctr + 1  # increment iteration counter
-        print("\n Iteration: %d \n" % iterctr)
-        print("\n fEvals: %d \n" % m)
-        print("\n Best value in this restart: %d \n" % y[iBest])
+    def create_initial_design(surrogateModel):
+        m = 2 * (dim + 1)  # number of points in initial experimental design
+        surrogateModel.m = m
+        surrogateModel.x = SLHDstandard(dim, m, bounds=bounds)
+        if isinstance(surrogateModel, RbfModel):
+            # for cubic and thin-plate spline RBF: rank_P must be Data.dim+1
+            P = np.concatenate((np.ones((m, 1)), surrogateModel.x), axis=1)
+            while np.linalg.matrix_rank(P) != dim + 1:
+                surrogateModel.x = SLHDstandard(dim, m, bounds=bounds)
+                P = np.concatenate((np.ones((m, 1)), surrogateModel.x), axis=1)
 
-        # number of new samples in an iteration
-        NumberNewSamples = min(newSamplesPerIteration, maxeval - m)
+    m = min(surrogateModel.m, maxeval)  # Number of initial samples
 
-        # Introduce candidate points
-        CandPoint = np.tile(
-            surrogateModel.x[iBest, :], (nCandidatesPerIteration, 1)
-        ) + sigma_stdev * np.random.randn(nCandidatesPerIteration, dim)
-        CandPoint = np.maximum(xlow, np.minimum(CandPoint, xup))
+    if nCandidatesPerIteration == -1:
+        nCandidatesPerIteration = 500 * dim
 
-        # select the next function evaluation points:
-        CandValue, distMatrix = surrogateModel.eval(CandPoint)
-        selindex, distNewSamples = Minimize_Merit_Function(
-            CandPoint,
-            CandValue,
-            np.min(distMatrix, axis=0),
-            NumberNewSamples,
-            tol,
-        )
-        xselected = np.reshape(CandPoint[selindex, :], (selindex.size, -1))
-        distselected = np.concatenate(
-            (
-                np.reshape(distMatrix[:, selindex], (-1, selindex.size)),
-                distNewSamples,
-            ),
-            axis=0,
-        )
+    if maxit == -1:
+        maxit = maxeval
 
-        # Compute f(xselected)
-        if selindex.size > 1:
-            pool = Pool(min(os.cpu_count(), selindex.size))
-            pool_res = pool.map_async(
-                __eval_fun_and_timeit, ((fun, xi) for xi in xselected.tolist())
+    # output variables
+    samples = np.zeros((maxeval, dim))  # Matrix with all sampled points
+    fsamples = np.zeros(maxeval)  # Vector with function values on sampled points
+    fevaltime = np.zeros(maxeval)  # Vector with function evaluation times
+    xbest = np.zeros(dim)  # Best point found so far
+    fxbest = np.inf  # Best function value found so far
+
+    numevals = 0  # Number of function evaluations done so far
+    nGlobalIter = 0  # Number of algorithm global iterations
+    while (
+        numevals < maxeval and nGlobalIter < maxit
+    ):  # do until max. number of allowed f-evals reached
+        iBest = 0  # Index of the best point found so far in the current trial
+        maxlocaleval = maxeval - numevals  # Number of remaining function evaluations
+        y = np.zeros(
+            maxlocaleval
+        )  # Vector with function values on sampled points in the current trial
+
+        if m == 0:
+            create_initial_design(surrogateModel)
+            m = surrogateModel.m
+
+        # Compute f(x0)
+        # pool = Pool(min(os.cpu_count(), m))
+        # pool_res = pool.map_async(
+        #     __eval_fun_and_timeit, ((fun, xi) for xi in list(surrogateModel.x))
+        # )
+        # pool.close()
+        # pool.join()
+        # result = pool_res.get()
+        # y[0:m] = [result[i][0] for i in range(m)]
+        # fevaltime[0:m] = [result[i][1] for i in range(m)]
+        for i in range(m):
+            y[i], fevaltime[numevals + i] = __eval_fun_and_timeit(
+                (fun, surrogateModel.x[i, :])
             )
-            pool.close()
-            pool.join()
-            result = pool_res.get()
-            y[m : m + selindex.size] = [result[i][0] for i in range(selindex.size)]
-            fevaltime[m : m + selindex.size] = [
-                result[i][1] for i in range(selindex.size)
-            ]
-        else:
-            y[m], fevaltime[m] = __eval_fun_and_timeit((fun, xselected))
+        iBest = np.argmin(y[0:m])
 
-        # determine best one of newly sampled points
-        iSelectedBest = m + np.argmin(y[m : m + selindex.size])
-        if y[iSelectedBest] < y[iBest]:
-            if (y[iBest] - y[iSelectedBest]) > (1e-3) * abs(y[iBest]):
-                # "significant" improvement
-                failctr = 0
-                succctr = succctr + 1
+        # Set coefficients of the surrogate model
+        surrogateModel.set_coefficients(y[0:m], maxeval=maxlocaleval)
+
+        # algorithm parameters
+        minxrange = np.min(xup - xlow)
+        tol = 0.001 * minxrange * np.sqrt(float(dim))
+        sigma_stdev_default = 0.2 * minxrange
+        sigma_stdev = sigma_stdev_default  # current mutation rate
+        maxshrinkparam = 5  # maximal number of shrikage of standard deviation for normal distribution when generating the candidate points
+        failtolerance = max(5, dim)
+        succtolerance = 3
+
+        # initializations
+        iterctr = 0  # number of iterations
+        shrinkctr = 0  # number of times sigma_stdev was shrunk
+        failctr = 0  # number of consecutive unsuccessful iterations
+        localminflag = 0  # indicates whether or not xbest is at a local minimum
+        succctr = 0  # number of consecutive successful iterations
+
+        # do until max number of f-evals reached or local min found
+        while m < maxlocaleval and localminflag == 0:
+            iterctr = iterctr + 1  # increment iteration counter
+            print("\n Iteration: %d \n" % iterctr)
+            print("\n fEvals: %d \n" % m)
+            print("\n Best value in this restart: %d \n" % y[iBest])
+
+            # number of new samples in an iteration
+            NumberNewSamples = min(newSamplesPerIteration, maxlocaleval - m)
+
+            # Introduce candidate points using stochastic perturbation
+            CandPoint = np.tile(
+                surrogateModel.x[iBest, :], (nCandidatesPerIteration, 1)
+            ) + sigma_stdev * np.random.randn(nCandidatesPerIteration, dim)
+            CandPoint = np.maximum(xlow, np.minimum(CandPoint, xup))
+
+            # select the next function evaluation points:
+            CandValue, distMatrix = surrogateModel.eval(CandPoint)
+            selindex, distNewSamples = Minimize_Merit_Function(
+                CandPoint,
+                CandValue,
+                np.min(distMatrix, axis=0),
+                NumberNewSamples,
+                tol,
+            )
+            xselected = np.reshape(CandPoint[selindex, :], (selindex.size, -1))
+            distselected = np.concatenate(
+                (
+                    np.reshape(distMatrix[:, selindex], (-1, selindex.size)),
+                    distNewSamples,
+                ),
+                axis=0,
+            )
+
+            # Compute f(xselected)
+            # if selindex.size > 1:
+            #     pool = Pool(min(os.cpu_count(), selindex.size))
+            #     pool_res = pool.map_async(
+            #         __eval_fun_and_timeit, ((fun, xi) for xi in list(xselected))
+            #     )
+            #     pool.close()
+            #     pool.join()
+            #     result = pool_res.get()
+            #     y[m : m + selindex.size] = [result[i][0] for i in range(selindex.size)]
+            #     fevaltime[m : m + selindex.size] = [
+            #         result[i][1] for i in range(selindex.size)
+            #     ]
+            # else:
+            for i in range(selindex.size):
+                y[m + i], fevaltime[numevals + m + i] = __eval_fun_and_timeit(
+                    (fun, xselected[i, :])
+                )
+
+            # determine best one of newly sampled points
+            iSelectedBest = m + np.argmin(y[m : m + selindex.size])
+            if y[iSelectedBest] < y[iBest]:
+                if (y[iBest] - y[iSelectedBest]) > (1e-3) * abs(y[iBest]):
+                    # "significant" improvement
+                    failctr = 0
+                    succctr = succctr + 1
+                else:
+                    failctr = failctr + 1
+                    succctr = 0
+                iBest = iSelectedBest
             else:
                 failctr = failctr + 1
                 succctr = 0
-            iBest = iSelectedBest
-        else:
-            failctr = failctr + 1
-            succctr = 0
 
-        # check if algorithm is in a local minimum
-        shrinkflag = 1
-        if failctr >= failtolerance:
-            if shrinkctr >= maxshrinkparam:
-                shrinkflag = 0
-                print(
-                    "Stopped reducing sigma because the maximum reduction has been reached."
-                )
-            failctr = 0
+            # check if algorithm is in a local minimum
+            shrinkflag = 1
+            if failctr >= failtolerance:
+                if shrinkctr >= maxshrinkparam:
+                    shrinkflag = 0
+                    print(
+                        "Stopped reducing sigma because the maximum reduction has been reached."
+                    )
+                failctr = 0
 
-            if shrinkflag == 1:
-                shrinkctr = shrinkctr + 1
-                sigma_stdev = sigma_stdev / 2
-                print("Reducing sigma by a half!")
+                if shrinkflag == 1:
+                    shrinkctr = shrinkctr + 1
+                    sigma_stdev = sigma_stdev / 2
+                    print("Reducing sigma by a half!")
+                else:
+                    localminflag = 1
+                    print(
+                        "Algorithm is probably in a local minimum! Restart the algorithm from scratch."
+                    )
+
+            if succctr >= succtolerance:
+                sigma_stdev = min(2 * sigma_stdev, sigma_stdev_default)
+                succctr = 0
+
+            # Update m
+            m = m + selindex.size
+
+            # Update surrogate model if there is another local iteration
+            if m < maxlocaleval and localminflag == 0:
+                surrogateModel.update(xselected, distselected, y[0:m])
             else:
-                localminflag = 1
-                print(
-                    "Algorithm is probably in a local minimum! Restarting the algorithm from scratch."
-                )
+                surrogateModel.x[m - selindex.size : m, :] = xselected
 
-        if succctr >= succtolerance:
-            sigma_stdev = min(2 * sigma_stdev, sigma_stdev_default)
-            succctr = 0
+        samples[numevals : numevals + m, :] = surrogateModel.x[0:m, :]
+        fsamples[numevals : numevals + m] = y[0:m]
+        numevals = numevals + m
 
-        # Update m
-        m = m + selindex.size
+        if y[iBest] < fxbest:
+            xbest = surrogateModel.x[iBest, :]
+            fxbest = y[iBest]
 
-        # Update surrogate model if there is another iteration
-        if m < maxeval and localminflag == 0:
-            surrogateModel.update(xselected, distselected, y[0:m])
-
-    # Collect samples from the last iteration
-    all_samples = np.concatenate(
-        (surrogateModel.x[0 : m - selindex.size], xselected), axis=0
-    )
+        nGlobalIter = nGlobalIter + 1
+        m = 0
 
     return OptimizeResult(
-        x=all_samples[iBest, :],
-        fx=y[iBest],
-        nit=iterctr,
-        nfev=m,
-        samples=all_samples,
-        fsamples=y[0:m],
-        fevaltime=fevaltime[0:m],
+        x=xbest,
+        fx=fxbest,
+        nit=nGlobalIter,
+        nfev=numevals,
+        samples=samples[0:numevals, :],
+        fsamples=fsamples[0:numevals],
+        fevaltime=fevaltime[0:numevals],
     )

@@ -98,6 +98,7 @@ if __name__ == "__main__":
                 (data.xlow[2], data.xup[2]),
             ),
             maxeval=maxeval - numevals,
+            maxit=1,
             surrogateModel=rbfModel,
             nCandidatesPerIteration=data.Ncand,
             newSamplesPerIteration=NumberNewSamples,
