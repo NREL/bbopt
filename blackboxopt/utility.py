@@ -48,7 +48,7 @@ def SLHDstandard(d: int, m: int, bounds: tuple = ()) -> np.ndarray:
     Returns
     -------
     out: numpy.ndarray
-        Symmetric Latin Hypercube Design.
+        Symmetric Latin Hypercube Design. Shape (m, d).
     """
     delta = 1.0 / m
     X = np.zeros((m, d))

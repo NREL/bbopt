@@ -1,4 +1,4 @@
-"""TODO: <one line to give the program's name and a brief idea of what it does.>
+"""Test the RBF model.
 """
 
 # Copyright (C) 2024 National Renewable Energy Laboratory
@@ -26,7 +26,7 @@ __deprecated__ = False
 
 import numpy as np
 import sys
-from blackboxopt.rbf import *
+from blackboxopt.rbf import RbfModel, RbfType
 
 
 class TestRbfModel:
@@ -57,12 +57,3 @@ class TestRbfModel:
         assert self.rbf_model.phi(4.0) == (
             4 * 4 * np.log(4 + sys.float_info.min)
         )
-
-        # self.rbf_model.type = RbfType(-1)
-        # r_invalid_type = np.array([1.0, 2.0, 3.0])
-        # try:
-        #     self.rbf_model.phi(r_invalid_type)
-        # except ValueError as e:
-        #     assert str(e) == "Unknown RbfType"
-        # else:
-        #     assert False, "Expected ValueError not raised"

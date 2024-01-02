@@ -308,7 +308,9 @@ class RbfModel:
         )
 
         eta = np.sqrt(
-            (1e-16) * np.linalg.norm(A, 1) * np.linalg.norm(A, np.inf)
+            (1e-16)
+            * np.linalg.norm(A, 1).item()
+            * np.linalg.norm(A, np.inf).item()
         )
         self._coef = np.linalg.solve(
             (A + eta * np.eye(m + pdim)),

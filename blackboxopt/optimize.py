@@ -302,7 +302,8 @@ def minimize(
             y[i], fevaltime[numevals + i] = __eval_fun_and_timeit(
                 (fun, surrogateModel.sample(i))
             )
-        iBest = np.argmin(y[0:m])
+        iBest = np.argmin(y[0:m]).item()
+        xselected = np.array([])
 
         # Set coefficients of the surrogate model
         surrogateModel.update_coefficients(y[0:m])
@@ -380,7 +381,7 @@ def minimize(
                 )
 
             # determine best one of newly sampled points
-            iSelectedBest = m + np.argmin(y[m : m + selindex.size])
+            iSelectedBest = m + np.argmin(y[m : m + selindex.size]).item()
             if y[iSelectedBest] < y[iBest]:
                 if (y[iBest] - y[iSelectedBest]) > (1e-3) * abs(y[iBest]):
                     # "significant" improvement
