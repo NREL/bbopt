@@ -1,7 +1,7 @@
 """TODO: <one line to give the program's name and a brief idea of what it does.>
 """
 
-# Copyright (C) 2023 National Renewable Energy Laboratory
+# Copyright (C) 2024 National Renewable Energy Laboratory
 # Copyright (C) 2013 Cornell University
 
 # This program is free software: you can redistribute it and/or modify
