@@ -1,4 +1,4 @@
-"""TODO: <one line to give the program's name and a brief idea of what it does.>
+"""Simple example for the usage of the minimize function with no restarts.
 """
 
 # Copyright (C) 2024 National Renewable Energy Laboratory
@@ -17,18 +17,24 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+__authors__ = ["Juliane Mueller", "Christine A. Shoemaker", "Haoyu Jia"]
+__contact__ = "juliane.mueller@nrel.gov"
+__maintainer__ = "Weslley S. Pereira"
+__email__ = "weslley.dasilvapereira@nrel.gov"
+__credits__ = [
+    "Juliane Mueller",
+    "Christine A. Shoemaker",
+    "Haoyu Jia",
+    "Weslley S. Pereira",
+]
+__version__ = "0.1.0"
+__deprecated__ = False
 
-# ----------------*****  Contact Information *****--------------------------
-#   Primary Contact (Implementation Questions, Bug Reports, etc.):
-#   Juliane Mueller: juliane.mueller2901@gmail.com
-#
-#   Secondary Contact:
-#       Christine A. Shoemaker: cas12@cornell.edu
-#       Haoyu Jia: leonjiahaoyu@gmail.com
-from StochasticRBF import *
+from StochasticRBF import read_check_data_file, MyException
 from blackboxopt.rbf import RbfPolynomial, RbfType, RbfModel
 from blackboxopt.optimize import minimize
 from blackboxopt.utility import SLHDstandard
+import numpy as np
 
 if __name__ == "__main__":
     np.random.seed(3)
@@ -42,9 +48,9 @@ if __name__ == "__main__":
         PlotResult = 1
         NumberNewSamples = 2
         data = read_check_data_file(data_file)
-        data.Ncand = 500 * data.dim
-        data.phifunction = RbfType.CUBIC
-        data.polynomial = RbfPolynomial.LINEAR
+        nCand = 500 * data.dim
+        phifunction = RbfType.CUBIC
+        polynomial = RbfPolynomial.LINEAR
         m = 2 * (data.dim + 1)
         numstart = 0  # collect all objective function values of the current trial here
         Y_all = []  # collect all sample points of the current trial here
@@ -57,10 +63,10 @@ if __name__ == "__main__":
 
         rank_P = 0
         while rank_P != data.dim + 1:
-            data.S = SLHDstandard(data.dim, m)
-            P = np.concatenate((np.ones((m, 1)), data.S), axis=1)
+            samples = SLHDstandard(data.dim, m)
+            P = np.concatenate((np.ones((m, 1)), samples), axis=1)
             rank_P = np.linalg.matrix_rank(P)
-        data.S = np.array(
+        samples = np.array(
             [
                 [0.0625, 0.3125, 0.0625],
                 [0.1875, 0.5625, 0.8125],
@@ -72,21 +78,20 @@ if __name__ == "__main__":
                 [0.9375, 0.6875, 0.9375],
             ]
         )
+        samples = np.add(np.multiply(data.xup - data.xlow, samples), data.xlow)
 
         print(data.xlow)
         print(data.xup)
         print(data.objfunction)
         print(data.dim)
-        print(data.Ncand)
-        # print(data.phifunction)
-        # print(data.polynomial)
-        print(data.S)
+        print(nCand)
+        print(phifunction)
+        print(polynomial)
+        print(samples)
         print("LocalStochRBFstop Start")
 
-        data.S = np.add(np.multiply(data.xup - data.xlow, data.S), data.xlow)
-
-        rbfModel = RbfModel(data.phifunction, data.polynomial)
-        rbfModel.update(data.S)
+        rbfModel = RbfModel(phifunction, polynomial)
+        rbfModel.update(samples)
 
         optres = minimize(
             data.objfunction,
@@ -98,7 +103,7 @@ if __name__ == "__main__":
             maxeval=maxeval - numevals,
             maxit=1,
             surrogateModel=rbfModel,
-            nCandidatesPerIteration=data.Ncand,
+            nCandidatesPerIteration=nCand,
             newSamplesPerIteration=NumberNewSamples,
         )
 
@@ -114,5 +119,5 @@ if __name__ == "__main__":
         print("ctail", rbfModel.pdim())
         print("NumberFevals", optres.nfev)
 
-    except myException as e:
+    except MyException as e:
         print(e.msg)

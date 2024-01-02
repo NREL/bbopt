@@ -1,4 +1,4 @@
-"""TODO: <one line to give the program's name and a brief idea of what it does.>
+"""Example for the stochastic RBF optimization with plot.
 """
 
 # Copyright (C) 2024 National Renewable Energy Laboratory
@@ -17,63 +17,114 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+__authors__ = ["Juliane Mueller", "Christine A. Shoemaker", "Haoyu Jia"]
+__contact__ = "juliane.mueller@nrel.gov"
+__maintainer__ = "Weslley S. Pereira"
+__email__ = "weslley.dasilvapereira@nrel.gov"
+__credits__ = [
+    "Juliane Mueller",
+    "Christine A. Shoemaker",
+    "Haoyu Jia",
+    "Weslley S. Pereira",
+]
+__version__ = "0.1.0"
+__deprecated__ = False
 
-# ----------------*****  Contact Information *****--------------------------
-#   Primary Contact (Implementation Questions, Bug Reports, etc.):
-#   Juliane Mueller: juliane.mueller2901@gmail.com
-#
-#   Secondary Contact:
-#       Christine A. Shoemaker: cas12@cornell.edu
-#       Haoyu Jia: leonjiahaoyu@gmail.com
+
+from dataclasses import dataclass
 import importlib
 import numpy as np
-from pylab import *
+import matplotlib.pyplot as plt
 import pickle as p
 
 from blackboxopt.rbf import RbfPolynomial, RbfType, RbfModel
 from blackboxopt.optimize import minimize
+from data import Data
 
 
-class myException(Exception):
+class MyException(Exception):
+    """Exception class for this example."""
+
     def __init__(self, msg):
         Exception.__init__(self)
         self.msg = msg
 
 
+@dataclass
 class Solution:
-    def __init__(self):
-        self.BestValues = None
-        self.BestPoints = None
-        self.NumFuncEval = None
-        self.AvgFuncEvalTime = None
-        self.FuncVal = None
-        self.DMatrix = None
-        self.NumberOfRestarts = None
+    """Solution class for the problem definition.
+
+    Attributes
+    ----------
+    BestValues : np.ndarray
+        Best values of the objective function.
+    BestPoints : np.ndarray
+        Best points of the objective function.
+    NumFuncEval : np.ndarray
+        Number of function evaluations.
+    AvgFuncEvalTime : np.ndarray
+        Average function evaluation time.
+    FuncVal : np.ndarray
+        Function values.
+    DMatrix : np.ndarray
+        Matrix of samples.
+    NumberOfRestarts : np.ndarray
+        Number of restarts.
+    """
+
+    BestValues: np.ndarray
+    BestPoints: np.ndarray
+    NumFuncEval: np.ndarray
+    AvgFuncEvalTime: np.ndarray
+    FuncVal: np.ndarray
+    DMatrix: np.ndarray
+    NumberOfRestarts: np.ndarray
 
 
-def TestLocalStochRBFrestart(data, maxeval, Ntrials, NumberNewSamples):
-    solution = Solution()
-    solution.BestPoints = np.zeros((Ntrials, data.dim))
-    solution.BestValues = np.zeros((Ntrials, 1))
-    solution.NumFuncEval = np.zeros((Ntrials, 1))
-    solution.AvgFuncEvalTime = np.zeros((Ntrials, 1))
-    solution.FuncVal = np.zeros((maxeval, Ntrials))
-    solution.DMatrix = np.zeros((maxeval, data.dim, Ntrials))
-    solution.NumberOfRestarts = np.zeros((Ntrials, 1))
+def perform_optimization(
+    data: Data, maxeval: int, Ntrials: int, NumberNewSamples: int
+):
+    """Call the surrogate optimization function `Ntrials` times.
+
+    Parameters
+    ----------
+    data : Data
+        Data object with the problem definition.
+    maxeval : int
+        Maximum number of allowed function evaluations per trial.
+    Ntrials : int
+        Number of trials.
+    NumberNewSamples : int
+        Number of new samples per step of the optimization algorithm.
+
+    Returns
+    -------
+    solution : Solution
+        Solution object with the results.
+    """
+    solution = Solution(
+        BestPoints=np.zeros((Ntrials, data.dim)),
+        BestValues=np.zeros((Ntrials, 1)),
+        NumFuncEval=np.zeros((Ntrials, 1)),
+        AvgFuncEvalTime=np.zeros((Ntrials, 1)),
+        FuncVal=np.zeros((maxeval, Ntrials)),
+        DMatrix=np.zeros((maxeval, data.dim, Ntrials)),
+        NumberOfRestarts=np.zeros((Ntrials, 1)),
+    )
 
     for j in range(Ntrials):
-        # np.random.seed(j + 1)
+        # Create empty RBF model
+        rbfModel = RbfModel(
+            rbf_type=RbfType.CUBIC, polynomial=RbfPolynomial.LINEAR
+        )
 
         # Call the surrogate optimization function
-        rbfModel = RbfModel()
-        rbfModel.type = data.phifunction
-        rbfModel.polynomial = data.polynomial
         optres = minimize(
             data.objfunction,
             bounds=tuple((data.xlow[i], data.xup[i]) for i in range(data.dim)),
             maxeval=maxeval,
             surrogateModel=rbfModel,
-            nCandidatesPerIteration=data.Ncand,
+            nCandidatesPerIteration=500 * data.dim,
             newSamplesPerIteration=NumberNewSamples,
         )
 
@@ -85,20 +136,45 @@ def TestLocalStochRBFrestart(data, maxeval, Ntrials, NumberNewSamples):
         solution.FuncVal[:, j] = np.copy(optres.fsamples)
         solution.DMatrix[:, :, j] = np.copy(optres.samples)
         solution.NumberOfRestarts[j] = optres.nit
+
     return solution
 
 
-def StochasticRBF(
-    data_file,
-    maxeval=None,
-    Ntrials=None,
-    PlotResult=None,
-    NumberNewSamples=None,
+def stochastic_rbf(
+    data_file: str,
+    maxeval: int = 0,
+    Ntrials: int = 0,
+    NumberNewSamples: int = 0,
+    PlotResult: bool = True,
 ):
+    """Perform the stochastic RBF optimization.
+
+    This function also saves the solution to a file named "Result.data".
+    If PlotResult is True, it also plots the results and saves the plot to
+    "RBFPlot.png".
+
+    Parameters
+    ----------
+    data_file : str
+        Path for the data file.
+    maxeval : int, optional
+        Maximum number of allowed function evaluations per trial.
+    Ntrials : int, optional
+        Number of trials.
+    NumberNewSamples : int, optional
+        Number of new samples per step of the optimization algorithm.
+    PlotResult : bool, optional
+        Plot the results.
+
+    Returns
+    -------
+    solution : Solution
+        Solution object with the results.
+    """
     ## Start input check
     data = read_check_data_file(data_file)
-    maxeval, Ntrials, PlotResult, NumberNewSamples = check_set_parameters(
-        data, maxeval, Ntrials, PlotResult, NumberNewSamples
+    maxeval, Ntrials, NumberNewSamples = check_set_parameters(
+        data, maxeval, Ntrials, NumberNewSamples
     )
     ## End input check
 
@@ -114,22 +190,28 @@ def StochasticRBF(
 
     ## Plot Result
     if PlotResult:
-        plot_results(solution, maxeval, Ntrials)
+        plot_results(solution, maxeval, Ntrials, "RBFPlot.png")
     ## End Plot Result
+
     return solution
 
 
-def perform_optimization(data, maxeval, Ntrials, NumberNewSampes):
-    data.Ncand = 500 * data.dim
-    data.phifunction = RbfType.CUBIC
-    data.polynomial = RbfPolynomial.LINEAR
-    solution = TestLocalStochRBFrestart(
-        data, maxeval, Ntrials, NumberNewSampes
-    )
-    return solution
+def plot_results(
+    solution: Solution, maxeval: int, Ntrials: int, filename: str
+):
+    """Plot the results.
 
-
-def plot_results(solution, maxeval, Ntrials):
+    Parameters
+    ----------
+    solution : Solution
+        Solution object with the results.
+    maxeval : int
+        Maximum number of allowed function evaluations per trial.
+    Ntrials : int
+        Number of trials.
+    filename : str
+        Path for the plot file.
+    """
     Y_cur_best = np.zeros((maxeval, Ntrials))
     for ii in range(Ntrials):  # go through all trials
         Y_cur = solution.FuncVal[
@@ -147,41 +229,44 @@ def plot_results(solution, maxeval, Ntrials):
     # maxeval x Ntrials)
     Ymean = np.mean(Y_cur_best, axis=1)
 
-    Yplot = np.zeros((maxeval, 1))  # initialize vector for plotting results
-    # sort results according to best point found till iteration
-    # Seriously, why do we need that????
-
     X = np.arange(1, maxeval + 1)
-    plot(X, Ymean)
-    xlabel("Number Of Function Evaluations")
-    ylabel("Average Best Objective Function Value In %d Trials" % Ntrials)
-    draw()
+    plt.plot(X, Ymean)
+    plt.xlabel("Number Of Function Evaluations")
+    plt.ylabel("Average Best Objective Function Value In %d Trials" % Ntrials)
+    plt.draw()
     # show()
-    savefig("RBFPlot")
+    plt.savefig(filename)
 
 
-def read_check_data_file(data_file):
-    if not isinstance(data_file, str):
-        raise myException(
-            """You have to supply a file name with your data. \
-            \n\tSee example files and tutorial for information how to define problems."""
-        )
+def read_check_data_file(data_file: str) -> Data:
+    """Read and check the data file.
+
+    Parameters
+    ----------
+    data_file : str
+        Path for the data file.
+
+    Returns
+    -------
+    data : Data
+        Valid data object with the problem definition.
+    """
     try:
         module = importlib.import_module(data_file)
         data = getattr(module, data_file)()
     except ImportError:
-        raise myException(
+        raise MyException(
             """The data file is not found in the current path\
             \n\tPlease place the data file in the path."""
         )
     except AttributeError:
-        raise myException(
+        raise MyException(
             """The function name must be the same with the data file name.\
             \n\tSee example files and tutorial for information how to define the function."""
         )
 
     if data.is_valid() is False:
-        raise myException(
+        raise MyException(
             """The data file is not valid. Please, look at the documentation of\
             \n\tthe class Data for more information."""
         )
@@ -189,57 +274,77 @@ def read_check_data_file(data_file):
     return data
 
 
-def check_set_parameters(data, maxeval, Ntrials, PlotResult, NumberNewSamples):
-    if maxeval == None:
+def check_set_parameters(
+    data: Data,
+    maxeval: int = 0,
+    Ntrials: int = 0,
+    NumberNewSamples: int = 0,
+):
+    """Check and set the parameters for the optimization.
+
+    Parameters
+    ----------
+    data : Data
+        Data object with the problem definition.
+    maxeval : int, optional
+        Maximum number of allowed function evaluations per trial.
+    Ntrials : int, optional
+        Number of trials.
+    NumberNewSamples : int, optional
+        Number of new samples per step of the optimization algorithm.
+
+    Returns
+    -------
+    maxeval : int
+        Maximum number of allowed function evaluations per trial.
+    Ntrials : int
+        Number of trials.
+    NumberNewSamples : int
+        Number of new samples per step of the optimization algorithm.
+    """
+
+    if maxeval == 0:
         print(
             """No maximal number of allowed function evaluations given.\
                 \n\tI use default value maxeval = 20 * dimension."""
         )
         maxeval = 20 * data.dim
     if not isinstance(maxeval, int) or maxeval <= 0:
-        raise myException(
+        raise MyException(
             "Maximal number of allowed function evaluations must be positive integer.\n"
         )
 
-    if Ntrials == None:
+    if Ntrials == 0:
         print(
             """No maximal number of trials given.\
                 \n\tI use default value NumberOfTrials=1."""
         )
         Ntrials = 1
     if not isinstance(Ntrials, int) or Ntrials <= 0:
-        raise myException(
+        raise MyException(
             "Maximal number of trials must be positive integer.\n"
         )
 
-    if PlotResult == None:
-        print(
-            """No indication if result plot wanted.\
-                \n\tI use default value PlotResult=1."""
-        )
-        PlotResult = 1
-    elif abs(PlotResult) > 0:
-        PlotResult = 1
-
-    if NumberNewSamples == None:
+    if NumberNewSamples == 0:
         print(
             """No number of desired new sample sites given.\
                 \n\tI use default value NumberNewSamples=1."""
         )
         NumberNewSamples = 1
     if not isinstance(NumberNewSamples, int) or NumberNewSamples < 0:
-        raise myException(
+        raise MyException(
             "Number of new sample sites must be positive integer.\n"
         )
 
-    return maxeval, Ntrials, PlotResult, NumberNewSamples
+    return maxeval, Ntrials, NumberNewSamples
 
 
 if __name__ == "__main__":
     np.random.seed(3)
 
     print("This is a simple demo for StochasticRBF")
-    solution = StochasticRBF("datainput_Branin", 200, 3, 1, 1)
+    solution = stochastic_rbf("datainput_Branin", 200, 3, 1, True)
+
     print("BestValues", solution.BestValues)  # with each restart
     print("BestPoints", solution.BestPoints)  # with each restart
     print("NumFuncEval", solution.NumFuncEval)
