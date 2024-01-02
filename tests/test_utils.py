@@ -30,7 +30,7 @@ from blackboxopt.utility import SLHDstandard
 
 
 @pytest.mark.parametrize("dim", [1, 2, 3])
-def test_SLHDstandard(dim):
+def test_SLHDstandard(dim: int):
     m = 2 * (dim + 1)
 
     # Set seed to 5 for reproducibility
