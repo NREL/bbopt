@@ -22,3 +22,8 @@ After you run the software `2to3`, it is possible that some of the files are sti
 
 - In Python 2.7, `3 / 2` returns `1`. In Python 3, `3 / 2` returns `1.5`, and `3 // 2` returns `1`.
 - The Python 2.7 function `file()` is called `open()` in Python 3.
+
+## Documentation online
+
+The documentation is available at https://pages.github.nrel.gov/wdasilv/Black-box-Opt/.
+It is still ugly because we need to fix integration with Sphinx on GitHub.
