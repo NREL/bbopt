@@ -1,29 +1,23 @@
 # Black-box Opt
 
-Surrogate models and active learning for scientific applications
+Surrogate models and active learning for scientific applications.
 
-## How to create a local Python environment
+## Building the environment
 
-It is good practice to isolate the environment you are working from your system Python installation. This makes sure the packages needed for an application do not need to be installed in your machine. Each application has, therefore, their own package dependencies that are satisfied locally.
+This project uses [poetry](https://python-poetry.org/) to manage the Python virtual environment. With poetry installed, run `poetry shell` at the root of this repository to activate the virtual environment. Then, run `poetry install` to install the dependencies. The file `pyproject.toml` in the root of this project contains the list of dependencies that will be installed automatically. Please, find more information about poetry in its [documentation](https://python-poetry.org/docs/).
 
-To create a local virtual environment, go to the the directory that contains your project and run `python -m venv .venv`. Then, run the activation script with `source .venv/bin/activate` whenever you want to use this environment. For more information, see https://docs.python.org/3/library/venv.html.
+## Documentation
 
-## How to port code from Python 2.7 to Python 3:
+This project uses [Sphinx](https://www.sphinx-doc.org/en/master/) to generate the documentation. The latest documentation is available at https://pages.github.nrel.gov/wdasilv/Black-box-Opt/. To generate the documentation locally, run `make html` in the `docs` directory. The homepage of the documentation is `docs/_build/html/index.html`.
 
-You can run the software 2to3 that is installed with Python.
+## Testing
 
-```sh
-2to3 [-w] input.py
-```
+This project uses [pytest](https://docs.pytest.org/en/stable/) to run the tests. To run the tests, run `pytest` at the root of this repository. Run `pytest --help` to see the available options.
 
-The option `-w` enables writing on the same file. Otherwise, the difference is displayed on the standard output.
+## Contributing
 
-After you run the software `2to3`, it is possible that some of the files are still not working. Then, you may go and fix them case by case. For instance:
+Please, read the [contributing guidelines](CONTRIBUTING.md) before contributing to this project.
 
-- In Python 2.7, `3 / 2` returns `1`. In Python 3, `3 / 2` returns `1.5`, and `3 // 2` returns `1`.
-- The Python 2.7 function `file()` is called `open()` in Python 3.
+## License
 
-## Documentation online
-
-The documentation is available at https://pages.github.nrel.gov/wdasilv/Black-box-Opt/.
-It is still ugly because we need to fix integration with Sphinx on GitHub.
+This project is licensed under the GPL-3.0 License. See the [LICENSE](LICENSE) file for details.
