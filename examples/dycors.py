@@ -126,6 +126,7 @@ def perform_optimization(
             sampling_strategy=SamplingStrategy.DYCORS,
             nCandidatesPerIteration=min(100 * data.dim, 5000),
             newSamplesPerIteration=NumberNewSamples,
+            maxit=1,
         )
 
         # Gather results in "solution" struct-variable
@@ -133,8 +134,8 @@ def perform_optimization(
         solution.BestPoints[j, :] = optres.x
         solution.NumFuncEval[j] = optres.nfev
         solution.AvgFuncEvalTime[j] = np.mean(optres.fevaltime)
-        solution.FuncVal[:, j] = np.copy(optres.fsamples)
-        solution.DMatrix[:, :, j] = np.copy(optres.samples)
+        solution.FuncVal[0 : optres.nfev, j] = np.copy(optres.fsamples)
+        solution.DMatrix[0 : optres.nfev, :, j] = np.copy(optres.samples)
         solution.NumberOfRestarts[j] = optres.nit
 
     return solution
