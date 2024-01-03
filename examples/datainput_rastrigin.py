@@ -2,7 +2,7 @@
 """
 
 # Copyright (C) 2024 National Renewable Energy Laboratory
-# Copyright (C) 2013 Cornell University
+# Copyright (C) 2014 Cornell University
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -35,19 +35,19 @@ from data import Data
 
 
 def datainput_rastrigin():
-    n = 10
-    return Data(xlow=np.zeros(n), xup=np.ones(n), objfunction=myfun, dim=n)
+    n = 100
+    return Data(
+        xlow=-np.ones(n) * 10, xup=np.ones(n) * 10, objfunction=myfun, dim=n
+    )
 
 
 def myfun(x):
-    n = 10
-    xlow = np.asarray(-10 * np.ones(n))
-    xup = np.asarray(10 * np.ones(n))
-    x = xlow + np.multiply(xup - xlow, x)
-    y = 10 * n + sum(pow(x, 2) - 10 * np.cos(2 * np.pi * x))
+    n = 100
+    xflat = x.flatten()
+    y = 10 * n + sum(pow(xflat, 2) - 10 * np.cos(2 * np.pi * xflat))
 
     return y
 
 
 if __name__ == "__main__":
-    print(myfun(np.array([[0.5, 0.9]])))
+    print(myfun(np.array([[0.5, 0.9, 0.3]])))

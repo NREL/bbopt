@@ -2,7 +2,7 @@
 """
 
 # Copyright (C) 2024 National Renewable Energy Laboratory
-# Copyright (C) 2013 Cornell University
+# Copyright (C) 2014 Cornell University
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -30,6 +30,7 @@ __credits__ = [
 __version__ = "0.1.0"
 __deprecated__ = False
 
+from enum import Enum
 import numpy as np
 import scipy.spatial as scp
 import time
@@ -39,6 +40,92 @@ import time
 from dataclasses import dataclass
 
 from .rbf import RbfModel
+
+SamplingStrategy = Enum("SamplingStrategy", ["STOCHASTIC", "DYCORS"])
+
+
+def get_stochastic_sample(
+    x: np.ndarray, n: int, sigma_stdev: float, bounds: tuple
+) -> np.ndarray:
+    """Generate a stochastic sample.
+
+    Parameters
+    ----------
+    x : numpy.ndarray
+        Point around which the sample will be generated.
+    n : int
+        Number of samples to be generated.
+    sigma_stdev : float
+        Standard deviation of the normal distribution.
+    bounds : tuple
+        Bounds for variables. Each element of the tuple must be a tuple with two elements,
+        corresponding to the lower and upper bound for the variable.
+
+    Returns
+    -------
+    numpy.ndarray
+        Matrix with the generated samples.
+    """
+    dim = len(x)
+    xlow = np.array([bounds[i][0] for i in range(dim)])
+    xup = np.array([bounds[i][1] for i in range(dim)])
+
+    # Generate n samples
+    xnew = np.tile(x, (n, 1)) + sigma_stdev * np.random.randn(n, dim)
+    xnew = np.maximum(xlow, np.minimum(xnew, xup))
+
+    return xnew
+
+
+def get_dycors_sample(
+    x: np.ndarray, n: int, sigma_stdev: float, DDSprob: float, bounds: tuple
+) -> np.ndarray:
+    """Generate a DYCORS sample.
+
+    Parameters
+    ----------
+    x : numpy.ndarray
+        Point around which the sample will be generated.
+    n : int
+        Number of samples to be generated.
+    sigma_stdev : float
+        Standard deviation of the normal distribution.
+    DDSprob : float
+        Perturbation probability.
+    bounds : tuple
+        Bounds for variables. Each element of the tuple must be a tuple with two elements,
+        corresponding to the lower and upper bound for the variable.
+
+    Returns
+    -------
+    numpy.ndarray
+        Matrix with the generated samples.
+    """
+    dim = len(x)
+    xlow = np.array([bounds[i][0] for i in range(dim)])
+    xup = np.array([bounds[i][1] for i in range(dim)])
+
+    # generate n samples
+    xnew = np.kron(np.ones((n, 1)), x)
+    for ii in range(n):
+        r = np.random.rand(dim)
+        ar = r < DDSprob
+        if not (any(ar)):
+            r = np.random.permutation(dim)
+            ar[r[0]] = True
+        for jj in range(dim):
+            if ar[jj]:
+                xnew[ii, jj] = xnew[ii, jj] + sigma_stdev * np.random.randn(1)
+
+                if xnew[ii, jj] < xlow[jj]:
+                    xnew[ii, jj] = xlow[jj] + (xlow[jj] - xnew[ii, jj])
+                    if xnew[ii, jj] > xup[jj]:
+                        xnew[ii, jj] = xlow[jj]
+                elif xnew[ii, jj] > xup[jj]:
+                    xnew[ii, jj] = xup[jj] - (xnew[ii, jj] - xup[jj])
+                    if xnew[ii, jj] < xlow[jj]:
+                        xnew[ii, jj] = xup[jj]
+    return xnew
 
 
 @dataclass
@@ -215,6 +302,7 @@ def minimize(
     maxeval: int,
     maxit: int = -1,
     surrogateModel=RbfModel(),
+    sampling_strategy: SamplingStrategy = SamplingStrategy.STOCHASTIC,
     nCandidatesPerIteration: int = -1,
     newSamplesPerIteration: int = 1,
 ) -> OptimizeResult:
@@ -313,7 +401,13 @@ def minimize(
         tol = 0.001 * minxrange * np.sqrt(float(dim))
         sigma_stdev_default = 0.2 * minxrange
         sigma_stdev = sigma_stdev_default  # current mutation rate
-        maxshrinkparam = 5  # maximal number of shrikage of standard deviation for normal distribution when generating the candidate points
+        # maximal number of shrikage of standard deviation for normal distribution when generating the candidate points
+        if sampling_strategy == SamplingStrategy.STOCHASTIC:
+            maxshrinkparam = 5
+        elif sampling_strategy == SamplingStrategy.DYCORS:
+            maxshrinkparam = 6
+        else:
+            raise ValueError("Invalid sampling_strategy")
         failtolerance = max(5, dim)
         succtolerance = 3
 
@@ -327,21 +421,50 @@ def minimize(
         succctr = 0  # number of consecutive successful iterations
 
         # do until max number of f-evals reached or local min found
+        weightpattern = np.array([0.3, 0.5, 0.8, 0.95])
         while m < maxlocaleval and localminflag == 0:
             iterctr = iterctr + 1  # increment iteration counter
             print("\n Iteration: %d \n" % iterctr)
             print("\n fEvals: %d \n" % m)
-            print("\n Best value in this restart: %d \n" % y[iBest])
+            print("\n Best value in this restart: %f \n" % y[iBest])
 
             # number of new samples in an iteration
             NumberNewSamples = min(newSamplesPerIteration, maxlocaleval - m)
 
-            # Introduce candidate points using stochastic perturbation
-            CandPoint = np.tile(
-                surrogateModel.sample(iBest),
-                (nCandidatesPerIteration, 1),
-            ) + sigma_stdev * np.random.randn(nCandidatesPerIteration, dim)
-            CandPoint = np.maximum(xlow, np.minimum(CandPoint, xup))
+            # Introduce candidate points
+            if sampling_strategy == SamplingStrategy.STOCHASTIC:
+                CandPoint = get_stochastic_sample(
+                    surrogateModel.sample(iBest),
+                    nCandidatesPerIteration,
+                    sigma_stdev,
+                    bounds,
+                )
+            elif sampling_strategy == SamplingStrategy.DYCORS:
+                # Perturbation probability
+                DDSprob = min(20 / dim, 1) * (
+                    1
+                    - (
+                        np.log(m - 2 * (dim + 1) + 1)
+                        / np.log(maxlocaleval - 2 * (dim + 1))
+                    )
+                )
+                CandPoint = get_dycors_sample(
+                    surrogateModel.sample(iBest),
+                    nCandidatesPerIteration,
+                    sigma_stdev,
+                    DDSprob,
+                    bounds,
+                )
+
+            # weight pattern for computing the score
+            if sampling_strategy == SamplingStrategy.STOCHASTIC:
+                w_r = weightpattern
+            elif sampling_strategy == SamplingStrategy.DYCORS:
+                w_r = np.array(
+                    [weightpattern[(iterctr - 1) % len(weightpattern)]]
+                )
+            else:
+                raise ValueError("Invalid sampling_strategy")
 
             # select the next function evaluation points:
             CandValue, distMatrix = surrogateModel.eval(CandPoint)
@@ -351,6 +474,7 @@ def minimize(
                 np.min(distMatrix, axis=1),
                 NumberNewSamples,
                 tol,
+                weightpattern=w_r,
             )
             xselected = np.reshape(CandPoint[selindex, :], (selindex.size, -1))
             distselected = np.concatenate(
