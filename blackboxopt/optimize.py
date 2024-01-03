@@ -170,7 +170,7 @@ def find_best(
     """Select n points based on their values and distances to candidates.
 
     The points are chosen from x such that they minimize the expression
-    :math:`w f_s(x) + (1-w) (-d_s(x))`, where
+    :math:`w f_s(x) + (1-w) (1-d_s(x))`, where
 
     - :math:`w` is a weight.
     - :math:`f_s(x)` is the estimated value for the objective function on x, scaled to [0,1].
