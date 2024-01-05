@@ -205,9 +205,7 @@ class RbfModel:
         elif self.type == RbfType.THINPLATE:
             return np.where(
                 r > 0,
-                np.multiply(
-                    np.power(r, 2), np.log(r + np.finfo(np.double).tiny)
-                ),
+                np.multiply(np.power(r, 2), np.log(r)),
                 0,
             )
         else:
