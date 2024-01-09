@@ -46,6 +46,7 @@ def read_and_run(
     maxeval: int = 0,
     Ntrials: int = 0,
     NumberNewSamples: int = 0,
+    rbf_type: RbfType = RbfType.CUBIC,
     sampling_strategy: SamplingStrategy = SamplingStrategy.DYCORS,
     PlotResult: bool = True,
 ) -> list[OptimizeResult]:
@@ -88,9 +89,7 @@ def read_and_run(
     optres = []
     for j in range(Ntrials):
         # Create empty RBF model
-        rbfModel = RbfModel(
-            rbf_type=RbfType.CUBIC, polynomial=RbfPolynomial.LINEAR
-        )
+        rbfModel = RbfModel(rbf_type=rbf_type, polynomial=RbfPolynomial.LINEAR)
 
         # # Uncomment to compare with Surrogates.jl
         # rbfModel.update(
@@ -116,6 +115,7 @@ def read_and_run(
                     (data.xlow[i], data.xup[i]) for i in range(data.dim)
                 ),
                 maxeval=maxeval,
+                iindex=data.iindex,
                 surrogateModel=rbfModel,
                 sampling_strategy=sampling_strategy,
                 nCandidatesPerIteration=nCandidatesPerIteration,
@@ -269,7 +269,7 @@ if __name__ == "__main__":
     #     data_file="datainput_hartman3",
     #     nCandidatesPerIteration=300,
     #     maxeval=200,
-    #     Ntrials=3,
+    #     Ntrials=1,
     #     NumberNewSamples=1,
     #     sampling_strategy=SamplingStrategy.DYCORS,
     #     PlotResult=True,
@@ -283,6 +283,16 @@ if __name__ == "__main__":
         sampling_strategy=SamplingStrategy.STOCHASTIC,
         PlotResult=True,
     )
+    # optres = read_and_run(
+    #     data_file="datainput_BraninWithInteger",
+    #     nCandidatesPerIteration=2000,
+    #     maxeval=100,
+    #     Ntrials=3,
+    #     NumberNewSamples=1,
+    #     rbf_type=RbfType.THINPLATE,
+    #     sampling_strategy=SamplingStrategy.DYCORS,
+    #     PlotResult=True,
+    # )
 
     Ntrials = len(optres)
     print("BestValues", [optres[i].fx for i in range(Ntrials)])

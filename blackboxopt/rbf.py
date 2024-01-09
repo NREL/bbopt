@@ -236,6 +236,9 @@ class RbfModel:
         elif self.polynomial == RbfPolynomial.LINEAR:
             return np.concatenate((np.ones((m, 1)), x), axis=1)
         elif self.polynomial == RbfPolynomial.QUADRATIC:
+            raise NotImplementedError(
+                "Quadratic polynomial tail not implemented"
+            )
             return np.concatenate(
                 (
                     np.concatenate((np.ones((m, 1)), x), axis=1),
@@ -369,7 +372,9 @@ class RbfModel:
             self._fx[oldm:m] = fxNew
             self.update_coefficients()
 
-    def create_initial_design(self, dim: int, bounds: tuple) -> None:
+    def create_initial_design(
+        self, dim: int, bounds: tuple, iindex: tuple[int, ...] = ()
+    ) -> None:
         """Creates an initial set of samples for the RBF model.
 
         The points are generated using a symmetric Latin hypercube design.
@@ -381,17 +386,21 @@ class RbfModel:
         bounds : tuple
             Tuple of lower and upper bounds for each dimension of the domain
             space.
+        iindex : tuple, optional
+            Indices of the input space that are integer. The default is ().
         """
         m = 2 * (dim + 1)  # number of points in initial experimental design
         self.reserve(m, dim)
 
         self._m = m
         self._x[0:m, :] = SLHDstandard(dim, m, bounds=bounds)
+        self._x[0:m, iindex] = np.round(self._x[0:m, iindex])
         if self.type == RbfType.CUBIC or self.type == RbfType.THINPLATE:
             # for cubic and thin-plate spline RBF: rank_P must be Data.dim+1
             P = np.concatenate((np.ones((m, 1)), self._x[0:m, :]), axis=1)
             while np.linalg.matrix_rank(P) != dim + 1:
                 self._x[0:m, :] = SLHDstandard(dim, m, bounds=bounds)
+                self._x[0:m, iindex] = np.round(self._x[0:m, iindex])
                 P = np.concatenate((np.ones((m, 1)), self._x[0:m, :]), axis=1)
 
         # Compute distances between new points and sampled points

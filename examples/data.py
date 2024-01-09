@@ -49,12 +49,15 @@ class Data:
         Objective function.
     dim : int
         Dimension of the input space.
+    iindex : tuple, optional
+        Indices of the input space that are integer. The default is ().
     """
 
     xlow: np.ndarray
     xup: np.ndarray
     objfunction: Callable[[np.ndarray], float]
     dim: int
+    iindex: tuple[int, ...] = ()
 
     def is_valid(self) -> bool:
         # Dimension must be positive integer
@@ -66,7 +69,9 @@ class Data:
         # Lower bounds must be lower than upper bounds
         if np.any(self.xlow > self.xup):
             return False
-        # Objective function must be callable
-        if not callable(self.objfunction):
+        # Integrality tuple must be valid
+        if not all(
+            self.iindex[i] in range(self.dim) for i in range(len(self.iindex))
+        ):
             return False
         return True

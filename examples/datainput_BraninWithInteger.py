@@ -34,20 +34,19 @@ import numpy as np
 from data import Data
 
 
-def datainput_Branin():
+def datainput_BraninWithInteger():
     return Data(
         xlow=np.array([-5, 0]),
         xup=np.array([10, 15]),
         objfunction=myfun,
         dim=2,
+        iindex=(0,),
     )
 
 
 def myfun(x):
     assert x.size == 2
     xflat = x.flatten()
-    print(xflat[0])
-    print(xflat[1])
     y = (
         pow(
             xflat[1]
@@ -63,4 +62,5 @@ def myfun(x):
 
 
 if __name__ == "__main__":
-    print(myfun(np.array([[2.5, 15 * 0.9]])))
+    print(myfun(np.array([[3, 2.4013]])))
+    print(myfun(np.array([[3, 2.26325204]])))

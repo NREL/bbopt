@@ -304,6 +304,8 @@ def minimize(
     fun,
     bounds: tuple,
     maxeval: int,
+    *,
+    iindex: tuple[int, ...] = (),
     maxit: int = 0,
     surrogateModel=RbfModel(),
     sampling_strategy: SamplingStrategy = SamplingStrategy.STOCHASTIC,
@@ -323,6 +325,8 @@ def minimize(
         elements, corresponding to the lower and upper bound for the variable.
     maxeval : int
         Maximum number of function evaluations.
+    iindex : tuple, optional
+        Indices of the input space that are integer. The default is ().
     maxit : int, optional
         Maximum number of algorithm iterations. The default is 0, which means
         that the algorithm will do as many iterations as allowed by maxeval.
@@ -379,7 +383,7 @@ def minimize(
         # Number of initial samples
         m = min(surrogateModel.nsamples(), maxlocaleval)
         if m == 0:
-            surrogateModel.create_initial_design(dim, bounds)
+            surrogateModel.create_initial_design(dim, bounds, iindex)
             surrogateModel.setnsamples(
                 min(surrogateModel.nsamples(), maxlocaleval)
             )
@@ -464,6 +468,11 @@ def minimize(
                     DDSprob,
                     bounds,
                 )
+            else:
+                raise ValueError("Invalid sampling_strategy")
+
+            # Round integer variables
+            CandPoint[:, iindex] = np.round(CandPoint[:, iindex])
 
             # weight pattern for computing the score
             if sampling_strategy == SamplingStrategy.STOCHASTIC:
