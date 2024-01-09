@@ -445,3 +445,17 @@ class RbfModel:
             i-th sampled point.
         """
         return self._x[i, :]
+
+    def setnsamples(self, m: int) -> None:
+        """Set the number of sampled points.
+
+        Parameters
+        ----------
+        m : int
+            Number of sampled points.
+        """
+        if m > self._m:
+            raise ValueError(
+                "Cannot increase number of samples using setnsamples(). Try update() instead."
+            )
+        self._m = m

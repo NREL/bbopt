@@ -30,7 +30,7 @@ __credits__ = [
 __version__ = "0.1.0"
 __deprecated__ = False
 
-from StochasticRBF import read_check_data_file, MyException
+from examples.optprogram1 import read_check_data_file
 from blackboxopt.rbf import RbfPolynomial, RbfType, RbfModel
 from blackboxopt.optimize import minimize
 from blackboxopt.utility import SLHDstandard
@@ -39,85 +39,83 @@ import numpy as np
 if __name__ == "__main__":
     np.random.seed(3)
 
-    try:
-        print("This is the test for LocalStochRBFstop")
+    print("This is the test for LocalStochRBFstop")
 
-        data_file = "datainput_hartman3"
-        maxeval = 200
-        Ntrials = 3
-        PlotResult = 1
-        NumberNewSamples = 2
-        data = read_check_data_file(data_file)
-        nCand = 500 * data.dim
-        phifunction = RbfType.CUBIC
-        polynomial = RbfPolynomial.LINEAR
-        m = 2 * (data.dim + 1)
-        numstart = 0  # collect all objective function values of the current trial here
-        Y_all = []  # collect all sample points of the current trial here
-        S_all = []  # best objective function value found so far in the current trial
-        value = (
-            np.inf
-        )  # best objective function value found so far in the current trial
-        numevals = 0  # number of function evaluations done so far
-        Fevaltime_all = []  # collect all objective function evaluation times of the current trial here
+    data_file = "datainput_hartman3"
+    maxeval = 200
+    Ntrials = 3
+    PlotResult = 1
+    NumberNewSamples = 2
+    data = read_check_data_file(data_file)
+    nCand = 500 * data.dim
+    phifunction = RbfType.CUBIC
+    polynomial = RbfPolynomial.LINEAR
+    m = 2 * (data.dim + 1)
+    numstart = (
+        0  # collect all objective function values of the current trial here
+    )
+    Y_all = []  # collect all sample points of the current trial here
+    S_all = []  # best objective function value found so far in the current trial
+    value = (
+        np.inf
+    )  # best objective function value found so far in the current trial
+    numevals = 0  # number of function evaluations done so far
+    Fevaltime_all = []  # collect all objective function evaluation times of the current trial here
 
-        rank_P = 0
-        while rank_P != data.dim + 1:
-            samples = SLHDstandard(data.dim, m)
-            P = np.concatenate((np.ones((m, 1)), samples), axis=1)
-            rank_P = np.linalg.matrix_rank(P)
-        samples = np.array(
-            [
-                [0.0625, 0.3125, 0.0625],
-                [0.1875, 0.5625, 0.8125],
-                [0.3125, 0.8125, 0.3125],
-                [0.4375, 0.0625, 0.5625],
-                [0.5625, 0.9375, 0.4375],
-                [0.6875, 0.1875, 0.6875],
-                [0.8125, 0.4375, 0.1875],
-                [0.9375, 0.6875, 0.9375],
-            ]
-        )
-        samples = np.add(np.multiply(data.xup - data.xlow, samples), data.xlow)
+    rank_P = 0
+    while rank_P != data.dim + 1:
+        samples = SLHDstandard(data.dim, m)
+        P = np.concatenate((np.ones((m, 1)), samples), axis=1)
+        rank_P = np.linalg.matrix_rank(P)
+    samples = np.array(
+        [
+            [0.0625, 0.3125, 0.0625],
+            [0.1875, 0.5625, 0.8125],
+            [0.3125, 0.8125, 0.3125],
+            [0.4375, 0.0625, 0.5625],
+            [0.5625, 0.9375, 0.4375],
+            [0.6875, 0.1875, 0.6875],
+            [0.8125, 0.4375, 0.1875],
+            [0.9375, 0.6875, 0.9375],
+        ]
+    )
+    samples = np.add(np.multiply(data.xup - data.xlow, samples), data.xlow)
 
-        print(data.xlow)
-        print(data.xup)
-        print(data.objfunction)
-        print(data.dim)
-        print(nCand)
-        print(phifunction)
-        print(polynomial)
-        print(samples)
-        print("LocalStochRBFstop Start")
+    print(data.xlow)
+    print(data.xup)
+    print(data.objfunction)
+    print(data.dim)
+    print(nCand)
+    print(phifunction)
+    print(polynomial)
+    print(samples)
+    print("LocalStochRBFstop Start")
 
-        rbfModel = RbfModel(phifunction, polynomial)
-        rbfModel.update(samples)
+    rbfModel = RbfModel(phifunction, polynomial)
+    rbfModel.update(samples)
 
-        optres = minimize(
-            data.objfunction,
-            bounds=(
-                (data.xlow[0], data.xup[0]),
-                (data.xlow[1], data.xup[1]),
-                (data.xlow[2], data.xup[2]),
-            ),
-            maxeval=maxeval - numevals,
-            maxit=1,
-            surrogateModel=rbfModel,
-            nCandidatesPerIteration=nCand,
-            newSamplesPerIteration=NumberNewSamples,
-        )
+    optres = minimize(
+        data.objfunction,
+        bounds=(
+            (data.xlow[0], data.xup[0]),
+            (data.xlow[1], data.xup[1]),
+            (data.xlow[2], data.xup[2]),
+        ),
+        maxeval=maxeval - numevals,
+        maxit=1,
+        surrogateModel=rbfModel,
+        nCandidatesPerIteration=nCand,
+        newSamplesPerIteration=NumberNewSamples,
+    )
 
-        print("Results")
-        print("xlow", data.xlow)
-        print("xup", data.xup)
-        print("S", optres.samples.shape)
-        print("m", optres.samples.shape[0])
-        print("Y", optres.fsamples.shape)
-        print("xbest", optres.x)
-        print("Fbest", optres.fx)
-        print("lambda", rbfModel.nsamples())
-        print("ctail", rbfModel.pdim())
-        print("NumberFevals", optres.nfev)
-
-    except MyException as e:
-        print(e.msg)
+    print("Results")
+    print("xlow", data.xlow)
+    print("xup", data.xup)
+    print("S", optres.samples.shape)
+    print("m", optres.samples.shape[0])
+    print("Y", optres.fsamples.shape)
+    print("xbest", optres.x)
+    print("Fbest", optres.fx)
+    print("lambda", rbfModel.nsamples())
+    print("ctail", rbfModel.pdim())
+    print("NumberFevals", optres.nfev)

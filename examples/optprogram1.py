@@ -1,4 +1,4 @@
-"""Example for the DYCORS optimization with plot.
+"""Example with optimization and plot.
 """
 
 # Copyright (C) 2024 National Renewable Energy Laboratory
@@ -30,125 +30,26 @@ __version__ = "0.1.0"
 __deprecated__ = False
 
 
-from dataclasses import dataclass
 import importlib
 import numpy as np
 import matplotlib.pyplot as plt
 import pickle as p
 
 from blackboxopt.rbf import RbfPolynomial, RbfType, RbfModel
-from blackboxopt.optimize import SamplingStrategy, minimize
+from blackboxopt.optimize import SamplingStrategy, minimize, OptimizeResult
 from data import Data
 
 
-class MyException(Exception):
-    """Exception class for this example."""
-
-    def __init__(self, msg):
-        Exception.__init__(self)
-        self.msg = msg
-
-
-@dataclass
-class Solution:
-    """Solution class for the problem definition.
-
-    Attributes
-    ----------
-    BestValues : np.ndarray
-        Best values of the objective function.
-    BestPoints : np.ndarray
-        Best points of the objective function.
-    NumFuncEval : np.ndarray
-        Number of function evaluations.
-    AvgFuncEvalTime : np.ndarray
-        Average function evaluation time.
-    FuncVal : np.ndarray
-        Function values.
-    DMatrix : np.ndarray
-        Matrix of samples.
-    NumberOfRestarts : np.ndarray
-        Number of restarts.
-    """
-
-    BestValues: np.ndarray
-    BestPoints: np.ndarray
-    NumFuncEval: np.ndarray
-    AvgFuncEvalTime: np.ndarray
-    FuncVal: np.ndarray
-    DMatrix: np.ndarray
-    NumberOfRestarts: np.ndarray
-
-
-def perform_optimization(
-    data: Data, maxeval: int, Ntrials: int, NumberNewSamples: int
-):
-    """Call the surrogate optimization function `Ntrials` times.
-
-    Parameters
-    ----------
-    data : Data
-        Data object with the problem definition.
-    maxeval : int
-        Maximum number of allowed function evaluations per trial.
-    Ntrials : int
-        Number of trials.
-    NumberNewSamples : int
-        Number of new samples per step of the optimization algorithm.
-
-    Returns
-    -------
-    solution : Solution
-        Solution object with the results.
-    """
-    solution = Solution(
-        BestPoints=np.zeros((Ntrials, data.dim)),
-        BestValues=np.zeros((Ntrials, 1)),
-        NumFuncEval=np.zeros((Ntrials, 1)),
-        AvgFuncEvalTime=np.zeros((Ntrials, 1)),
-        FuncVal=np.zeros((maxeval, Ntrials)),
-        DMatrix=np.zeros((maxeval, data.dim, Ntrials)),
-        NumberOfRestarts=np.zeros((Ntrials, 1)),
-    )
-
-    for j in range(Ntrials):
-        # Create empty RBF model
-        rbfModel = RbfModel(
-            rbf_type=RbfType.CUBIC, polynomial=RbfPolynomial.LINEAR
-        )
-
-        # Call the surrogate optimization function
-        optres = minimize(
-            data.objfunction,
-            bounds=tuple((data.xlow[i], data.xup[i]) for i in range(data.dim)),
-            maxeval=maxeval,
-            surrogateModel=rbfModel,
-            sampling_strategy=SamplingStrategy.DYCORS,
-            nCandidatesPerIteration=min(100 * data.dim, 5000),
-            newSamplesPerIteration=NumberNewSamples,
-            maxit=1,
-        )
-
-        # Gather results in "solution" struct-variable
-        solution.BestValues[j] = optres.fx
-        solution.BestPoints[j, :] = optres.x
-        solution.NumFuncEval[j] = optres.nfev
-        solution.AvgFuncEvalTime[j] = np.mean(optres.fevaltime)
-        solution.FuncVal[0 : optres.nfev, j] = np.copy(optres.fsamples)
-        solution.DMatrix[0 : optres.nfev, :, j] = np.copy(optres.samples)
-        solution.NumberOfRestarts[j] = optres.nit
-
-    return solution
-
-
-def dycors(
+def read_and_run(
     data_file: str,
+    nCandidatesPerIteration: int,
     maxeval: int = 0,
     Ntrials: int = 0,
     NumberNewSamples: int = 0,
+    sampling_strategy: SamplingStrategy = SamplingStrategy.DYCORS,
     PlotResult: bool = True,
-):
-    """Perform the DYCORS optimization.
+) -> list[OptimizeResult]:
+    """Perform the optimization, save the solution and plot.
 
     This function also saves the solution to a file named "Results.data".
     If PlotResult is True, it also plots the results and saves the plot to
@@ -158,19 +59,23 @@ def dycors(
     ----------
     data_file : str
         Path for the data file.
+    nCandidatesPerIteration : int
+        Number of candidates per iteration.
     maxeval : int, optional
         Maximum number of allowed function evaluations per trial.
     Ntrials : int, optional
         Number of trials.
     NumberNewSamples : int, optional
         Number of new samples per step of the optimization algorithm.
+    sampling_strategy : SamplingStrategy, optional
+        Sampling strategy.
     PlotResult : bool, optional
         Plot the results.
 
     Returns
     -------
-    solution : Solution
-        Solution object with the results.
+    optres : list[OptimizeResult]
+        List of OptimizeResult objects with the optimization results.
     """
     ## Start input check
     data = read_check_data_file(data_file)
@@ -180,47 +85,76 @@ def dycors(
     ## End input check
 
     ## Optimization
-    solution = perform_optimization(data, maxeval, Ntrials, NumberNewSamples)
+    optres = []
+    for j in range(Ntrials):
+        # Create empty RBF model
+        rbfModel = RbfModel(
+            rbf_type=RbfType.CUBIC, polynomial=RbfPolynomial.LINEAR
+        )
+
+        # # Uncomment to compare with Surrogates.jl
+        # rbfModel.update(
+        #     np.array(
+        #         [
+        #             [0.3125, 0.8125, 0.8125],
+        #             [0.6875, 0.0625, 0.4375],
+        #             [0.4375, 0.5625, 0.6875],
+        #             [0.9375, 0.6875, 0.3125],
+        #             [0.5625, 0.3125, 0.5625],
+        #             [0.0625, 0.9375, 0.1875],
+        #             [0.8125, 0.1875, 0.9375],
+        #             [0.1875, 0.4375, 0.0625],
+        #         ]
+        #     )
+        # )
+
+        # Call the surrogate optimization function
+        optres.append(
+            minimize(
+                data.objfunction,
+                bounds=tuple(
+                    (data.xlow[i], data.xup[i]) for i in range(data.dim)
+                ),
+                maxeval=maxeval,
+                surrogateModel=rbfModel,
+                sampling_strategy=sampling_strategy,
+                nCandidatesPerIteration=nCandidatesPerIteration,
+                newSamplesPerIteration=NumberNewSamples,
+                maxit=0,  # Change it to 1 to compare with the Surrogates.jl code
+            )
+        )
     ## End Optimization
 
     # save solution to file
     f = open("Results.data", mode="wb")
-    p.dump(solution, f)
+    p.dump(optres, f)
     f.close()
     # TODO: Is it the best option?
 
     ## Plot Result
     if PlotResult:
-        plot_results(solution, maxeval, Ntrials, "DYCORS_Plot.png")
+        plot_results(optres, "RBFPlot.png")
     ## End Plot Result
 
-    return solution
+    return optres
 
 
-def plot_results(
-    solution: Solution, maxeval: int, Ntrials: int, filename: str
-):
+def plot_results(optres: list[OptimizeResult], filename: str):
     """Plot the results.
 
     Parameters
     ----------
-    solution : Solution
-        Solution object with the results.
-    maxeval : int
-        Maximum number of allowed function evaluations per trial.
-    Ntrials : int
-        Number of trials.
+    optres: list[OptimizeResult]
+        List of OptimizeResult objects with the optimization results.
     filename : str
         Path for the plot file.
     """
-    Y_cur_best = np.zeros((maxeval, Ntrials))
+    Ntrials = len(optres)
+    maxeval = min([len(optres[i].fsamples) for i in range(Ntrials)])
+    Y_cur_best = np.empty((maxeval, Ntrials))
     for ii in range(Ntrials):  # go through all trials
-        Y_cur = solution.FuncVal[
-            :, ii
-        ]  # unction values of current trial (trial ii)
-        Y_cur_best[0, ii] = Y_cur[
-            0
-        ]  # first best function value is first function value computed
+        Y_cur = optres[ii].fsamples
+        Y_cur_best[0, ii] = Y_cur[0]
         for j in range(1, maxeval):
             if Y_cur[j] < Y_cur_best[j - 1, ii]:
                 Y_cur_best[j, ii] = Y_cur[j]
@@ -230,8 +164,7 @@ def plot_results(
     # maxeval x Ntrials)
     Ymean = np.mean(Y_cur_best, axis=1)
 
-    X = np.arange(1, maxeval + 1)
-    plt.plot(X, Ymean)
+    plt.plot(np.arange(1, maxeval + 1), Ymean)
     plt.xlabel("Number Of Function Evaluations")
     plt.ylabel("Average Best Objective Function Value In %d Trials" % Ntrials)
     plt.draw()
@@ -252,22 +185,11 @@ def read_check_data_file(data_file: str) -> Data:
     data : Data
         Valid data object with the problem definition.
     """
-    try:
-        module = importlib.import_module(data_file)
-        data = getattr(module, data_file)()
-    except ImportError:
-        raise MyException(
-            """The data file is not found in the current path\
-            \n\tPlease place the data file in the path."""
-        )
-    except AttributeError:
-        raise MyException(
-            """The function name must be the same with the data file name.\
-            \n\tSee example files and tutorial for information how to define the function."""
-        )
+    module = importlib.import_module(data_file)
+    data = getattr(module, data_file)()
 
     if data.is_valid() is False:
-        raise MyException(
+        raise ValueError(
             """The data file is not valid. Please, look at the documentation of\
             \n\tthe class Data for more information."""
         )
@@ -311,7 +233,7 @@ def check_set_parameters(
         )
         maxeval = 20 * data.dim
     if not isinstance(maxeval, int) or maxeval <= 0:
-        raise MyException(
+        raise ValueError(
             "Maximal number of allowed function evaluations must be positive integer.\n"
         )
 
@@ -322,7 +244,7 @@ def check_set_parameters(
         )
         Ntrials = 1
     if not isinstance(Ntrials, int) or Ntrials <= 0:
-        raise MyException(
+        raise ValueError(
             "Maximal number of trials must be positive integer.\n"
         )
 
@@ -333,7 +255,7 @@ def check_set_parameters(
         )
         NumberNewSamples = 1
     if not isinstance(NumberNewSamples, int) or NumberNewSamples < 0:
-        raise MyException(
+        raise ValueError(
             "Number of new sample sites must be positive integer.\n"
         )
 
@@ -343,12 +265,31 @@ def check_set_parameters(
 if __name__ == "__main__":
     np.random.seed(3)
 
-    print("This is a simple demo for DYCORS")
-    solution = dycors("datainput_hartman3", 200, 1, 1, True)
+    # optres = read_and_run(
+    #     data_file="datainput_hartman3",
+    #     nCandidatesPerIteration=300,
+    #     maxeval=200,
+    #     Ntrials=3,
+    #     NumberNewSamples=1,
+    #     sampling_strategy=SamplingStrategy.DYCORS,
+    #     PlotResult=True,
+    # )
+    optres = read_and_run(
+        data_file="datainput_Branin",
+        nCandidatesPerIteration=1000,
+        maxeval=200,
+        Ntrials=3,
+        NumberNewSamples=1,
+        sampling_strategy=SamplingStrategy.STOCHASTIC,
+        PlotResult=True,
+    )
 
-    print("BestValues", solution.BestValues)  # with each restart
-    print("BestPoints", solution.BestPoints)  # with each restart
-    print("NumFuncEval", solution.NumFuncEval)
-    print("AvgFUncEvalTime", solution.AvgFuncEvalTime)
-    print("DMatrix", solution.DMatrix.shape)
-    print("NumberOfRestarts", solution.NumberOfRestarts)
+    Ntrials = len(optres)
+    print("BestValues", [optres[i].fx for i in range(Ntrials)])
+    print("BestPoints", [optres[i].x for i in range(Ntrials)])
+    print("NumFuncEval", [optres[i].nfev for i in range(Ntrials)])
+    print(
+        "AvgFUncEvalTime",
+        [np.mean(optres[i].fevaltime) for i in range(Ntrials)],
+    )
+    print("NumberOfRestarts", [optres[i].nit for i in range(Ntrials)])

@@ -166,7 +166,7 @@ def find_best(
     n: int,
     tol: float,
     weightpattern: np.ndarray = np.array([0.3, 0.5, 0.8, 0.95]),
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Select n points based on their values and distances to candidates.
 
     The points are chosen from x such that they minimize the expression
@@ -200,11 +200,14 @@ def find_best(
     numpy.ndarray
         Vector with indexes of the selected points.
     numpy.ndarray
+        n-by-dim matrix with the selected points.
+    numpy.ndarray
         n-by-n symmetric matrix with the distances between the selected points.
     """
     assert fx.ndim == 1
 
     selindex = np.zeros(n, dtype=np.intp)
+    xselected = np.zeros((n, x.shape[1]))
     distNewSamples = np.zeros((n, n))
 
     # Scale function values to [0,1]
@@ -215,9 +218,7 @@ def find_best(
     else:
         scaledvalue = (fx - minval) / (maxval - minval)
 
-    def argminscore(
-        dist: np.ndarray, valueweight: float = weightpattern[-1]
-    ) -> np.intp:
+    def argminscore(dist: np.ndarray, valueweight: float) -> np.intp:
         """Gets the index of the candidate point that minimizes the score.
 
         Parameters
@@ -251,28 +252,31 @@ def find_best(
         return np.argmin(score)
 
     if n == 1:
-        selindex[0] = argminscore(dist)
+        selindex[0] = argminscore(dist, weightpattern[-1])
+        xselected[0, :] = x[selindex[0], :]
     else:
         selindex[0] = argminscore(dist, weightpattern[0])
+        xselected[0, :] = x[selindex[0], :]
         for ii in range(1, n):
             # compute distance of all candidate points to the previously selected
             # candidate point
             newDist = scp.distance.cdist(
-                x[selindex[ii - 1], :].reshape(1, -1), x
+                xselected[ii - 1, :].reshape(1, -1), x
             )[0]
             dist = np.minimum(dist, newDist)
 
             selindex[ii] = argminscore(dist, weightpattern[ii % 4])
+            xselected[ii, :] = x[selindex[ii], :]
 
             for j in range(ii - 1):
                 distNewSamples[ii, j] = np.linalg.norm(
-                    x[selindex[ii], :] - x[selindex[j], :]
+                    xselected[ii, :] - xselected[j, :]
                 )
                 distNewSamples[j, ii] = distNewSamples[ii, j]
             distNewSamples[ii, ii - 1] = newDist[selindex[ii]]
             distNewSamples[ii - 1, ii] = distNewSamples[ii, ii - 1]
 
-    return selindex, distNewSamples
+    return selindex, xselected, distNewSamples
 
 
 def __eval_fun_and_timeit(args):
@@ -300,10 +304,10 @@ def minimize(
     fun,
     bounds: tuple,
     maxeval: int,
-    maxit: int = -1,
+    maxit: int = 0,
     surrogateModel=RbfModel(),
     sampling_strategy: SamplingStrategy = SamplingStrategy.STOCHASTIC,
-    nCandidatesPerIteration: int = -1,
+    nCandidatesPerIteration: int = 0,
     newSamplesPerIteration: int = 1,
 ) -> OptimizeResult:
     """Minimize a scalar function of one or more variables using a surrogate model.
@@ -315,17 +319,19 @@ def minimize(
     fun : callable
         The objective function to be minimized.
     bounds : tuple
-        Bounds for variables. Each element of the tuple must be a tuple with two elements,
-        corresponding to the lower and upper bound for the variable.
+        Bounds for variables. Each element of the tuple must be a tuple with two
+        elements, corresponding to the lower and upper bound for the variable.
     maxeval : int
         Maximum number of function evaluations.
     maxit : int, optional
-        Maximum number of algorithm iterations. The default is -1, which means that the algorithm will not use this parameter.
+        Maximum number of algorithm iterations. The default is 0, which means
+        that the algorithm will do as many iterations as allowed by maxeval.
     surrogateModel : RbfModel, optional
         Surrogate model to be used. The default is RbfModel().
     nCandidatesPerIteration : int, optional
-        Number of candidate points to be generated per iteration. The default is -1, which means
-        that the algorithm will decide how many points to generate.
+        Number of candidate points to be generated per iteration. The default is
+        0, which means that the algorithm will decide how many points to
+        generate.
     newSamplesPerIteration : int, optional
         Number of new samples to be generated per iteration. The default is 1.
 
@@ -340,10 +346,10 @@ def minimize(
 
     assert dim > 0
 
-    if nCandidatesPerIteration == -1:
+    if nCandidatesPerIteration == 0:
         nCandidatesPerIteration = 500 * dim
 
-    if maxit == -1:
+    if maxit == 0:
         maxit = maxeval
 
     surrogateModel.reserve(maxeval, dim)
@@ -371,9 +377,12 @@ def minimize(
         )  # Vector with function values on sampled points in the current trial
 
         # Number of initial samples
-        m = min(surrogateModel.nsamples(), maxeval)
+        m = min(surrogateModel.nsamples(), maxlocaleval)
         if m == 0:
             surrogateModel.create_initial_design(dim, bounds)
+            surrogateModel.setnsamples(
+                min(surrogateModel.nsamples(), maxlocaleval)
+            )
             m = surrogateModel.nsamples()
 
         # Compute f(x0)
@@ -391,7 +400,7 @@ def minimize(
                 (fun, surrogateModel.sample(i))
             )
         iBest = np.argmin(y[0:m]).item()
-        xselected = np.array([])
+        xselected = np.empty((0, dim))
 
         # Set coefficients of the surrogate model
         surrogateModel.update_coefficients(y[0:m])
@@ -468,7 +477,7 @@ def minimize(
 
             # select the next function evaluation points:
             CandValue, distMatrix = surrogateModel.eval(CandPoint)
-            selindex, distNewSamples = find_best(
+            selindex, xselected, distNewSamples = find_best(
                 CandPoint,
                 CandValue,
                 np.min(distMatrix, axis=1),
@@ -476,36 +485,36 @@ def minimize(
                 tol,
                 weightpattern=w_r,
             )
-            xselected = np.reshape(CandPoint[selindex, :], (selindex.size, -1))
+            nSelected = selindex.size
             distselected = np.concatenate(
                 (
-                    np.reshape(distMatrix[selindex, :], (selindex.size, -1)),
+                    np.reshape(distMatrix[selindex, :], (nSelected, -1)),
                     distNewSamples,
                 ),
                 axis=1,
             )
 
             # Compute f(xselected)
-            # if selindex.size > 1:
-            #     pool = Pool(min(os.cpu_count(), selindex.size))
+            # if nSelected > 1:
+            #     pool = Pool(min(os.cpu_count(), nSelected))
             #     pool_res = pool.map_async(
             #         __eval_fun_and_timeit, ((fun, xi) for xi in list(xselected))
             #     )
             #     pool.close()
             #     pool.join()
             #     result = pool_res.get()
-            #     y[m : m + selindex.size] = [result[i][0] for i in range(selindex.size)]
-            #     fevaltime[m : m + selindex.size] = [
-            #         result[i][1] for i in range(selindex.size)
+            #     y[m : m + nSelected] = [result[i][0] for i in range(nSelected)]
+            #     fevaltime[m : m + nSelected] = [
+            #         result[i][1] for i in range(nSelected)
             #     ]
             # else:
-            for i in range(selindex.size):
+            for i in range(nSelected):
                 y[m + i], fevaltime[numevals + m + i] = __eval_fun_and_timeit(
                     (fun, xselected[i, :])
                 )
 
             # determine best one of newly sampled points
-            iSelectedBest = m + np.argmin(y[m : m + selindex.size]).item()
+            iSelectedBest = m + np.argmin(y[m : m + nSelected]).item()
             if y[iSelectedBest] < y[iBest]:
                 if (y[iBest] - y[iSelectedBest]) > (1e-3) * abs(y[iBest]):
                     # "significant" improvement
@@ -544,12 +553,12 @@ def minimize(
                 succctr = 0
 
             # Update m
-            m = m + selindex.size
+            m = m + nSelected
 
             # Update surrogate model if there is another local iteration
             if m < maxlocaleval and localminflag == 0:
                 surrogateModel.update(
-                    xselected, y[m - selindex.size : m], distselected
+                    xselected, y[m - nSelected : m], distselected
                 )
 
         samples[
