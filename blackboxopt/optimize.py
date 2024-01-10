@@ -251,30 +251,24 @@ def find_best(
         # Return index with the best (smallest) score
         return np.argmin(score)
 
-    if n == 1:
-        selindex[0] = argminscore(dist, weightpattern[-1])
-        xselected[0, :] = x[selindex[0], :]
-    else:
-        selindex[0] = argminscore(dist, weightpattern[0])
-        xselected[0, :] = x[selindex[0], :]
-        for ii in range(1, n):
-            # compute distance of all candidate points to the previously selected
-            # candidate point
-            newDist = scp.distance.cdist(
-                xselected[ii - 1, :].reshape(1, -1), x
-            )[0]
-            dist = np.minimum(dist, newDist)
+    selindex[0] = argminscore(dist, weightpattern[0])
+    xselected[0, :] = x[selindex[0], :]
+    for ii in range(1, n):
+        # compute distance of all candidate points to the previously selected
+        # candidate point
+        newDist = scp.distance.cdist(xselected[ii - 1, :].reshape(1, -1), x)[0]
+        dist = np.minimum(dist, newDist)
 
-            selindex[ii] = argminscore(dist, weightpattern[ii % 4])
-            xselected[ii, :] = x[selindex[ii], :]
+        selindex[ii] = argminscore(dist, weightpattern[ii % 4])
+        xselected[ii, :] = x[selindex[ii], :]
 
-            for j in range(ii - 1):
-                distNewSamples[ii, j] = np.linalg.norm(
-                    xselected[ii, :] - xselected[j, :]
-                )
-                distNewSamples[j, ii] = distNewSamples[ii, j]
-            distNewSamples[ii, ii - 1] = newDist[selindex[ii]]
-            distNewSamples[ii - 1, ii] = distNewSamples[ii, ii - 1]
+        for j in range(ii - 1):
+            distNewSamples[ii, j] = np.linalg.norm(
+                xselected[ii, :] - xselected[j, :]
+            )
+            distNewSamples[j, ii] = distNewSamples[ii, j]
+        distNewSamples[ii, ii - 1] = newDist[selindex[ii]]
+        distNewSamples[ii - 1, ii] = distNewSamples[ii, ii - 1]
 
     return selindex, xselected, distNewSamples
 
@@ -383,11 +377,25 @@ def minimize(
         # Number of initial samples
         m = min(surrogateModel.nsamples(), maxlocaleval)
         if m == 0:
-            surrogateModel.create_initial_design(dim, bounds, iindex)
-            surrogateModel.setnsamples(
-                min(surrogateModel.nsamples(), maxlocaleval)
+            surrogateModel.create_initial_design(
+                dim, bounds, min(maxlocaleval, 2 * (dim + 1)), iindex
             )
             m = surrogateModel.nsamples()
+        else:
+            if any(
+                surrogateModel.samples()[:, iindex]
+                != np.round(surrogateModel.samples()[:, iindex])
+            ):
+                raise ValueError(
+                    "Initial samples must be integer values for integer variables"
+                )
+            if (
+                np.linalg.matrix_rank(surrogateModel.get_matrixP())
+                != surrogateModel.pdim()
+            ):
+                raise ValueError(
+                    "Initial samples are not sufficient to build the surrogate model"
+                )
 
         # Compute f(x0)
         # pool = Pool(min(os.cpu_count(), m))
@@ -414,6 +422,7 @@ def minimize(
         tol = 0.001 * minxrange * np.sqrt(float(dim))
         sigma_stdev_default = 0.2 * minxrange
         sigma_stdev = sigma_stdev_default  # current mutation rate
+        sigma_min = 0.2 * (0.5**6) * minxrange
         # maximal number of shrikage of standard deviation for normal distribution when generating the candidate points
         if sampling_strategy == SamplingStrategy.STOCHASTIC:
             maxshrinkparam = 5
@@ -549,7 +558,7 @@ def minimize(
 
                 if shrinkflag == 1:
                     shrinkctr = shrinkctr + 1
-                    sigma_stdev = sigma_stdev / 2
+                    sigma_stdev = max(sigma_min, sigma_stdev / 2)
                     print("Reducing sigma by a half!")
                 else:
                     localminflag = 1

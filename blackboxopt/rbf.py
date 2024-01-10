@@ -37,9 +37,6 @@ from scipy.spatial.distance import cdist
 from .utility import SLHDstandard
 
 RbfType = Enum("RbfType", ["LINEAR", "CUBIC", "THINPLATE"])
-RbfPolynomial = Enum(
-    "RbfPolynomial", ["NONE", "CONSTANT", "LINEAR", "QUADRATIC"]
-)
 
 
 class RbfModel:
@@ -53,23 +50,10 @@ class RbfModel:
         - RbfType.LINEAR: phi(r) = r.
         - RbfType.CUBIC: phi(r) = r^3.
         - RbfType.THINPLATE: phi(r) = r^2 * log(r).
-
-    polynomial : RbfPolynomial
-        Defines the polynomial tail of the RBF model. The options are:
-
-        - RbfPolynomial.NONE: No polynomial tail.
-        - RbfPolynomial.CONSTANT: Constant polynomial tail.
-        - RbfPolynomial.LINEAR: Linear polynomial tail.
-        - RbfPolynomial.QUADRATIC: Quadratic polynomial tail.
     """
 
-    def __init__(
-        self,
-        rbf_type: RbfType = RbfType.CUBIC,
-        polynomial: RbfPolynomial = RbfPolynomial.QUADRATIC,
-    ):
+    def __init__(self, rbf_type: RbfType = RbfType.CUBIC):
         self.type = rbf_type
-        self.polynomial = polynomial
 
         self._m = 0
         self._x = np.array([])
@@ -174,16 +158,12 @@ class RbfModel:
             Dimension of the polynomial tail.
         """
         dim = self.dim()
-        if self.polynomial == RbfPolynomial.NONE:
-            return 0
-        elif self.polynomial == RbfPolynomial.CONSTANT:
+        if self.type == RbfType.LINEAR:
             return 1
-        elif self.polynomial == RbfPolynomial.LINEAR:
+        elif self.type in (RbfType.CUBIC, RbfType.THINPLATE):
             return 1 + dim
-        elif self.polynomial == RbfPolynomial.QUADRATIC:
-            return ((dim + 1) * (dim + 2)) // 2
         else:
-            raise ValueError("Invalid polynomial degree")
+            raise ValueError("Unknown RBF type")
 
     def phi(self, r):
         """Applies the function phi to the distance(s) r.
@@ -229,23 +209,10 @@ class RbfModel:
         assert x.shape[1] == dim
 
         # Set up the polynomial tail matrix P
-        if self.polynomial == RbfPolynomial.NONE:
-            return np.array([])
-        elif self.polynomial == RbfPolynomial.CONSTANT:
+        if self.type == RbfType.LINEAR:
             return np.ones((m, 1))
-        elif self.polynomial == RbfPolynomial.LINEAR:
+        elif self.type in (RbfType.CUBIC, RbfType.THINPLATE):
             return np.concatenate((np.ones((m, 1)), x), axis=1)
-        elif self.polynomial == RbfPolynomial.QUADRATIC:
-            raise NotImplementedError(
-                "Quadratic polynomial tail not implemented"
-            )
-            return np.concatenate(
-                (
-                    np.concatenate((np.ones((m, 1)), x), axis=1),
-                    np.zeros((m, (dim * (dim + 1)) // 2)),  # TODO: Fix this
-                ),
-                axis=1,
-            )
         else:
             raise ValueError("Invalid polynomial tail")
 
@@ -268,13 +235,10 @@ class RbfModel:
         # compute pairwise distances between candidates and sampled points
         D = cdist(x, self._x[0 : self._m, :])
 
-        if self.polynomial == RbfPolynomial.NONE:
-            y = np.matmul(self.phi(D), self._coef[0 : self._m])
-        else:
-            Px = self.pbasis(x)
-            y = np.matmul(self.phi(D), self._coef[0 : self._m]) + np.dot(
-                Px, self._coef[self._m : self._m + Px.shape[1]]
-            )
+        Px = self.pbasis(x)
+        y = np.matmul(self.phi(D), self._coef[0 : self._m]) + np.dot(
+            Px, self._coef[self._m : self._m + Px.shape[1]]
+        )
 
         return y, D
 
@@ -373,7 +337,7 @@ class RbfModel:
             self.update_coefficients()
 
     def create_initial_design(
-        self, dim: int, bounds: tuple, iindex: tuple[int, ...] = ()
+        self, dim: int, bounds: tuple, m: int = 0, iindex: tuple[int, ...] = ()
     ) -> None:
         """Creates an initial set of samples for the RBF model.
 
@@ -386,30 +350,37 @@ class RbfModel:
         bounds : tuple
             Tuple of lower and upper bounds for each dimension of the domain
             space.
+        m : int, optional
+            Number of points to generate. If not provided, 2 * pdim() points are
+            generated.
         iindex : tuple, optional
             Indices of the input space that are integer. The default is ().
         """
-        m = 2 * (dim + 1)  # number of points in initial experimental design
         self.reserve(m, dim)
+        pdim = self.pdim()
+        if m == 0:
+            m = 2 * pdim
+            self.reserve(m, dim)
 
+        # Generate initial design and set matrix _P
         self._m = m
-        self._x[0:m, :] = SLHDstandard(dim, m, bounds=bounds)
-        self._x[0:m, iindex] = np.round(self._x[0:m, iindex])
-        if self.type == RbfType.CUBIC or self.type == RbfType.THINPLATE:
-            # for cubic and thin-plate spline RBF: rank_P must be Data.dim+1
-            P = np.concatenate((np.ones((m, 1)), self._x[0:m, :]), axis=1)
-            while np.linalg.matrix_rank(P) != dim + 1:
-                self._x[0:m, :] = SLHDstandard(dim, m, bounds=bounds)
-                self._x[0:m, iindex] = np.round(self._x[0:m, iindex])
-                P = np.concatenate((np.ones((m, 1)), self._x[0:m, :]), axis=1)
+        count = 0
+        while True:
+            self._x[0:m, :] = SLHDstandard(dim, m, bounds=bounds)
+            self._x[0:m, iindex] = np.round(self._x[0:m, iindex])
+            self._P[0:m, :] = self.pbasis(self._x[0:m, :])
+            if np.linalg.matrix_rank(self._P[0:m, :]) == pdim or m < pdim:
+                break
+            count += 1
+            if count > 100:
+                raise RuntimeError("Cannot create valid initial design")
 
         # Compute distances between new points and sampled points
         distNew = cdist(self._x[0:m, :], self._x[0:m, :])
 
-        # Update matrices _PHI and _P
+        # Set matrix _PHI
         self._PHI[0:m, 0:m] = self.phi(distNew)
         self._PHI[0:0, 0:m] = self._PHI[0:m, 0:0].T
-        self._P[0:m, :] = self.pbasis(self._x[0:m, :])
 
     def nsamples(self) -> int:
         """Get the number of sampled points.
@@ -440,6 +411,16 @@ class RbfModel:
         """
         return self._x[0 : self._m, :]
 
+    def get_matrixP(self) -> np.ndarray:
+        """Get the matrix P.
+
+        Returns
+        -------
+        out: np.ndarray
+            m-by-pdim matrix with the polynomial tail.
+        """
+        return self._P[0 : self._m, :]
+
     def sample(self, i: int) -> np.ndarray:
         """Get the i-th sampled point.
 
@@ -454,17 +435,3 @@ class RbfModel:
             i-th sampled point.
         """
         return self._x[i, :]
-
-    def setnsamples(self, m: int) -> None:
-        """Set the number of sampled points.
-
-        Parameters
-        ----------
-        m : int
-            Number of sampled points.
-        """
-        if m > self._m:
-            raise ValueError(
-                "Cannot increase number of samples using setnsamples(). Try update() instead."
-            )
-        self._m = m

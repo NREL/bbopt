@@ -35,7 +35,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pickle as p
 
-from blackboxopt.rbf import RbfPolynomial, RbfType, RbfModel
+from blackboxopt.rbf import RbfType, RbfModel
 from blackboxopt.optimize import SamplingStrategy, minimize, OptimizeResult
 from data import Data
 
@@ -89,7 +89,7 @@ def read_and_run(
     optres = []
     for j in range(Ntrials):
         # Create empty RBF model
-        rbfModel = RbfModel(rbf_type=rbf_type, polynomial=RbfPolynomial.LINEAR)
+        rbfModel = RbfModel(rbf_type)
 
         # # Uncomment to compare with Surrogates.jl
         # rbfModel.update(
@@ -269,30 +269,30 @@ if __name__ == "__main__":
     #     data_file="datainput_hartman3",
     #     nCandidatesPerIteration=300,
     #     maxeval=200,
-    #     Ntrials=1,
+    #     Ntrials=3,
     #     NumberNewSamples=1,
     #     sampling_strategy=SamplingStrategy.DYCORS,
+    #     PlotResult=True,
+    # )
+    # optres = read_and_run(
+    #     data_file="datainput_Branin",
+    #     nCandidatesPerIteration=1000,
+    #     maxeval=200,
+    #     Ntrials=3,
+    #     NumberNewSamples=1,
+    #     sampling_strategy=SamplingStrategy.STOCHASTIC,
     #     PlotResult=True,
     # )
     optres = read_and_run(
-        data_file="datainput_Branin",
-        nCandidatesPerIteration=1000,
-        maxeval=200,
+        data_file="datainput_BraninWithInteger",
+        nCandidatesPerIteration=200,
+        maxeval=100,
         Ntrials=3,
         NumberNewSamples=1,
-        sampling_strategy=SamplingStrategy.STOCHASTIC,
+        rbf_type=RbfType.THINPLATE,
+        sampling_strategy=SamplingStrategy.DYCORS,
         PlotResult=True,
     )
-    # optres = read_and_run(
-    #     data_file="datainput_BraninWithInteger",
-    #     nCandidatesPerIteration=2000,
-    #     maxeval=100,
-    #     Ntrials=3,
-    #     NumberNewSamples=1,
-    #     rbf_type=RbfType.THINPLATE,
-    #     sampling_strategy=SamplingStrategy.DYCORS,
-    #     PlotResult=True,
-    # )
 
     Ntrials = len(optres)
     print("BestValues", [optres[i].fx for i in range(Ntrials)])

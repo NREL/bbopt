@@ -31,7 +31,7 @@ __version__ = "0.1.0"
 __deprecated__ = False
 
 from examples.optprogram1 import read_check_data_file
-from blackboxopt.rbf import RbfPolynomial, RbfType, RbfModel
+from blackboxopt.rbf import RbfType, RbfModel
 from blackboxopt.optimize import minimize
 from blackboxopt.utility import SLHDstandard
 import numpy as np
@@ -49,7 +49,6 @@ if __name__ == "__main__":
     data = read_check_data_file(data_file)
     nCand = 500 * data.dim
     phifunction = RbfType.CUBIC
-    polynomial = RbfPolynomial.LINEAR
     m = 2 * (data.dim + 1)
     numstart = (
         0  # collect all objective function values of the current trial here
@@ -87,11 +86,10 @@ if __name__ == "__main__":
     print(data.dim)
     print(nCand)
     print(phifunction)
-    print(polynomial)
     print(samples)
     print("LocalStochRBFstop Start")
 
-    rbfModel = RbfModel(phifunction, polynomial)
+    rbfModel = RbfModel(phifunction)
     rbfModel.update(samples)
 
     optres = minimize(
