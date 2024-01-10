@@ -34,10 +34,9 @@ from enum import Enum
 import numpy as np
 import scipy.spatial as scp
 import time
-
-# from multiprocessing import Pool
-# import os
 from dataclasses import dataclass
+import concurrent.futures
+import os
 
 from .rbf import RbfModel
 
@@ -391,6 +390,9 @@ def minimize(
     xlow = np.array([bounds[i][0] for i in range(dim)])
     xup = np.array([bounds[i][1] for i in range(dim)])
 
+    # Number of CPUs for parallel evaluations
+    ncpu = os.cpu_count() or 1
+
     assert dim > 0
 
     if nCandidatesPerIteration == 0:
@@ -447,19 +449,16 @@ def minimize(
                 )
 
         # Compute f(x0)
-        # pool = Pool(min(os.cpu_count(), m))
-        # pool_res = pool.map_async(
-        #     __eval_fun_and_timeit, ((fun, xi) for xi in list(surrogateModel.x))
-        # )
-        # pool.close()
-        # pool.join()
-        # result = pool_res.get()
-        # y[0:m] = [result[i][0] for i in range(m)]
-        # fevaltime[0:m] = [result[i][1] for i in range(m)]
-        for i in range(m):
-            y[i], fevaltime[numevals + i] = __eval_fun_and_timeit(
-                (fun, surrogateModel.sample(i))
-            )
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=min(ncpu, m)
+        ) as executor:
+            # Prepare the arguments for parallel execution
+            arguments = [(fun, surrogateModel.sample(i)) for i in range(m)]
+            # Use the map function to parallelize the evaluations
+            results = list(executor.map(__eval_fun_and_timeit, arguments))
+        y[0:m], fevaltime[numevals : numevals + m] = zip(*results)
+
+        # Determine best point found so far
         iBest = np.argmin(y[0:m]).item()
         xselected = np.empty((0, dim))
 
@@ -560,23 +559,28 @@ def minimize(
             )
 
             # Compute f(xselected)
-            # if nSelected > 1:
-            #     pool = Pool(min(os.cpu_count(), nSelected))
-            #     pool_res = pool.map_async(
-            #         __eval_fun_and_timeit, ((fun, xi) for xi in list(xselected))
-            #     )
-            #     pool.close()
-            #     pool.join()
-            #     result = pool_res.get()
-            #     y[m : m + nSelected] = [result[i][0] for i in range(nSelected)]
-            #     fevaltime[m : m + nSelected] = [
-            #         result[i][1] for i in range(nSelected)
-            #     ]
-            # else:
-            for i in range(nSelected):
-                y[m + i], fevaltime[numevals + m + i] = __eval_fun_and_timeit(
-                    (fun, xselected[i, :])
-                )
+            if nSelected > 1:
+                with concurrent.futures.ThreadPoolExecutor(
+                    max_workers=min(ncpu, m)
+                ) as executor:
+                    # Prepare the arguments for parallel execution
+                    arguments = [
+                        (fun, xselected[i, :]) for i in range(nSelected)
+                    ]
+                    # Use the map function to parallelize the evaluations
+                    results = list(
+                        executor.map(__eval_fun_and_timeit, arguments)
+                    )
+                (
+                    y[m : m + nSelected],
+                    fevaltime[numevals + m : numevals + m + nSelected],
+                ) = zip(*results)
+            else:
+                for i in range(nSelected):
+                    (
+                        y[m + i],
+                        fevaltime[numevals + m + i],
+                    ) = __eval_fun_and_timeit((fun, xselected[i, :]))
 
             # determine best one of newly sampled points
             iSelectedBest = m + np.argmin(y[m : m + nSelected]).item()
