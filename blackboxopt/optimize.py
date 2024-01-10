@@ -44,10 +44,45 @@ from .rbf import RbfModel
 SamplingStrategy = Enum("SamplingStrategy", ["STOCHASTIC", "DYCORS"])
 
 
+def get_uniform_sample(
+    n: int, bounds: tuple, iindex: tuple = ()
+) -> np.ndarray:
+    """Generate a uniform sample.
+
+    Parameters
+    ----------
+    n : int
+        Number of samples to be generated.
+    bounds : tuple
+        Bounds for variables. Each element of the tuple must be a tuple with two elements,
+        corresponding to the lower and upper bound for the variable.
+    iindex : tuple, optional
+        Indices of the input space that are integer. The default is ().
+
+    Returns
+    -------
+    numpy.ndarray
+        Matrix with the generated samples.
+    """
+    dim = len(bounds)
+    xlow = np.array([bounds[i][0] for i in range(dim)])
+    xup = np.array([bounds[i][1] for i in range(dim)])
+
+    # Generate n samples
+    xnew = xlow + np.random.rand(n, dim) * (xup - xlow)
+
+    # Round integer variables
+    xnew[:, iindex] = np.round(xnew[:, iindex])
+
+    return xnew
+
+
 def get_stochastic_sample(
     x: np.ndarray, n: int, sigma_stdev: float, bounds: tuple
 ) -> np.ndarray:
     """Generate a stochastic sample.
+
+    For integer variables, use get_dycors_sample() instead.
 
     Parameters
     ----------
@@ -78,7 +113,12 @@ def get_stochastic_sample(
 
 
 def get_dycors_sample(
-    x: np.ndarray, n: int, sigma_stdev: float, DDSprob: float, bounds: tuple
+    x: np.ndarray,
+    n: int,
+    sigma_stdev: float,
+    DDSprob: float,
+    bounds: tuple,
+    iindex: tuple = (),
 ) -> np.ndarray:
     """Generate a DYCORS sample.
 
@@ -95,6 +135,8 @@ def get_dycors_sample(
     bounds : tuple
         Bounds for variables. Each element of the tuple must be a tuple with two elements,
         corresponding to the lower and upper bound for the variable.
+    iindex : tuple, optional
+        Indices of the input space that are integer. The default is ().
 
     Returns
     -------
@@ -115,7 +157,14 @@ def get_dycors_sample(
             ar[r[0]] = True
         for jj in range(dim):
             if ar[jj]:
-                xnew[ii, jj] = xnew[ii, jj] + sigma_stdev * np.random.randn(1)
+                s_std = sigma_stdev * np.random.randn(1).item()
+                if jj in iindex:
+                    # integer perturbation has to be at least 1 unit
+                    if abs(s_std) < 1:
+                        s_std = np.sign(s_std)
+                    else:
+                        s_std = np.round(s_std)
+                xnew[ii, jj] = xnew[ii, jj] + s_std
 
                 if xnew[ii, jj] < xlow[jj]:
                     xnew[ii, jj] = xlow[jj] + (xlow[jj] - xnew[ii, jj])
@@ -476,12 +525,10 @@ def minimize(
                     sigma_stdev,
                     DDSprob,
                     bounds,
+                    iindex,
                 )
             else:
                 raise ValueError("Invalid sampling_strategy")
-
-            # Round integer variables
-            CandPoint[:, iindex] = np.round(CandPoint[:, iindex])
 
             # weight pattern for computing the score
             if sampling_strategy == SamplingStrategy.STOCHASTIC:
