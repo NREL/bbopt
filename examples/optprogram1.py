@@ -266,21 +266,21 @@ if __name__ == "__main__":
     np.random.seed(3)
 
     # optres = read_and_run(
-    #     data_file="datainput_hartman3",
-    #     nCandidatesPerIteration=300,
-    #     maxeval=200,
-    #     Ntrials=3,
-    #     NumberNewSamples=1,
-    #     sampling_strategy=SamplingStrategy.DYCORS,
-    #     PlotResult=True,
-    # )
-    # optres = read_and_run(
     #     data_file="datainput_Branin",
     #     nCandidatesPerIteration=1000,
     #     maxeval=200,
     #     Ntrials=3,
     #     NumberNewSamples=1,
     #     sampling_strategy=SamplingStrategy.STOCHASTIC,
+    #     PlotResult=True,
+    # )
+    # optres = read_and_run(
+    #     data_file="datainput_hartman3",
+    #     nCandidatesPerIteration=300,
+    #     maxeval=200,
+    #     Ntrials=3,
+    #     NumberNewSamples=1,
+    #     sampling_strategy=SamplingStrategy.DYCORS,
     #     PlotResult=True,
     # )
     optres = read_and_run(

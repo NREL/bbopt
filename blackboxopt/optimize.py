@@ -30,150 +30,20 @@ __credits__ = [
 __version__ = "0.1.0"
 __deprecated__ = False
 
-from enum import Enum
 import numpy as np
 import scipy.spatial as scp
 import time
 from dataclasses import dataclass
 import concurrent.futures
 import os
+from collections import deque
 
 from .rbf import RbfModel
-
-SamplingStrategy = Enum("SamplingStrategy", ["STOCHASTIC", "DYCORS"])
-
-
-def get_uniform_sample(
-    n: int, bounds: tuple, iindex: tuple = ()
-) -> np.ndarray:
-    """Generate a uniform sample.
-
-    Parameters
-    ----------
-    n : int
-        Number of samples to be generated.
-    bounds : tuple
-        Bounds for variables. Each element of the tuple must be a tuple with two elements,
-        corresponding to the lower and upper bound for the variable.
-    iindex : tuple, optional
-        Indices of the input space that are integer. The default is ().
-
-    Returns
-    -------
-    numpy.ndarray
-        Matrix with the generated samples.
-    """
-    dim = len(bounds)
-    xlow = np.array([bounds[i][0] for i in range(dim)])
-    xup = np.array([bounds[i][1] for i in range(dim)])
-
-    # Generate n samples
-    xnew = xlow + np.random.rand(n, dim) * (xup - xlow)
-
-    # Round integer variables
-    xnew[:, iindex] = np.round(xnew[:, iindex])
-
-    return xnew
-
-
-def get_stochastic_sample(
-    x: np.ndarray, n: int, sigma_stdev: float, bounds: tuple
-) -> np.ndarray:
-    """Generate a stochastic sample.
-
-    For integer variables, use get_dycors_sample() instead.
-
-    Parameters
-    ----------
-    x : numpy.ndarray
-        Point around which the sample will be generated.
-    n : int
-        Number of samples to be generated.
-    sigma_stdev : float
-        Standard deviation of the normal distribution.
-    bounds : tuple
-        Bounds for variables. Each element of the tuple must be a tuple with two elements,
-        corresponding to the lower and upper bound for the variable.
-
-    Returns
-    -------
-    numpy.ndarray
-        Matrix with the generated samples.
-    """
-    dim = len(x)
-    xlow = np.array([bounds[i][0] for i in range(dim)])
-    xup = np.array([bounds[i][1] for i in range(dim)])
-
-    # Generate n samples
-    xnew = np.tile(x, (n, 1)) + sigma_stdev * np.random.randn(n, dim)
-    xnew = np.maximum(xlow, np.minimum(xnew, xup))
-
-    return xnew
-
-
-def get_dycors_sample(
-    x: np.ndarray,
-    n: int,
-    sigma_stdev: float,
-    DDSprob: float,
-    bounds: tuple,
-    iindex: tuple = (),
-) -> np.ndarray:
-    """Generate a DYCORS sample.
-
-    Parameters
-    ----------
-    x : numpy.ndarray
-        Point around which the sample will be generated.
-    n : int
-        Number of samples to be generated.
-    sigma_stdev : float
-        Standard deviation of the normal distribution.
-    DDSprob : float
-        Perturbation probability.
-    bounds : tuple
-        Bounds for variables. Each element of the tuple must be a tuple with two elements,
-        corresponding to the lower and upper bound for the variable.
-    iindex : tuple, optional
-        Indices of the input space that are integer. The default is ().
-
-    Returns
-    -------
-    numpy.ndarray
-        Matrix with the generated samples.
-    """
-    dim = len(x)
-    xlow = np.array([bounds[i][0] for i in range(dim)])
-    xup = np.array([bounds[i][1] for i in range(dim)])
-
-    # generate n samples
-    xnew = np.kron(np.ones((n, 1)), x)
-    for ii in range(n):
-        r = np.random.rand(dim)
-        ar = r < DDSprob
-        if not (any(ar)):
-            r = np.random.permutation(dim)
-            ar[r[0]] = True
-        for jj in range(dim):
-            if ar[jj]:
-                s_std = sigma_stdev * np.random.randn(1).item()
-                if jj in iindex:
-                    # integer perturbation has to be at least 1 unit
-                    if abs(s_std) < 1:
-                        s_std = np.sign(s_std)
-                    else:
-                        s_std = np.round(s_std)
-                xnew[ii, jj] = xnew[ii, jj] + s_std
-
-                if xnew[ii, jj] < xlow[jj]:
-                    xnew[ii, jj] = xlow[jj] + (xlow[jj] - xnew[ii, jj])
-                    if xnew[ii, jj] > xup[jj]:
-                        xnew[ii, jj] = xlow[jj]
-                elif xnew[ii, jj] > xup[jj]:
-                    xnew[ii, jj] = xup[jj] - (xnew[ii, jj] - xup[jj])
-                    if xnew[ii, jj] < xlow[jj]:
-                        xnew[ii, jj] = xup[jj]
-    return xnew
+from .sampling import (
+    SamplingStrategy,
+    get_stochastic_sample,
+    get_dycors_sample,
+)
 
 
 @dataclass
@@ -213,7 +83,7 @@ def find_best(
     dist: np.ndarray,
     n: int,
     tol: float,
-    weightpattern: np.ndarray = np.array([0.3, 0.5, 0.8, 0.95]),
+    weightpattern=[0.3, 0.5, 0.8, 0.95],
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Select n points based on their values and distances to candidates.
 
@@ -240,7 +110,7 @@ def find_best(
         Number of points to be selected for the next costly evaluation.
     tol : float
         Tolerance value for excluding candidate points that are too close to already sampled points.
-    weightpattern: np.ndarray
+    weightpattern: list-like, optional
         Weight(s) `w` to be used in the score given in a circular list.
 
     Returns
@@ -491,7 +361,7 @@ def minimize(
         succctr = 0  # number of consecutive successful iterations
 
         # do until max number of f-evals reached or local min found
-        weightpattern = np.array([0.3, 0.5, 0.8, 0.95])
+        weightpattern = deque([0.3, 0.5, 0.8, 0.95])
         while m < maxlocaleval and localminflag == 0:
             iterctr = iterctr + 1  # increment iteration counter
             print("\n Iteration: %d \n" % iterctr)
@@ -529,16 +399,6 @@ def minimize(
             else:
                 raise ValueError("Invalid sampling_strategy")
 
-            # weight pattern for computing the score
-            if sampling_strategy == SamplingStrategy.STOCHASTIC:
-                w_r = weightpattern
-            elif sampling_strategy == SamplingStrategy.DYCORS:
-                w_r = np.array(
-                    [weightpattern[(iterctr - 1) % len(weightpattern)]]
-                )
-            else:
-                raise ValueError("Invalid sampling_strategy")
-
             # select the next function evaluation points:
             CandValue, distMatrix = surrogateModel.eval(CandPoint)
             selindex, xselected, distNewSamples = find_best(
@@ -547,7 +407,7 @@ def minimize(
                 np.min(distMatrix, axis=1),
                 NumberNewSamples,
                 tol,
-                weightpattern=w_r,
+                weightpattern=weightpattern,
             )
             nSelected = selindex.size
             distselected = np.concatenate(
@@ -557,6 +417,7 @@ def minimize(
                 ),
                 axis=1,
             )
+            weightpattern.rotate(-nSelected)
 
             # Compute f(xselected)
             if nSelected > 1:
