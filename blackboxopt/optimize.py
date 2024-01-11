@@ -78,7 +78,6 @@ def find_best(
     fx: np.ndarray,
     dist: np.ndarray,
     n: int,
-    tol: float,
     weightpattern=[0.3, 0.5, 0.8, 0.95],
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Select n points based on their values and distances to candidates.
@@ -162,7 +161,7 @@ def find_best(
 
         # Assign bad values to points that are too close to already
         # evaluated/chosen points
-        score[dist < tol] = np.inf
+        score[dist == 0] = np.inf
 
         # Return index with the best (smallest) score
         return np.argmin(score)
@@ -259,7 +258,7 @@ def minimize(
     xup = np.array([bounds[i][1] for i in range(dim)])
 
     # tolerance parameters
-    tol = 0.001 * np.min(xup - xlow) * np.sqrt(float(dim))
+    # tol = 0.001 * np.min(xup - xlow) * np.sqrt(float(dim))
     failtolerance = max(5, dim)
     succtolerance = 3
 
@@ -387,7 +386,6 @@ def minimize(
                 CandValue,
                 np.min(distMatrix, axis=1),
                 NumberNewSamples,
-                tol,
                 weightpattern=sampler.weightpattern,
             )
             nSelected = selindex.size

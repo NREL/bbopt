@@ -298,9 +298,10 @@ if __name__ == "__main__":
     #     sampler=sampling.NormalSampler(
     #         200,
     #         sigma=0.2 * 15,
-    #         sigma_min=0.2 * 15 * 0.5**6,
+    #         sigma_min=0.2 * 15 * 0.5**5,
     #         sigma_max=0.2 * 15,
     #         strategy=sampling.SamplingStrategy.DDS,
+    #         weightpattern=[0.3, 0.5, 0.8, 0.95],
     #     ),
     #     maxeval=100,
     #     Ntrials=3,
