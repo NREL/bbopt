@@ -281,8 +281,12 @@ def minimize(
     # Record initial sigma
     if isinstance(sampler, NormalSampler):
         sigma0 = sampler.sigma
+        weightpattern0 = [
+            sampler.weightpattern[i] for i in range(len(sampler.weightpattern))
+        ]
     else:
         sigma0 = 0
+        weightpattern0 = []
 
     # output variables
     samples = np.zeros((maxeval, dim))  # Matrix with all sampled points
@@ -489,6 +493,9 @@ def minimize(
             surrogateModel.reset()
             if isinstance(sampler, NormalSampler):
                 sampler.sigma = sigma0
+                sampler.weightpattern = [
+                    weightpattern0[i] for i in range(len(weightpattern0))
+                ]
 
     return OptimizeResult(
         x=xbest,
