@@ -32,7 +32,7 @@ __deprecated__ = False
 
 from examples.optprogram1 import read_check_data_file
 from blackboxopt.rbf import RbfType, RbfModel
-from blackboxopt.optimize import minimize_local
+from blackboxopt.optimize import stochastic_response_surface
 from blackboxopt.utility import SLHDstandard
 from blackboxopt.sampling import NormalSampler, SamplingStrategy
 import numpy as np
@@ -94,7 +94,7 @@ if __name__ == "__main__":
     rbfModel.update(samples)
 
     minxrange = np.min(data.xup - data.xlow)
-    optres = minimize_local(
+    optres = stochastic_response_surface(
         data.objfunction,
         bounds=(
             (data.xlow[0], data.xup[0]),

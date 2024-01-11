@@ -36,10 +36,14 @@ __version__ = "0.1.0"
 __deprecated__ = False
 
 from enum import Enum
-from tabnanny import check
 import numpy as np
 
-SamplingStrategy = Enum("SamplingStrategy", ["NORMAL", "DDS", "UNIFORM"])
+
+class SamplingStrategy(Enum):
+    NORMAL = 1  # normal distribution
+    DDS = 2  # DDS. Used in the DYCORS algorithm
+    UNIFORM = 3  # uniform distribution
+    DDS_UNIFORM = 4  # sample twice, first DDS then uniform distribution
 
 
 class Sampler:
@@ -137,6 +141,7 @@ class NormalSampler(Sampler):
             SamplingStrategy.NORMAL,
             SamplingStrategy.DDS,
             SamplingStrategy.UNIFORM,
+            SamplingStrategy.DDS_UNIFORM,
         )
 
     def get_normal_sample(
@@ -286,6 +291,16 @@ class NormalSampler(Sampler):
         elif self.strategy == SamplingStrategy.DDS:
             return self.get_dds_sample(
                 bounds, probability, iindex=iindex, mu=mu
+            )
+        elif self.strategy == SamplingStrategy.DDS_UNIFORM:
+            return np.concatenate(
+                (
+                    self.get_dds_sample(
+                        bounds, probability, iindex=iindex, mu=mu
+                    ),
+                    self.get_uniform_sample(bounds, iindex=iindex),
+                ),
+                axis=0,
             )
         else:
             raise ValueError("Invalid sampling strategy")

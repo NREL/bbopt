@@ -46,6 +46,7 @@ def read_and_run(
     NumberNewSamples: int = 0,
     rbf_type: rbf.RbfType = rbf.RbfType.CUBIC,
     PlotResult: bool = True,
+    optim_func=optimize.multistart_stochastic_response_surface,
 ) -> list[optimize.OptimizeResult]:
     """Perform the optimization, save the solution and plot.
 
@@ -106,7 +107,7 @@ def read_and_run(
 
         # Call the surrogate optimization function
         optres.append(
-            optimize.minimize(
+            optim_func(
                 data.objfunction,
                 bounds=tuple(
                     (data.xlow[i], data.xup[i]) for i in range(data.dim)
@@ -258,56 +259,93 @@ def check_set_parameters(
 
 
 if __name__ == "__main__":
+    import argparse
+
     np.random.seed(3)
 
-    # optres = read_and_run(
-    #     data_file="datainput_Branin",
-    #     sampler=sampling.NormalSampler(
-    #         1000,
-    #         sigma=0.2 * 15,
-    #         sigma_min=0.2 * 15 * 0.5**5,
-    #         sigma_max=0.2 * 15,
-    #         strategy=sampling.SamplingStrategy.NORMAL,
-    #         weightpattern=[
-    #             0.95,
-    #         ],
-    #     ),
-    #     maxeval=200,
-    #     Ntrials=3,
-    #     NumberNewSamples=1,
-    #     PlotResult=True,
-    # )
-    optres = read_and_run(
-        data_file="datainput_hartman3",
-        sampler=sampling.NormalSampler(
-            300,
-            sigma=0.2,
-            sigma_min=0.2 * 0.5**6,
-            sigma_max=0.2,
-            strategy=sampling.SamplingStrategy.DDS,
-            weightpattern=[0.3, 0.5, 0.8, 0.95],
-        ),
-        maxeval=200,
-        Ntrials=1,
-        NumberNewSamples=1,
-        PlotResult=True,
+    parser = argparse.ArgumentParser(
+        description="Run the optimization and plot the results."
     )
-    # optres = read_and_run(
-    #     data_file="datainput_BraninWithInteger",
-    #     sampler=sampling.NormalSampler(
-    #         200,
-    #         sigma=0.2 * 15,
-    #         sigma_min=0.2 * 15 * 0.5**5,
-    #         sigma_max=0.2 * 15,
-    #         strategy=sampling.SamplingStrategy.DDS,
-    #         weightpattern=[0.3, 0.5, 0.8, 0.95],
-    #     ),
-    #     maxeval=100,
-    #     Ntrials=3,
-    #     NumberNewSamples=1,
-    #     rbf_type=rbf.RbfType.THINPLATE,
-    #     PlotResult=True,
-    # )
+    parser.add_argument(
+        "--config",
+        type=int,
+        help="Configuration number to be used.",
+        default=1,
+    )
+    args = parser.parse_args()
+
+    # args.config = 4
+    if args.config == 1:
+        optres = read_and_run(
+            data_file="datainput_Branin",
+            sampler=sampling.NormalSampler(
+                1000,
+                sigma=0.2 * 15,
+                sigma_min=0.2 * 15 * 0.5**5,
+                sigma_max=0.2 * 15,
+                strategy=sampling.SamplingStrategy.NORMAL,
+                weightpattern=[
+                    0.95,
+                ],
+            ),
+            maxeval=200,
+            Ntrials=3,
+            NumberNewSamples=1,
+            PlotResult=True,
+        )
+    elif args.config == 2:
+        optres = read_and_run(
+            data_file="datainput_hartman3",
+            sampler=sampling.NormalSampler(
+                300,
+                sigma=0.2,
+                sigma_min=0.2 * 0.5**6,
+                sigma_max=0.2,
+                strategy=sampling.SamplingStrategy.DDS,
+                weightpattern=[0.3, 0.5, 0.8, 0.95],
+            ),
+            maxeval=200,
+            Ntrials=1,
+            NumberNewSamples=1,
+            PlotResult=True,
+        )
+    elif args.config == 3:
+        optres = read_and_run(
+            data_file="datainput_BraninWithInteger",
+            sampler=sampling.NormalSampler(
+                200,
+                sigma=0.2 * 15,
+                sigma_min=0.2 * 15 * 0.5**5,
+                sigma_max=0.2 * 15,
+                strategy=sampling.SamplingStrategy.DDS,
+                weightpattern=[0.3, 0.5, 0.8, 0.95],
+            ),
+            maxeval=100,
+            Ntrials=3,
+            NumberNewSamples=1,
+            rbf_type=rbf.RbfType.THINPLATE,
+            PlotResult=True,
+        )
+    elif args.config == 4:
+        optres = read_and_run(
+            data_file="datainput_BraninWithInteger",
+            sampler=sampling.NormalSampler(
+                200,
+                sigma=0.2 * 15,
+                sigma_min=0.2 * 15 * 0.5**5,
+                sigma_max=0.2 * 15,
+                strategy=sampling.SamplingStrategy.DDS_UNIFORM,
+                weightpattern=[0.3, 0.5, 0.8, 0.95],
+            ),
+            maxeval=100,
+            Ntrials=3,
+            NumberNewSamples=1,
+            rbf_type=rbf.RbfType.THINPLATE,
+            PlotResult=True,
+            optim_func=optimize.stochastic_response_surface,
+        )
+    else:
+        raise ValueError("Invalid configuration number.")
 
     Ntrials = len(optres)
     print("BestValues", [optres[i].fx for i in range(Ntrials)])
@@ -317,4 +355,4 @@ if __name__ == "__main__":
         "AvgFUncEvalTime",
         [np.mean(optres[i].fevaltime) for i in range(Ntrials)],
     )
-    print("NumberOfRestarts", [optres[i].nit for i in range(Ntrials)])
+    print("NumberOfIterations", [optres[i].nit for i in range(Ntrials)])

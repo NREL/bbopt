@@ -212,7 +212,7 @@ def __eval_fun_and_timeit(args):
     return res, tf - t0
 
 
-def minimize_local(
+def stochastic_response_surface(
     fun,
     bounds: tuple,
     maxeval: int,
@@ -221,9 +221,13 @@ def minimize_local(
     surrogateModel=RbfModel(),
     sampler=Sampler(1),
     newSamplesPerIteration: int = 1,
+    expectedRelativeImprovement: float = 1e-3,
+    failtolerance: int = 5,
 ) -> OptimizeResult:
     """Minimize a scalar function of one or more variables using a response
     surface model approach based on a surrogate model.
+
+    This method is based on [1]_.
 
     Parameters
     ----------
@@ -246,20 +250,33 @@ def minimize_local(
         iteration.
     newSamplesPerIteration : int, optional
         Number of new samples to be generated per iteration. The default is 1.
+    expectedRelativeImprovement : float, optional
+        Expected relative improvement with respect to the current best value.
+        An improvement is considered significant if it is greater than
+        ``expectedRelativeImprovement`` times the absolute value of the current
+        best value. The default is 1e-3.
+    failtolerance : int, optional
+        Number of consecutive insignificant improvements before the algorithm
+        modifies the sampler. The default is 5.
 
     Returns
     -------
     OptimizeResult
         The optimization result.
+
+    References
+    ----------
+    .. [1] Rommel G Regis and Christine A Shoemaker. A stochastic radial basis
+        function method for the global optimization of expensive functions.
+        INFORMS Journal on Computing, 19(4):497–509, 2007.
     """
     ncpu = os.cpu_count() or 1  # Number of CPUs for parallel evaluations
     dim = len(bounds)  # Dimension of the problem
     assert dim > 0
 
     # tolerance parameters
-    # tol = 0.001 * np.min(xup - xlow) * np.sqrt(float(dim))
-    failtolerance = max(5, dim)
-    succtolerance = 3
+    failtolerance = max(failtolerance, dim)  # must be at least dim
+    succtolerance = 3  # Number of consecutive significant improvements before the algorithm modifies the sampler
 
     # Use a number of candidates that is greater than 1
     if sampler.n <= 1:
@@ -402,7 +419,9 @@ def minimize_local(
         iSelectedBest = np.argmin(ySelected).item()
         fxSelectedBest = ySelected[iSelectedBest]
         if fxSelectedBest < out.fx:
-            if (out.fx - fxSelectedBest) > (1e-3) * abs(out.fx):
+            if (out.fx - fxSelectedBest) > expectedRelativeImprovement * abs(
+                out.fx
+            ):
                 # "significant" improvement
                 failctr = 0
                 succctr = succctr + 1
@@ -446,7 +465,7 @@ def minimize_local(
     return out
 
 
-def minimize(
+def multistart_stochastic_response_surface(
     fun,
     bounds: tuple,
     maxeval: int,
@@ -503,7 +522,7 @@ def minimize(
     # do until max number of f-evals reached
     while out.nfev < maxeval:
         # Run local optimization
-        out_local = minimize_local(
+        out_local = stochastic_response_surface(
             fun,
             bounds,
             maxeval - out.nfev,
