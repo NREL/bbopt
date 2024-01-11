@@ -30,6 +30,7 @@ __credits__ = [
 __version__ = "0.1.0"
 __deprecated__ = False
 
+from copy import deepcopy
 import numpy as np
 import scipy.spatial as scp
 import time
@@ -211,20 +212,18 @@ def __eval_fun_and_timeit(args):
     return res, tf - t0
 
 
-def minimize(
+def minimize_local(
     fun,
     bounds: tuple,
     maxeval: int,
     *,
     iindex: tuple[int, ...] = (),
-    maxit: int = 0,
     surrogateModel=RbfModel(),
     sampler=Sampler(1),
     newSamplesPerIteration: int = 1,
 ) -> OptimizeResult:
-    """Minimize a scalar function of one or more variables using a surrogate model.
-
-    On exit, the surrogate model is updated with the samples from the last iteration.
+    """Minimize a scalar function of one or more variables using a response
+    surface model approach based on a surrogate model.
 
     Parameters
     ----------
@@ -237,9 +236,240 @@ def minimize(
         Maximum number of function evaluations.
     iindex : tuple, optional
         Indices of the input space that are integer. The default is ().
-    maxit : int, optional
-        Maximum number of algorithm iterations. The default is 0, which means
-        that the algorithm will do as many iterations as allowed by maxeval.
+    surrogateModel : surrogate model, optional
+        Surrogate model to be used. The default is RbfModel().
+        On exit, the surrogate model is updated to represent the one used in the
+        last iteration.
+    sampler : sampler, optional
+        Sampler to be used. The default is Sampler(1).
+        On exit, the sampler is updated to represent the one used in the last
+        iteration.
+    newSamplesPerIteration : int, optional
+        Number of new samples to be generated per iteration. The default is 1.
+
+    Returns
+    -------
+    OptimizeResult
+        The optimization result.
+    """
+    ncpu = os.cpu_count() or 1  # Number of CPUs for parallel evaluations
+    dim = len(bounds)  # Dimension of the problem
+    assert dim > 0
+
+    # tolerance parameters
+    # tol = 0.001 * np.min(xup - xlow) * np.sqrt(float(dim))
+    failtolerance = max(5, dim)
+    succtolerance = 3
+
+    # Use a number of candidates that is greater than 1
+    if sampler.n <= 1:
+        sampler.n = 500 * dim
+
+    # Reserve space for the surrogate model to avoid repeated allocations
+    surrogateModel.reserve(maxeval, dim)
+
+    # Initialize output
+    out = OptimizeResult(
+        x=np.zeros(dim),
+        fx=np.inf,
+        nit=0,
+        nfev=0,
+        samples=np.zeros((maxeval, dim)),
+        fsamples=np.zeros(maxeval),
+        fevaltime=np.zeros(maxeval),
+    )
+
+    # Number of initial samples
+    m = min(surrogateModel.nsamples(), maxeval)
+
+    if m == 0:
+        # Initialize surrogate model
+        surrogateModel.create_initial_design(
+            dim, bounds, min(maxeval, 2 * (dim + 1)), iindex
+        )
+        m = surrogateModel.nsamples()
+    else:
+        # Check if initial samples are integer values for integer variables
+        if any(
+            surrogateModel.samples()[:, iindex]
+            != np.round(surrogateModel.samples()[:, iindex])
+        ):
+            raise ValueError(
+                "Initial samples must be integer values for integer variables"
+            )
+        # Check if initial samples are sufficient to build the surrogate model
+        if (
+            np.linalg.matrix_rank(surrogateModel.get_matrixP())
+            != surrogateModel.pdim()
+        ):
+            raise ValueError(
+                "Initial samples are not sufficient to build the surrogate model"
+            )
+    m0 = m  # Initial number of samples
+
+    # Compute f(x0)
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=min(ncpu, m)
+    ) as executor:
+        # Prepare the arguments for parallel execution
+        arguments = [(fun, surrogateModel.sample(i)) for i in range(m)]
+        # Use the map function to parallelize the evaluations
+        results = list(executor.map(__eval_fun_and_timeit, arguments))
+    out.fsamples[0:m], out.fevaltime[0:m] = zip(*results)
+
+    # Set coefficients of the surrogate model
+    surrogateModel.update_coefficients(np.array(out.fsamples[0:m]))
+
+    # Update output variables
+    iBest = np.argmin(out.fsamples[0:m]).item()
+    out.x = surrogateModel.sample(iBest)
+    out.fx = out.fsamples[iBest]
+    out.samples[0:m, :] = surrogateModel.samples()
+
+    # counters
+    failctr = 0  # number of consecutive unsuccessful iterations
+    succctr = 0  # number of consecutive successful iterations
+
+    # do until max number of f-evals reached or local min found
+    while m < maxeval:
+        print("\n Iteration: %d \n" % out.nit)
+        print("\n fEvals: %d \n" % m)
+        print("\n Best value: %f \n" % out.fx)
+
+        # number of new samples in an iteration
+        NumberNewSamples = min(newSamplesPerIteration, maxeval - m)
+
+        # Introduce candidate points
+        if isinstance(sampler, NormalSampler):
+            probability = min(20 / dim, 1) * (
+                1 - (np.log(m - m0 + 1) / np.log(maxeval - m0))
+            )
+            CandPoint = sampler.get_sample(
+                bounds,
+                iindex=iindex,
+                mu=out.x,
+                probability=probability,
+            )
+        else:
+            CandPoint = sampler.get_uniform_sample(bounds, iindex=iindex)
+
+        # select the next function evaluation points:
+        CandValue, distMatrix = surrogateModel.eval(CandPoint)
+        selindex, xselected, distNewSamples = find_best(
+            CandPoint,
+            CandValue,
+            np.min(distMatrix, axis=1),
+            NumberNewSamples,
+            weightpattern=sampler.weightpattern,
+        )
+        nSelected = selindex.size
+        distselected = np.concatenate(
+            (
+                np.reshape(distMatrix[selindex, :], (nSelected, -1)),
+                distNewSamples,
+            ),
+            axis=1,
+        )
+
+        # Rotate weight pattern
+        weightpattern = deque(sampler.weightpattern)
+        weightpattern.rotate(-nSelected)
+        for i in range(len(weightpattern)):
+            sampler.weightpattern[i] = weightpattern[i]
+
+        # Compute f(xselected)
+        ySelected = np.zeros(nSelected)
+        if nSelected > 1:
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=min(ncpu, m)
+            ) as executor:
+                # Prepare the arguments for parallel execution
+                arguments = [(fun, xselected[i, :]) for i in range(nSelected)]
+                # Use the map function to parallelize the evaluations
+                results = list(executor.map(__eval_fun_and_timeit, arguments))
+            (
+                ySelected[0:nSelected],
+                out.fevaltime[m : m + nSelected],
+            ) = zip(*results)
+        else:
+            for i in range(nSelected):
+                (
+                    ySelected[i],
+                    out.fevaltime[m + i],
+                ) = __eval_fun_and_timeit((fun, xselected[i, :]))
+
+        # determine best one of newly sampled points
+        iSelectedBest = np.argmin(ySelected).item()
+        fxSelectedBest = ySelected[iSelectedBest]
+        if fxSelectedBest < out.fx:
+            if (out.fx - fxSelectedBest) > (1e-3) * abs(out.fx):
+                # "significant" improvement
+                failctr = 0
+                succctr = succctr + 1
+            else:
+                failctr = failctr + 1
+                succctr = 0
+            out.x = xselected[iSelectedBest, :]
+            out.fx = fxSelectedBest
+        else:
+            failctr = failctr + 1
+            succctr = 0
+
+        # Update m, x, y and out.nit
+        out.samples[m : m + nSelected, :] = xselected
+        out.fsamples[m : m + nSelected] = ySelected
+        m = m + nSelected
+        out.nit = out.nit + 1
+
+        # check if algorithm is in a local minimum
+        if isinstance(sampler, NormalSampler):
+            if failctr >= failtolerance:
+                sampler.sigma *= 0.5
+                failctr = 0
+                if sampler.sigma < sampler.sigma_min:
+                    # Algorithm is probably in a local minimum!
+                    break
+            elif succctr >= succtolerance:
+                sampler.sigma = min(2 * sampler.sigma, sampler.sigma_max)
+                succctr = 0
+
+        # Update surrogate model if there is another local iteration
+        if m < maxeval:
+            surrogateModel.update(xselected, ySelected, distselected)
+
+    # Update output
+    out.nfev = m
+    out.samples.resize(m, dim)
+    out.fsamples.resize(m)
+    out.fevaltime.resize(m)
+
+    return out
+
+
+def minimize(
+    fun,
+    bounds: tuple,
+    maxeval: int,
+    *,
+    iindex: tuple[int, ...] = (),
+    surrogateModel=RbfModel(),
+    sampler=Sampler(1),
+    newSamplesPerIteration: int = 1,
+) -> OptimizeResult:
+    """Minimize a scalar function of one or more variables using a surrogate
+    model.
+
+    Parameters
+    ----------
+    fun : callable
+        The objective function to be minimized.
+    bounds : tuple
+        Bounds for variables. Each element of the tuple must be a tuple with two
+        elements, corresponding to the lower and upper bound for the variable.
+    maxeval : int
+        Maximum number of function evaluations.
+    iindex : tuple, optional
+        Indices of the input space that are integer. The default is ().
     surrogateModel : surrogate model, optional
         Surrogate model to be used. The default is RbfModel().
     sampler : sampler, optional
@@ -254,253 +484,53 @@ def minimize(
     """
     dim = len(bounds)  # Dimension of the problem
     assert dim > 0
-    xlow = np.array([bounds[i][0] for i in range(dim)])
-    xup = np.array([bounds[i][1] for i in range(dim)])
 
-    # tolerance parameters
-    # tol = 0.001 * np.min(xup - xlow) * np.sqrt(float(dim))
-    failtolerance = max(5, dim)
-    succtolerance = 3
+    # Record initial sampler and surrogate model
+    sampler0 = deepcopy(sampler)
+    surrogateModel0 = deepcopy(surrogateModel)
 
-    # Number of CPUs for parallel evaluations
-    ncpu = os.cpu_count() or 1
+    # Initialize output
+    out = OptimizeResult(
+        x=np.zeros(dim),
+        fx=np.inf,
+        nit=0,
+        nfev=0,
+        samples=np.zeros((maxeval, dim)),
+        fsamples=np.zeros(maxeval),
+        fevaltime=np.zeros(maxeval),
+    )
 
-    # Use a number of candidates that is greater than 1
-    if sampler.n <= 1:
-        sampler.n = 500 * dim
+    # do until max number of f-evals reached
+    while out.nfev < maxeval:
+        # Run local optimization
+        out_local = minimize_local(
+            fun,
+            bounds,
+            maxeval - out.nfev,
+            iindex=iindex,
+            surrogateModel=surrogateModel0,
+            sampler=sampler0,
+            newSamplesPerIteration=newSamplesPerIteration,
+        )
 
-    # Maximum number of iterations is, by default, the maximum number of
-    # function evaluations
-    if maxit == 0:
-        maxit = maxeval
-
-    # Reserve space for the surrogate model to avoid repeated allocations
-    surrogateModel.reserve(maxeval, dim)
-
-    # Record initial sigma
-    if isinstance(sampler, NormalSampler):
-        sigma0 = sampler.sigma
-        weightpattern0 = [
-            sampler.weightpattern[i] for i in range(len(sampler.weightpattern))
-        ]
-    else:
-        sigma0 = 0
-        weightpattern0 = []
-
-    # output variables
-    samples = np.zeros((maxeval, dim))  # Matrix with all sampled points
-    fsamples = np.zeros(
-        maxeval
-    )  # Vector with function values on sampled points
-    fevaltime = np.zeros(maxeval)  # Vector with function evaluation times
-    xbest = np.zeros(dim)  # Best point found so far
-    fxbest = np.inf  # Best function value found so far
-
-    numevals = 0  # Number of function evaluations done so far
-    nGlobalIter = 0  # Number of algorithm global iterations
-    while (
-        numevals < maxeval and nGlobalIter < maxit
-    ):  # do until max. number of allowed f-evals reached
-        iBest = 0  # Index of the best point found so far in the current trial
-        maxlocaleval = (
-            maxeval - numevals
-        )  # Number of remaining function evaluations
-        y = np.zeros(
-            maxlocaleval
-        )  # Vector with function values on sampled points in the current trial
-
-        # Number of initial samples
-        m = min(surrogateModel.nsamples(), maxlocaleval)
-        if m == 0:
-            surrogateModel.create_initial_design(
-                dim, bounds, min(maxlocaleval, 2 * (dim + 1)), iindex
-            )
-            m = surrogateModel.nsamples()
-        else:
-            if any(
-                surrogateModel.samples()[:, iindex]
-                != np.round(surrogateModel.samples()[:, iindex])
-            ):
-                raise ValueError(
-                    "Initial samples must be integer values for integer variables"
-                )
-            if (
-                np.linalg.matrix_rank(surrogateModel.get_matrixP())
-                != surrogateModel.pdim()
-            ):
-                raise ValueError(
-                    "Initial samples are not sufficient to build the surrogate model"
-                )
-        m0 = m
-
-        # Compute f(x0)
-        with concurrent.futures.ThreadPoolExecutor(
-            max_workers=min(ncpu, m)
-        ) as executor:
-            # Prepare the arguments for parallel execution
-            arguments = [(fun, surrogateModel.sample(i)) for i in range(m)]
-            # Use the map function to parallelize the evaluations
-            results = list(executor.map(__eval_fun_and_timeit, arguments))
-        y[0:m], fevaltime[numevals : numevals + m] = zip(*results)
-
-        # Determine best point found so far
-        iBest = np.argmin(y[0:m]).item()
-        xselected = np.empty((0, dim))
-
-        # Set coefficients of the surrogate model
-        surrogateModel.update_coefficients(y[0:m])
-
-        # counters
-        iterctr = 0  # number of iterations
-        failctr = 0  # number of consecutive unsuccessful iterations
-        succctr = 0  # number of consecutive successful iterations
-
-        # do until max number of f-evals reached or local min found
-        while m < maxlocaleval:
-            iterctr = iterctr + 1  # increment iteration counter
-            print("\n Iteration: %d \n" % iterctr)
-            print("\n fEvals: %d \n" % (numevals + m))
-            print("\n Best value in this restart: %f \n" % y[iBest])
-
-            # number of new samples in an iteration
-            NumberNewSamples = min(newSamplesPerIteration, maxlocaleval - m)
-
-            # Introduce candidate points
-            if isinstance(sampler, NormalSampler):
-                probability = min(20 / dim, 1) * (
-                    1 - (np.log(m - m0 + 1) / np.log(maxlocaleval - m0))
-                )
-                CandPoint = sampler.get_sample(
-                    bounds,
-                    iindex=iindex,
-                    mu=surrogateModel.sample(iBest),
-                    probability=probability,
-                )
-            else:
-                CandPoint = sampler.get_uniform_sample(bounds, iindex=iindex)
-
-            # select the next function evaluation points:
-            CandValue, distMatrix = surrogateModel.eval(CandPoint)
-            selindex, xselected, distNewSamples = find_best(
-                CandPoint,
-                CandValue,
-                np.min(distMatrix, axis=1),
-                NumberNewSamples,
-                weightpattern=sampler.weightpattern,
-            )
-            nSelected = selindex.size
-            distselected = np.concatenate(
-                (
-                    np.reshape(distMatrix[selindex, :], (nSelected, -1)),
-                    distNewSamples,
-                ),
-                axis=1,
-            )
-
-            # Rotate weight pattern
-            weightpattern = deque(sampler.weightpattern)
-            weightpattern.rotate(-nSelected)
-            for i in range(len(weightpattern)):
-                sampler.weightpattern[i] = weightpattern[i]
-
-            # Compute f(xselected)
-            if nSelected > 1:
-                with concurrent.futures.ThreadPoolExecutor(
-                    max_workers=min(ncpu, m)
-                ) as executor:
-                    # Prepare the arguments for parallel execution
-                    arguments = [
-                        (fun, xselected[i, :]) for i in range(nSelected)
-                    ]
-                    # Use the map function to parallelize the evaluations
-                    results = list(
-                        executor.map(__eval_fun_and_timeit, arguments)
-                    )
-                (
-                    y[m : m + nSelected],
-                    fevaltime[numevals + m : numevals + m + nSelected],
-                ) = zip(*results)
-            else:
-                for i in range(nSelected):
-                    (
-                        y[m + i],
-                        fevaltime[numevals + m + i],
-                    ) = __eval_fun_and_timeit((fun, xselected[i, :]))
-
-            # determine best one of newly sampled points
-            iSelectedBest = m + np.argmin(y[m : m + nSelected]).item()
-            if y[iSelectedBest] < y[iBest]:
-                if (y[iBest] - y[iSelectedBest]) > (1e-3) * abs(y[iBest]):
-                    # "significant" improvement
-                    failctr = 0
-                    succctr = succctr + 1
-                else:
-                    failctr = failctr + 1
-                    succctr = 0
-                iBest = iSelectedBest
-            else:
-                failctr = failctr + 1
-                succctr = 0
-
-            # Update m
-            m = m + nSelected
-
-            # check if algorithm is in a local minimum
-            if isinstance(sampler, NormalSampler):
-                if failctr >= failtolerance:
-                    sampler.sigma *= 0.5
-                    failctr = 0
-                    if sampler.sigma < sampler.sigma_min:
-                        # Algorithm is probably in a local minimum!
-                        break
-                elif succctr >= succtolerance:
-                    sampler.sigma = min(2 * sampler.sigma, sampler.sigma_max)
-                    succctr = 0
-
-            # Update surrogate model if there is another local iteration
-            if m < maxlocaleval:
-                surrogateModel.update(
-                    xselected, y[m - nSelected : m], distselected
-                )
-
-        # Collect samples
-        samples[
-            numevals : numevals + surrogateModel.nsamples(), :
-        ] = surrogateModel.samples()
-        samples[
-            numevals + surrogateModel.nsamples() : numevals + m, :
-        ] = xselected
-
-        # Collect function values
-        fsamples[numevals : numevals + m] = y[0:m]
-
-        # Collect xbest and fxbest
-        if y[iBest] < fxbest:
-            if iBest > (surrogateModel.nsamples() - 1):
-                xbest = xselected[iBest - surrogateModel.nsamples(), :]
-            else:
-                xbest = surrogateModel.samples()[iBest, :]
-            fxbest = y[iBest]
+        # Update output
+        if out_local.fx < out.fx:
+            out.x = out_local.x
+            out.fx = out_local.fx
+        out.samples[
+            out.nfev : out.nfev + out_local.nfev, :
+        ] = out_local.samples
+        out.fsamples[out.nfev : out.nfev + out_local.nfev] = out_local.fsamples
+        out.fevaltime[
+            out.nfev : out.nfev + out_local.nfev
+        ] = out_local.fevaltime
+        out.nfev = out.nfev + out_local.nfev
 
         # Update counters
-        numevals = numevals + m
-        nGlobalIter = nGlobalIter + 1
+        out.nit = out.nit + 1
 
-        # Reset surrogate model and sampler
-        if numevals < maxeval and nGlobalIter < maxit:
-            surrogateModel.reset()
-            if isinstance(sampler, NormalSampler):
-                sampler.sigma = sigma0
-                sampler.weightpattern = [
-                    weightpattern0[i] for i in range(len(weightpattern0))
-                ]
+        # Update surrogate model and sampler for next iteration
+        surrogateModel0.reset()
+        sampler0 = deepcopy(sampler)
 
-    return OptimizeResult(
-        x=xbest,
-        fx=fxbest,
-        nit=nGlobalIter,
-        nfev=numevals,
-        samples=samples[0:numevals, :],
-        fsamples=fsamples[0:numevals],
-        fevaltime=fevaltime[0:numevals],
-    )
+    return out

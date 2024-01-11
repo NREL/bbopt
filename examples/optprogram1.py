@@ -113,7 +113,6 @@ def read_and_run(
                 ),
                 maxeval=maxeval,
                 iindex=data.iindex,
-                maxit=0,  # Change it to 1 to compare with the Surrogates.jl code
                 surrogateModel=rbfModel,
                 sampler=sampler,
                 newSamplesPerIteration=NumberNewSamples,

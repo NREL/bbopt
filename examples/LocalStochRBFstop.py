@@ -32,7 +32,7 @@ __deprecated__ = False
 
 from examples.optprogram1 import read_check_data_file
 from blackboxopt.rbf import RbfType, RbfModel
-from blackboxopt.optimize import minimize
+from blackboxopt.optimize import minimize_local
 from blackboxopt.utility import SLHDstandard
 from blackboxopt.sampling import NormalSampler, SamplingStrategy
 import numpy as np
@@ -94,7 +94,7 @@ if __name__ == "__main__":
     rbfModel.update(samples)
 
     minxrange = np.min(data.xup - data.xlow)
-    optres = minimize(
+    optres = minimize_local(
         data.objfunction,
         bounds=(
             (data.xlow[0], data.xup[0]),
@@ -102,7 +102,6 @@ if __name__ == "__main__":
             (data.xlow[2], data.xup[2]),
         ),
         maxeval=maxeval - numevals,
-        maxit=1,
         surrogateModel=rbfModel,
         sampler=NormalSampler(
             nCand,
