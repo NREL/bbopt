@@ -39,11 +39,7 @@ import os
 from collections import deque
 
 from .rbf import RbfModel
-from .sampling import (
-    SamplingStrategy,
-    get_stochastic_sample,
-    get_dycors_sample,
-)
+from .sampling import NormalSampler, Sampler
 
 
 @dataclass
@@ -91,8 +87,10 @@ def find_best(
     :math:`w f_s(x) + (1-w) (1-d_s(x))`, where
 
     - :math:`w` is a weight.
-    - :math:`f_s(x)` is the estimated value for the objective function on x, scaled to [0,1].
-    - :math:`d_s(x)` is the minimum distance between x and the previously selected evaluation points, scaled to [-1,0].
+    - :math:`f_s(x)` is the estimated value for the objective function on x,
+      scaled to [0,1].
+    - :math:`d_s(x)` is the minimum distance between x and the previously
+      selected evaluation points, scaled to [-1,0].
 
     If there are more than one new sample point to be
     selected, the distances of the candidate points to the previously
@@ -177,7 +175,9 @@ def find_best(
         newDist = scp.distance.cdist(xselected[ii - 1, :].reshape(1, -1), x)[0]
         dist = np.minimum(dist, newDist)
 
-        selindex[ii] = argminscore(dist, weightpattern[ii % 4])
+        selindex[ii] = argminscore(
+            dist, weightpattern[ii % len(weightpattern)]
+        )
         xselected[ii, :] = x[selindex[ii], :]
 
         for j in range(ii - 1):
@@ -220,8 +220,7 @@ def minimize(
     iindex: tuple[int, ...] = (),
     maxit: int = 0,
     surrogateModel=RbfModel(),
-    sampling_strategy: SamplingStrategy = SamplingStrategy.STOCHASTIC,
-    nCandidatesPerIteration: int = 0,
+    sampler=Sampler(1),
     newSamplesPerIteration: int = 1,
 ) -> OptimizeResult:
     """Minimize a scalar function of one or more variables using a surrogate model.
@@ -242,12 +241,10 @@ def minimize(
     maxit : int, optional
         Maximum number of algorithm iterations. The default is 0, which means
         that the algorithm will do as many iterations as allowed by maxeval.
-    surrogateModel : RbfModel, optional
+    surrogateModel : surrogate model, optional
         Surrogate model to be used. The default is RbfModel().
-    nCandidatesPerIteration : int, optional
-        Number of candidate points to be generated per iteration. The default is
-        0, which means that the algorithm will decide how many points to
-        generate.
+    sampler : sampler, optional
+        Sampler to be used. The default is Sampler(1).
     newSamplesPerIteration : int, optional
         Number of new samples to be generated per iteration. The default is 1.
 
@@ -257,21 +254,35 @@ def minimize(
         The optimization result.
     """
     dim = len(bounds)  # Dimension of the problem
+    assert dim > 0
     xlow = np.array([bounds[i][0] for i in range(dim)])
     xup = np.array([bounds[i][1] for i in range(dim)])
+
+    # tolerance parameters
+    tol = 0.001 * np.min(xup - xlow) * np.sqrt(float(dim))
+    failtolerance = max(5, dim)
+    succtolerance = 3
 
     # Number of CPUs for parallel evaluations
     ncpu = os.cpu_count() or 1
 
-    assert dim > 0
+    # Use a number of candidates that is greater than 1
+    if sampler.n <= 1:
+        sampler.n = 500 * dim
 
-    if nCandidatesPerIteration == 0:
-        nCandidatesPerIteration = 500 * dim
-
+    # Maximum number of iterations is, by default, the maximum number of
+    # function evaluations
     if maxit == 0:
         maxit = maxeval
 
+    # Reserve space for the surrogate model to avoid repeated allocations
     surrogateModel.reserve(maxeval, dim)
+
+    # Record initial sigma
+    if isinstance(sampler, NormalSampler):
+        sigma0 = sampler.sigma
+    else:
+        sigma0 = 0
 
     # output variables
     samples = np.zeros((maxeval, dim))  # Matrix with all sampled points
@@ -317,6 +328,7 @@ def minimize(
                 raise ValueError(
                     "Initial samples are not sufficient to build the surrogate model"
                 )
+        m0 = m
 
         # Compute f(x0)
         with concurrent.futures.ThreadPoolExecutor(
@@ -335,69 +347,34 @@ def minimize(
         # Set coefficients of the surrogate model
         surrogateModel.update_coefficients(y[0:m])
 
-        # algorithm parameters
-        minxrange = np.min(xup - xlow)
-        tol = 0.001 * minxrange * np.sqrt(float(dim))
-        sigma_stdev_default = 0.2 * minxrange
-        sigma_stdev = sigma_stdev_default  # current mutation rate
-        sigma_min = 0.2 * (0.5**6) * minxrange
-        # maximal number of shrikage of standard deviation for normal distribution when generating the candidate points
-        if sampling_strategy == SamplingStrategy.STOCHASTIC:
-            maxshrinkparam = 5
-        elif sampling_strategy == SamplingStrategy.DYCORS:
-            maxshrinkparam = 6
-        else:
-            raise ValueError("Invalid sampling_strategy")
-        failtolerance = max(5, dim)
-        succtolerance = 3
-
-        # initializations
+        # counters
         iterctr = 0  # number of iterations
-        shrinkctr = 0  # number of times sigma_stdev was shrunk
         failctr = 0  # number of consecutive unsuccessful iterations
-        localminflag = (
-            0  # indicates whether or not xbest is at a local minimum
-        )
         succctr = 0  # number of consecutive successful iterations
 
         # do until max number of f-evals reached or local min found
-        weightpattern = deque([0.3, 0.5, 0.8, 0.95])
-        while m < maxlocaleval and localminflag == 0:
+        while m < maxlocaleval:
             iterctr = iterctr + 1  # increment iteration counter
             print("\n Iteration: %d \n" % iterctr)
-            print("\n fEvals: %d \n" % m)
+            print("\n fEvals: %d \n" % (numevals + m))
             print("\n Best value in this restart: %f \n" % y[iBest])
 
             # number of new samples in an iteration
             NumberNewSamples = min(newSamplesPerIteration, maxlocaleval - m)
 
             # Introduce candidate points
-            if sampling_strategy == SamplingStrategy.STOCHASTIC:
-                CandPoint = get_stochastic_sample(
-                    surrogateModel.sample(iBest),
-                    nCandidatesPerIteration,
-                    sigma_stdev,
-                    bounds,
+            if isinstance(sampler, NormalSampler):
+                probability = min(20 / dim, 1) * (
+                    1 - (np.log(m - m0 + 1) / np.log(maxlocaleval - m0))
                 )
-            elif sampling_strategy == SamplingStrategy.DYCORS:
-                # Perturbation probability
-                DDSprob = min(20 / dim, 1) * (
-                    1
-                    - (
-                        np.log(m - 2 * (dim + 1) + 1)
-                        / np.log(maxlocaleval - 2 * (dim + 1))
-                    )
-                )
-                CandPoint = get_dycors_sample(
-                    surrogateModel.sample(iBest),
-                    nCandidatesPerIteration,
-                    sigma_stdev,
-                    DDSprob,
+                CandPoint = sampler.get_sample(
                     bounds,
-                    iindex,
+                    iindex=iindex,
+                    mu=surrogateModel.sample(iBest),
+                    probability=probability,
                 )
             else:
-                raise ValueError("Invalid sampling_strategy")
+                CandPoint = sampler.get_uniform_sample(bounds, iindex=iindex)
 
             # select the next function evaluation points:
             CandValue, distMatrix = surrogateModel.eval(CandPoint)
@@ -407,7 +384,7 @@ def minimize(
                 np.min(distMatrix, axis=1),
                 NumberNewSamples,
                 tol,
-                weightpattern=weightpattern,
+                weightpattern=sampler.weightpattern,
             )
             nSelected = selindex.size
             distselected = np.concatenate(
@@ -417,7 +394,12 @@ def minimize(
                 ),
                 axis=1,
             )
+
+            # Rotate weight pattern
+            weightpattern = deque(sampler.weightpattern)
             weightpattern.rotate(-nSelected)
+            for i in range(len(weightpattern)):
+                sampler.weightpattern[i] = weightpattern[i]
 
             # Compute f(xselected)
             if nSelected > 1:
@@ -458,48 +440,39 @@ def minimize(
                 failctr = failctr + 1
                 succctr = 0
 
-            # check if algorithm is in a local minimum
-            shrinkflag = 1
-            if failctr >= failtolerance:
-                if shrinkctr >= maxshrinkparam:
-                    shrinkflag = 0
-                    print(
-                        "Stopped reducing sigma because the maximum reduction has been reached."
-                    )
-                failctr = 0
-
-                if shrinkflag == 1:
-                    shrinkctr = shrinkctr + 1
-                    sigma_stdev = max(sigma_min, sigma_stdev / 2)
-                    print("Reducing sigma by a half!")
-                else:
-                    localminflag = 1
-                    print(
-                        "Algorithm is probably in a local minimum! Restart the algorithm from scratch."
-                    )
-
-            if succctr >= succtolerance:
-                sigma_stdev = min(2 * sigma_stdev, sigma_stdev_default)
-                succctr = 0
-
             # Update m
             m = m + nSelected
 
+            # check if algorithm is in a local minimum
+            if isinstance(sampler, NormalSampler):
+                if failctr >= failtolerance:
+                    sampler.sigma *= 0.5
+                    failctr = 0
+                    if sampler.sigma < sampler.sigma_min:
+                        # Algorithm is probably in a local minimum!
+                        break
+                elif succctr >= succtolerance:
+                    sampler.sigma = min(2 * sampler.sigma, sampler.sigma_max)
+                    succctr = 0
+
             # Update surrogate model if there is another local iteration
-            if m < maxlocaleval and localminflag == 0:
+            if m < maxlocaleval:
                 surrogateModel.update(
                     xselected, y[m - nSelected : m], distselected
                 )
 
+        # Collect samples
         samples[
             numevals : numevals + surrogateModel.nsamples(), :
         ] = surrogateModel.samples()
         samples[
             numevals + surrogateModel.nsamples() : numevals + m, :
         ] = xselected
-        fsamples[numevals : numevals + m] = y[0:m]
-        numevals = numevals + m
 
+        # Collect function values
+        fsamples[numevals : numevals + m] = y[0:m]
+
+        # Collect xbest and fxbest
         if y[iBest] < fxbest:
             if iBest > (surrogateModel.nsamples() - 1):
                 xbest = xselected[iBest - surrogateModel.nsamples(), :]
@@ -507,10 +480,15 @@ def minimize(
                 xbest = surrogateModel.samples()[iBest, :]
             fxbest = y[iBest]
 
+        # Update counters
+        numevals = numevals + m
         nGlobalIter = nGlobalIter + 1
 
+        # Reset surrogate model and sampler
         if numevals < maxeval and nGlobalIter < maxit:
             surrogateModel.reset()
+            if isinstance(sampler, NormalSampler):
+                sampler.sigma = sigma0
 
     return OptimizeResult(
         x=xbest,

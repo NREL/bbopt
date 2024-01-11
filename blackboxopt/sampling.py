@@ -36,204 +36,256 @@ __version__ = "0.1.0"
 __deprecated__ = False
 
 from enum import Enum
+from tabnanny import check
 import numpy as np
 
-SamplingStrategy = Enum(
-    "SamplingStrategy", ["STOCHASTIC", "DYCORS", "UNIFORM"]
-)
+SamplingStrategy = Enum("SamplingStrategy", ["NORMAL", "DDS", "UNIFORM"])
 
 
-def get_sample(
-    n: int,
-    bounds: tuple,
-    strategy: SamplingStrategy = SamplingStrategy.DYCORS,
-    *,
-    iindex: tuple = (),
-    x: np.ndarray = np.array([]),
-    sigma_stdev: float = 1.0,
-    DDSprob: float = 1.0,
-) -> np.ndarray:
-    """Generate a sample using the specified strategy.
+class Sampler:
+    """Base class for samplers.
 
-    Parameters
+    Attributes
     ----------
+    strategy : SamplingStrategy
+        Sampling strategy.
     n : int
         Number of samples to be generated.
-    bounds : tuple
-        Bounds for variables. Each element of the tuple must be a tuple with two elements,
-        corresponding to the lower and upper bound for the variable.
-    strategy : SamplingStrategy, optional
-        Sampling strategy to be used. The default is SamplingStrategy.DYCORS.
-    iindex : tuple, optional
-        Indices of the input space that are integer. The default is ().
-        Mind that some sampling stratategies are not compatible with integer variables.
-    x : numpy.ndarray, optional
-        Point around which the sample will be generated. Only applicable to
-        SamplingStrategy.STOCHASTIC and SamplingStrategy.DYCORS. The default is the zero vector.
-    sigma_stdev : float, optional
-        Standard deviation of the normal distribution. Only applicable to
-        SamplingStrategy.STOCHASTIC and SamplingStrategy.DYCORS. The default is 1.0.
-    DDSprob : float, optional
-        Perturbation probability. Only applicable to SamplingStrategy.DYCORS.
-        The default is 1.0.
+    weightpattern : list-like
+        Weights :math:`w` in (0,1) to be used in the score function
+        :math:`w f_s(x) + (1-w) (1-d_s(x))`, where
 
-    Returns
-    -------
-    numpy.ndarray
-        Matrix with the generated samples.
+        - :math:`f_s(x)` is the estimated value for the objective function on x,
+          scaled to [0,1].
+        - :math:`d_s(x)` is the minimum distance between x and the previously
+          selected evaluation points, scaled to [-1,0].
     """
-    if strategy == SamplingStrategy.STOCHASTIC:
-        if x.size == 0:
-            x = np.zeros(len(bounds))
-        if sigma_stdev <= 0:
-            raise ValueError("sigma_stdev must be positive")
-        if iindex:
+
+    def __init__(
+        self, n: int, weightpattern=[0.2, 0.4, 0.6, 0.9, 0.95, 1]
+    ) -> None:
+        self.strategy = SamplingStrategy.UNIFORM
+        self.n = n
+        self.weightpattern = weightpattern
+        assert self.n > 0
+
+    def get_uniform_sample(
+        self, bounds: tuple, *, iindex: tuple = ()
+    ) -> np.ndarray:
+        """Generate a sample from a uniform distribution inside the bounds.
+
+        Parameters
+        ----------
+        bounds : tuple
+            Bounds for variables. Each element of the tuple must be a tuple with two elements,
+            corresponding to the lower and upper bound for the variable.
+        iindex : tuple, optional
+            Indices of the input space that are integer. The default is ().
+
+        Returns
+        -------
+        numpy.ndarray
+            Matrix with the generated samples.
+        """
+        dim = len(bounds)
+        xlow = np.array([bounds[i][0] for i in range(dim)])
+        xup = np.array([bounds[i][1] for i in range(dim)])
+
+        # Generate n samples
+        xnew = xlow + np.random.rand(self.n, dim) * (xup - xlow)
+
+        # Round integer variables
+        xnew[:, iindex] = np.round(xnew[:, iindex])
+
+        return xnew
+
+    get_sample = get_uniform_sample
+
+
+class NormalSampler(Sampler):
+    """Sampler that generates samples from a normal distribution.
+
+    Attributes
+    ----------
+    sigma : float
+        Standard deviation of the normal distribution.
+    sigma_min : float
+        Minimum standard deviation of the normal distribution.
+    sigma_max : float
+        Maximum standard deviation of the normal distribution.
+    """
+
+    def __init__(
+        self,
+        n: int,
+        sigma: float,
+        *,
+        sigma_min: float = 0,
+        sigma_max: float = float("inf"),
+        strategy: SamplingStrategy = SamplingStrategy.NORMAL,
+        weightpattern=[0.2, 0.4, 0.6, 0.9, 0.95, 1],
+    ) -> None:
+        super().__init__(n, weightpattern)
+        self.sigma = sigma
+        self.sigma_min = sigma_min
+        self.sigma_max = sigma_max
+        self.strategy = strategy
+        assert (
+            0 <= self.sigma_min <= self.sigma <= self.sigma_max <= float("inf")
+        )
+        assert self.strategy in (
+            SamplingStrategy.NORMAL,
+            SamplingStrategy.DDS,
+            SamplingStrategy.UNIFORM,
+        )
+
+    def get_normal_sample(
+        self,
+        bounds: tuple,
+        *,
+        iindex: tuple = (),
+        mu: np.ndarray = np.array([0]),
+    ) -> np.ndarray:
+        """Generate a sample from a normal distribution around a given point mu.
+
+        Parameters
+        ----------
+        bounds : tuple
+            Bounds for variables. Each element of the tuple must be a tuple with two elements,
+            corresponding to the lower and upper bound for the variable.
+        iindex : tuple, optional
+            Indices of the input space that are integer. The default is ().
+        mu : numpy.ndarray, optional
+            Point around which the sample will be generated. The default is zero.
+
+        Returns
+        -------
+        numpy.ndarray
+            Matrix with the generated samples.
+        """
+        dim = len(bounds)
+        xlow = np.array([bounds[i][0] for i in range(dim)])
+        xup = np.array([bounds[i][1] for i in range(dim)])
+
+        # Check if mu is valid
+        muMatrix = np.tile(mu, (self.n, 1))
+        if muMatrix.shape != (self.n, dim):
             raise ValueError(
-                "The STOCHASTIC strategy does not support integer variables"
+                "mu must either be a scalar or a vector of size dim"
             )
-        return get_stochastic_sample(x, n, sigma_stdev, bounds)
-    elif strategy == SamplingStrategy.DYCORS:
-        if x.size == 0:
-            x = np.zeros(len(bounds))
-        if sigma_stdev <= 0:
-            raise ValueError("sigma_stdev must be positive")
-        if DDSprob < 0 or DDSprob > 1:
-            raise ValueError("DDSprob must be between 0 and 1")
-        return get_dycors_sample(x, n, sigma_stdev, DDSprob, bounds, iindex)
-    elif strategy == SamplingStrategy.UNIFORM:
-        return get_uniform_sample(n, bounds, iindex)
-    else:
-        raise ValueError("Invalid sampling strategy")
 
+        # Generate n samples
+        xnew = muMatrix + self.sigma * np.random.randn(self.n, dim)
+        xnew = np.maximum(xlow, np.minimum(xnew, xup))
 
-def get_uniform_sample(
-    n: int, bounds: tuple, iindex: tuple = ()
-) -> np.ndarray:
-    """Generate a uniform sample.
+        # Round integer variables
+        xnew[:, iindex] = np.round(xnew[:, iindex])
 
-    Parameters
-    ----------
-    n : int
-        Number of samples to be generated.
-    bounds : tuple
-        Bounds for variables. Each element of the tuple must be a tuple with two elements,
-        corresponding to the lower and upper bound for the variable.
-    iindex : tuple, optional
-        Indices of the input space that are integer. The default is ().
+        return xnew
 
-    Returns
-    -------
-    numpy.ndarray
-        Matrix with the generated samples.
-    """
-    dim = len(bounds)
-    xlow = np.array([bounds[i][0] for i in range(dim)])
-    xup = np.array([bounds[i][1] for i in range(dim)])
+    def get_dds_sample(
+        self,
+        bounds: tuple,
+        probability: float,
+        *,
+        iindex: tuple = (),
+        mu: np.ndarray = np.array([0]),
+    ) -> np.ndarray:
+        """Generate a DDS sample.
 
-    # Generate n samples
-    xnew = xlow + np.random.rand(n, dim) * (xup - xlow)
+        Parameters
+        ----------
+        bounds : tuple
+            Bounds for variables. Each element of the tuple must be a tuple with two elements,
+            corresponding to the lower and upper bound for the variable.
+        probability : float
+            Perturbation probability.
+        iindex : tuple, optional
+            Indices of the input space that are integer. The default is ().
+        mu : numpy.ndarray, optional
+            Point around which the sample will be generated. The default is zero.
 
-    # Round integer variables
-    xnew[:, iindex] = np.round(xnew[:, iindex])
+        Returns
+        -------
+        numpy.ndarray
+            Matrix with the generated samples.
+        """
+        dim = len(bounds)
+        xlow = np.array([bounds[i][0] for i in range(dim)])
+        xup = np.array([bounds[i][1] for i in range(dim)])
 
-    return xnew
+        # Check if mu is valid
+        xnew = np.tile(mu, (self.n, 1))
+        if xnew.shape != (self.n, dim):
+            raise ValueError(
+                "mu must either be a scalar or a vector of size dim"
+            )
 
+        # Check if probability is valid
+        if not (0 <= probability <= 1):
+            raise ValueError("Probability must be between 0 and 1")
 
-def get_stochastic_sample(
-    x: np.ndarray, n: int, sigma_stdev: float, bounds: tuple
-) -> np.ndarray:
-    """Generate a stochastic sample.
+        # generate n samples
+        for ii in range(self.n):
+            r = np.random.rand(dim)
+            ar = r < probability
+            if not (any(ar)):
+                r = np.random.permutation(dim)
+                ar[r[0]] = True
+            for jj in range(dim):
+                if ar[jj]:
+                    s_std = self.sigma * np.random.randn(1).item()
+                    if jj in iindex:
+                        # integer perturbation has to be at least 1 unit
+                        if abs(s_std) < 1:
+                            s_std = np.sign(s_std)
+                        else:
+                            s_std = np.round(s_std)
+                    xnew[ii, jj] = xnew[ii, jj] + s_std
 
-    For integer variables, use get_dycors_sample() instead.
-
-    Parameters
-    ----------
-    x : numpy.ndarray
-        Point around which the sample will be generated.
-    n : int
-        Number of samples to be generated.
-    sigma_stdev : float
-        Standard deviation of the normal distribution.
-    bounds : tuple
-        Bounds for variables. Each element of the tuple must be a tuple with two elements,
-        corresponding to the lower and upper bound for the variable.
-
-    Returns
-    -------
-    numpy.ndarray
-        Matrix with the generated samples.
-    """
-    dim = len(x)
-    xlow = np.array([bounds[i][0] for i in range(dim)])
-    xup = np.array([bounds[i][1] for i in range(dim)])
-
-    # Generate n samples
-    xnew = np.tile(x, (n, 1)) + sigma_stdev * np.random.randn(n, dim)
-    xnew = np.maximum(xlow, np.minimum(xnew, xup))
-
-    return xnew
-
-
-def get_dycors_sample(
-    x: np.ndarray,
-    n: int,
-    sigma_stdev: float,
-    DDSprob: float,
-    bounds: tuple,
-    iindex: tuple = (),
-) -> np.ndarray:
-    """Generate a DYCORS sample.
-
-    Parameters
-    ----------
-    x : numpy.ndarray
-        Point around which the sample will be generated.
-    n : int
-        Number of samples to be generated.
-    sigma_stdev : float
-        Standard deviation of the normal distribution.
-    DDSprob : float
-        Perturbation probability.
-    bounds : tuple
-        Bounds for variables. Each element of the tuple must be a tuple with two elements,
-        corresponding to the lower and upper bound for the variable.
-    iindex : tuple, optional
-        Indices of the input space that are integer. The default is ().
-
-    Returns
-    -------
-    numpy.ndarray
-        Matrix with the generated samples.
-    """
-    dim = len(x)
-    xlow = np.array([bounds[i][0] for i in range(dim)])
-    xup = np.array([bounds[i][1] for i in range(dim)])
-
-    # generate n samples
-    xnew = np.kron(np.ones((n, 1)), x)
-    for ii in range(n):
-        r = np.random.rand(dim)
-        ar = r < DDSprob
-        if not (any(ar)):
-            r = np.random.permutation(dim)
-            ar[r[0]] = True
-        for jj in range(dim):
-            if ar[jj]:
-                s_std = sigma_stdev * np.random.randn(1).item()
-                if jj in iindex:
-                    # integer perturbation has to be at least 1 unit
-                    if abs(s_std) < 1:
-                        s_std = np.sign(s_std)
-                    else:
-                        s_std = np.round(s_std)
-                xnew[ii, jj] = xnew[ii, jj] + s_std
-
-                if xnew[ii, jj] < xlow[jj]:
-                    xnew[ii, jj] = xlow[jj] + (xlow[jj] - xnew[ii, jj])
-                    if xnew[ii, jj] > xup[jj]:
-                        xnew[ii, jj] = xlow[jj]
-                elif xnew[ii, jj] > xup[jj]:
-                    xnew[ii, jj] = xup[jj] - (xnew[ii, jj] - xup[jj])
                     if xnew[ii, jj] < xlow[jj]:
-                        xnew[ii, jj] = xup[jj]
-    return xnew
+                        xnew[ii, jj] = xlow[jj] + (xlow[jj] - xnew[ii, jj])
+                        if xnew[ii, jj] > xup[jj]:
+                            xnew[ii, jj] = xlow[jj]
+                    elif xnew[ii, jj] > xup[jj]:
+                        xnew[ii, jj] = xup[jj] - (xnew[ii, jj] - xup[jj])
+                        if xnew[ii, jj] < xlow[jj]:
+                            xnew[ii, jj] = xup[jj]
+        return xnew
+
+    def get_sample(
+        self,
+        bounds: tuple,
+        *,
+        iindex: tuple = (),
+        mu: np.ndarray = np.array([0]),
+        probability: float = 1,
+    ) -> np.ndarray:
+        """Generate a sample.
+
+        Parameters
+        ----------
+        bounds : tuple
+            Bounds for variables. Each element of the tuple must be a tuple with two elements,
+            corresponding to the lower and upper bound for the variable.
+        iindex : tuple, optional
+            Indices of the input space that are integer. The default is ().
+        mu : numpy.ndarray, optional
+            Point around which the sample will be generated. The default is zero.
+        probability : float, optional
+            Perturbation probability. The default is 1.
+
+        Returns
+        -------
+        numpy.ndarray
+            Matrix with the generated samples."""
+        if self.strategy == SamplingStrategy.UNIFORM:
+            return self.get_uniform_sample(bounds, iindex=iindex)
+        elif self.strategy == SamplingStrategy.NORMAL:
+            return self.get_normal_sample(bounds, iindex=iindex, mu=mu)
+        elif self.strategy == SamplingStrategy.DDS:
+            return self.get_dds_sample(
+                bounds, probability, iindex=iindex, mu=mu
+            )
+        else:
+            raise ValueError("Invalid sampling strategy")

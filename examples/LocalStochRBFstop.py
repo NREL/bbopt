@@ -34,6 +34,7 @@ from examples.optprogram1 import read_check_data_file
 from blackboxopt.rbf import RbfType, RbfModel
 from blackboxopt.optimize import minimize
 from blackboxopt.utility import SLHDstandard
+from blackboxopt.sampling import NormalSampler, SamplingStrategy
 import numpy as np
 
 if __name__ == "__main__":
@@ -92,6 +93,7 @@ if __name__ == "__main__":
     rbfModel = RbfModel(phifunction)
     rbfModel.update(samples)
 
+    minxrange = np.min(data.xup - data.xlow)
     optres = minimize(
         data.objfunction,
         bounds=(
@@ -102,7 +104,14 @@ if __name__ == "__main__":
         maxeval=maxeval - numevals,
         maxit=1,
         surrogateModel=rbfModel,
-        nCandidatesPerIteration=nCand,
+        sampler=NormalSampler(
+            nCand,
+            sigma=0.2 * minxrange,
+            sigma_min=0.2 * minxrange * 0.5**5,
+            sigma_max=0.2 * minxrange,
+            strategy=SamplingStrategy.NORMAL,
+            weightpattern=[0.3, 0.5],
+        ),
         newSamplesPerIteration=NumberNewSamples,
     )
 

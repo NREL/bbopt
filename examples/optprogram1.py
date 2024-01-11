@@ -34,49 +34,46 @@ import importlib
 import numpy as np
 import matplotlib.pyplot as plt
 import pickle as p
-
-from blackboxopt.rbf import RbfType, RbfModel
-from blackboxopt.optimize import SamplingStrategy, minimize, OptimizeResult
+from blackboxopt import rbf, optimize, sampling
 from data import Data
 
 
 def read_and_run(
     data_file: str,
-    nCandidatesPerIteration: int,
+    sampler: sampling.Sampler,
     maxeval: int = 0,
     Ntrials: int = 0,
     NumberNewSamples: int = 0,
-    rbf_type: RbfType = RbfType.CUBIC,
-    sampling_strategy: SamplingStrategy = SamplingStrategy.DYCORS,
+    rbf_type: rbf.RbfType = rbf.RbfType.CUBIC,
     PlotResult: bool = True,
-) -> list[OptimizeResult]:
+) -> list[optimize.OptimizeResult]:
     """Perform the optimization, save the solution and plot.
 
     This function also saves the solution to a file named "Results.data".
     If PlotResult is True, it also plots the results and saves the plot to
-    "DYCORS_Plot.png".
+    "RBFPlot.png".
 
     Parameters
     ----------
     data_file : str
         Path for the data file.
-    nCandidatesPerIteration : int
-        Number of candidates per iteration.
+    sampler : sampling.Sampler
+        Sampler to be used.
     maxeval : int, optional
         Maximum number of allowed function evaluations per trial.
     Ntrials : int, optional
         Number of trials.
     NumberNewSamples : int, optional
         Number of new samples per step of the optimization algorithm.
-    sampling_strategy : SamplingStrategy, optional
-        Sampling strategy.
+    rbf_type : rbf.RbfType, optional
+        Type of RBF to be used.
     PlotResult : bool, optional
         Plot the results.
 
     Returns
     -------
-    optres : list[OptimizeResult]
-        List of OptimizeResult objects with the optimization results.
+    optres : list[optimize.OptimizeResult]
+        List of optimize.OptimizeResult objects with the optimization results.
     """
     ## Start input check
     data = read_check_data_file(data_file)
@@ -89,7 +86,7 @@ def read_and_run(
     optres = []
     for j in range(Ntrials):
         # Create empty RBF model
-        rbfModel = RbfModel(rbf_type)
+        rbfModel = rbf.RbfModel(rbf_type)
 
         # # Uncomment to compare with Surrogates.jl
         # rbfModel.update(
@@ -109,18 +106,17 @@ def read_and_run(
 
         # Call the surrogate optimization function
         optres.append(
-            minimize(
+            optimize.minimize(
                 data.objfunction,
                 bounds=tuple(
                     (data.xlow[i], data.xup[i]) for i in range(data.dim)
                 ),
                 maxeval=maxeval,
                 iindex=data.iindex,
-                surrogateModel=rbfModel,
-                sampling_strategy=sampling_strategy,
-                nCandidatesPerIteration=nCandidatesPerIteration,
-                newSamplesPerIteration=NumberNewSamples,
                 maxit=0,  # Change it to 1 to compare with the Surrogates.jl code
+                surrogateModel=rbfModel,
+                sampler=sampler,
+                newSamplesPerIteration=NumberNewSamples,
             )
         )
     ## End Optimization
@@ -139,13 +135,13 @@ def read_and_run(
     return optres
 
 
-def plot_results(optres: list[OptimizeResult], filename: str):
+def plot_results(optres: list[optimize.OptimizeResult], filename: str):
     """Plot the results.
 
     Parameters
     ----------
-    optres: list[OptimizeResult]
-        List of OptimizeResult objects with the optimization results.
+    optres: list[optimize.OptimizeResult]
+        List of optimize.OptimizeResult objects with the optimization results.
     filename : str
         Path for the plot file.
     """
@@ -267,32 +263,51 @@ if __name__ == "__main__":
 
     # optres = read_and_run(
     #     data_file="datainput_Branin",
-    #     nCandidatesPerIteration=1000,
+    #     sampler=sampling.NormalSampler(
+    #         1000,
+    #         sigma=0.2 * 15,
+    #         sigma_min=0.2 * 15 * 0.5**5,
+    #         sigma_max=0.2 * 15,
+    #         strategy=sampling.SamplingStrategy.NORMAL,
+    #         weightpattern=[
+    #             0.95,
+    #         ],
+    #     ),
     #     maxeval=200,
     #     Ntrials=3,
     #     NumberNewSamples=1,
-    #     sampling_strategy=SamplingStrategy.STOCHASTIC,
-    #     PlotResult=True,
-    # )
-    # optres = read_and_run(
-    #     data_file="datainput_hartman3",
-    #     nCandidatesPerIteration=300,
-    #     maxeval=200,
-    #     Ntrials=3,
-    #     NumberNewSamples=1,
-    #     sampling_strategy=SamplingStrategy.DYCORS,
     #     PlotResult=True,
     # )
     optres = read_and_run(
-        data_file="datainput_BraninWithInteger",
-        nCandidatesPerIteration=200,
-        maxeval=100,
-        Ntrials=3,
+        data_file="datainput_hartman3",
+        sampler=sampling.NormalSampler(
+            300,
+            sigma=0.2,
+            sigma_min=0.2 * 0.5**6,
+            sigma_max=0.2,
+            strategy=sampling.SamplingStrategy.DDS,
+            weightpattern=[0.3, 0.5, 0.8, 0.95],
+        ),
+        maxeval=200,
+        Ntrials=1,
         NumberNewSamples=1,
-        rbf_type=RbfType.THINPLATE,
-        sampling_strategy=SamplingStrategy.DYCORS,
         PlotResult=True,
     )
+    # optres = read_and_run(
+    #     data_file="datainput_BraninWithInteger",
+    #     sampler=sampling.NormalSampler(
+    #         200,
+    #         sigma=0.2 * 15,
+    #         sigma_min=0.2 * 15 * 0.5**6,
+    #         sigma_max=0.2 * 15,
+    #         strategy=sampling.SamplingStrategy.DDS,
+    #     ),
+    #     maxeval=100,
+    #     Ntrials=3,
+    #     NumberNewSamples=1,
+    #     rbf_type=rbf.RbfType.THINPLATE,
+    #     PlotResult=True,
+    # )
 
     Ntrials = len(optres)
     print("BestValues", [optres[i].fx for i in range(Ntrials)])
