@@ -33,6 +33,7 @@ __deprecated__ = False
 from copy import deepcopy
 import numpy as np
 import scipy.spatial as scp
+from scipy.optimize import differential_evolution
 import time
 from dataclasses import dataclass
 import concurrent.futures
@@ -274,10 +275,6 @@ def stochastic_response_surface(
     dim = len(bounds)  # Dimension of the problem
     assert dim > 0
 
-    # tolerance parameters
-    failtolerance = max(failtolerance, dim)  # must be at least dim
-    succtolerance = 3  # Number of consecutive significant improvements before the algorithm modifies the sampler
-
     # Use a number of candidates that is greater than 1
     if sampler.n <= 1:
         sampler.n = 500 * dim
@@ -346,6 +343,10 @@ def stochastic_response_surface(
     # counters
     failctr = 0  # number of consecutive unsuccessful iterations
     succctr = 0  # number of consecutive successful iterations
+
+    # tolerance parameters
+    failtolerance = max(failtolerance, dim)  # must be at least dim
+    succtolerance = 3  # Number of consecutive significant improvements before the algorithm modifies the sampler
 
     # do until max number of f-evals reached or local min found
     while m < maxeval:
@@ -551,5 +552,203 @@ def multistart_stochastic_response_surface(
         # Update surrogate model and sampler for next iteration
         surrogateModel0.reset()
         sampler0 = deepcopy(sampler)
+
+    return out
+
+
+def target_value_optimization(
+    fun,
+    bounds: tuple,
+    maxeval: int,
+    *,
+    iindex: tuple[int, ...] = (),
+    surrogateModel=RbfModel(),
+    tol: float = 1e-3,
+) -> OptimizeResult:
+    ncpu = os.cpu_count() or 1  # Number of CPUs for parallel evaluations
+    dim = len(bounds)  # Dimension of the problem
+    assert dim > 0
+
+    # Reserve space for the surrogate model to avoid repeated allocations
+    surrogateModel.reserve(maxeval, dim)
+
+    # Initialize output
+    out = OptimizeResult(
+        x=np.zeros(dim),
+        fx=np.inf,
+        nit=0,
+        nfev=0,
+        samples=np.zeros((maxeval, dim)),
+        fsamples=np.zeros(maxeval),
+        fevaltime=np.zeros(maxeval),
+    )
+
+    # Number of initial samples
+    m = min(surrogateModel.nsamples(), maxeval)
+
+    if m == 0:
+        # Initialize surrogate model
+        surrogateModel.create_initial_design(
+            dim, bounds, min(maxeval, 2 * (dim + 1)), iindex
+        )
+        m = surrogateModel.nsamples()
+    else:
+        # Check if initial samples are integer values for integer variables
+        if any(
+            surrogateModel.samples()[:, iindex]
+            != np.round(surrogateModel.samples()[:, iindex])
+        ):
+            raise ValueError(
+                "Initial samples must be integer values for integer variables"
+            )
+        # Check if initial samples are sufficient to build the surrogate model
+        if (
+            np.linalg.matrix_rank(surrogateModel.get_matrixP())
+            != surrogateModel.pdim()
+        ):
+            raise ValueError(
+                "Initial samples are not sufficient to build the surrogate model"
+            )
+
+    # Compute f(x0)
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=min(ncpu, m)
+    ) as executor:
+        # Prepare the arguments for parallel execution
+        arguments = [(fun, surrogateModel.sample(i)) for i in range(m)]
+        # Use the map function to parallelize the evaluations
+        results = list(executor.map(__eval_fun_and_timeit, arguments))
+    out.fsamples[0:m], out.fevaltime[0:m] = zip(*results)
+
+    # Set coefficients of the surrogate model
+    surrogateModel.update_coefficients(np.array(out.fsamples[0:m]))
+
+    # Update output variables
+    iBest = np.argmin(out.fsamples[0:m]).item()
+    out.x = surrogateModel.sample(iBest)
+    out.fx = out.fsamples[iBest]
+    out.samples[0:m, :] = surrogateModel.samples()
+
+    # 0 = inf step, (1:n) = cycle step local, n+1 = cycle step global
+    cycleLength = 10  # cycle length
+    sample_sequence = np.arange(cycleLength + 2)
+
+    # Convert iindex to boolean array
+    intArgs = [False] * dim
+    for i in iindex:
+        intArgs[i] = True
+
+    # Record max function value
+    maxf = np.max(out.fsamples[0:m]).item()
+
+    # do until max number of f-evals reached or local min found
+    while m < maxeval:
+        print("\n Iteration: %d \n" % out.nit)
+        print("\n fEvals: %d \n" % m)
+        print("\n Best value: %f \n" % out.fx)
+
+        sample_stage = sample_sequence[out.nit % len(sample_sequence)]
+
+        # see Holmstrom 2008 "An adaptive radial basis algorithm (ARBF) for
+        # expensive black-box global optimization", JOGO
+        if sample_stage == 0:  # InfStep - minimize Mu_n
+            res = differential_evolution(
+                surrogateModel.mu_measure,
+                bounds,
+                args=(tol,),
+                integrality=intArgs,
+            )
+            xselected = res.x
+        elif 1 <= sample_stage <= cycleLength:  # cycle step global search
+            # find min of surrogate model
+            res = differential_evolution(
+                lambda x: surrogateModel.eval(x)[0],
+                bounds,
+                integrality=intArgs,
+            )
+            f_rbf = res.fun
+            wk = (
+                1 - sample_stage / cycleLength
+            ) ** 2  # select weight for computing target value
+            f_target = f_rbf - wk * (
+                maxf - f_rbf
+            )  # target for objective function value
+
+            # use GA method to minimize bumpiness measure
+            res_bump = differential_evolution(
+                surrogateModel.bumpiness_measure,
+                bounds,
+                args=(f_target, tol),
+                integrality=intArgs,
+            )
+            xselected = (
+                res_bump.x
+            )  # new point is the one that minimizes the bumpiness measure
+        else:  # cycle step local search
+            # find the minimum of RBF surface
+            res_rbf = differential_evolution(
+                lambda x: surrogateModel.eval(x)[0],
+                bounds,
+                integrality=intArgs,
+            )
+            x_rbf = res_rbf.x
+            if res_rbf.fun < out.fx - 1e-6 * abs(out.fx):
+                xselected = x_rbf  # select minimum point as new sample point if sufficient improvements
+            else:  # otherwise, do target value strategy
+                f_target = out.fx - 1e-2 * abs(out.fx)  # target value
+                # use GA method to minimize bumpiness measure
+                res_bump = differential_evolution(
+                    surrogateModel.bumpiness_measure,
+                    bounds,
+                    args=(f_target, tol),
+                    integrality=intArgs,
+                )
+                xselected = res_bump.x
+
+        # find closest already sampled point to xselected
+        distselected = scp.distance.cdist(
+            xselected.reshape(1, -1), surrogateModel.samples()
+        )
+        while np.any(distselected < tol):
+            # the selected point is too close to already evaluated point
+            # randomly select point from variable domain
+            xselected = Sampler(1).get_uniform_sample(bounds, iindex=iindex)
+            distselected = scp.distance.cdist(
+                xselected.reshape(1, -1), surrogateModel.samples()
+            )
+
+        # Perform function evaluation
+        out.fsamples[m], out.fevaltime[m] = __eval_fun_and_timeit(
+            (fun, xselected)
+        )
+
+        # Update maxf
+        maxf = max(maxf, out.fsamples[m])
+
+        # Update best point found so far if necessary
+        if out.fsamples[m] < out.fx:
+            out.x = xselected
+            out.fx = out.fsamples[m]
+
+        # Update remaining output variables
+        out.samples[m, :] = xselected
+        out.nit = out.nit + 1
+
+        # Update m
+        m = m + 1
+
+        # Update surrogate model if there is another local iteration
+        if m < maxeval:
+            surrogateModel.update(
+                xselected.reshape(1, -1),
+                out.fsamples[m],
+                np.concatenate((distselected, np.zeros((1, 1))), axis=1),
+            )
+
+    # Update output
+    out.nfev = m
+    out.samples.resize(m, dim)
+    out.fsamples.resize(m)
+    out.fevaltime.resize(m)
 
     return out

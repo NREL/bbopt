@@ -40,7 +40,7 @@ from data import Data
 
 def read_and_run(
     data_file: str,
-    sampler: sampling.Sampler,
+    sampler: sampling.Sampler = sampling.Sampler(1),
     maxeval: int = 0,
     Ntrials: int = 0,
     NumberNewSamples: int = 0,
@@ -106,8 +106,11 @@ def read_and_run(
         # )
 
         # Call the surrogate optimization function
-        optres.append(
-            optim_func(
+        if (
+            optim_func == optimize.multistart_stochastic_response_surface
+            or optim_func == optimize.stochastic_response_surface
+        ):
+            opt = optim_func(
                 data.objfunction,
                 bounds=tuple(
                     (data.xlow[i], data.xup[i]) for i in range(data.dim)
@@ -118,7 +121,20 @@ def read_and_run(
                 sampler=sampler,
                 newSamplesPerIteration=NumberNewSamples,
             )
-        )
+        elif optim_func == optimize.target_value_optimization:
+            opt = optim_func(
+                data.objfunction,
+                bounds=tuple(
+                    (data.xlow[i], data.xup[i]) for i in range(data.dim)
+                ),
+                maxeval=maxeval,
+                iindex=data.iindex,
+                surrogateModel=rbfModel,
+                tol=1e-3 * 15,
+            )
+        else:
+            raise ValueError("Invalid optimization function.")
+        optres.append(opt)
     ## End Optimization
 
     # save solution to file
@@ -274,7 +290,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    # args.config = 4
+    args.config = 4
     if args.config == 1:
         optres = read_and_run(
             data_file="datainput_Branin",
@@ -338,11 +354,21 @@ if __name__ == "__main__":
                 weightpattern=[0.3, 0.5, 0.8, 0.95],
             ),
             maxeval=100,
-            Ntrials=3,
+            Ntrials=1,
             NumberNewSamples=1,
             rbf_type=rbf.RbfType.THINPLATE,
             PlotResult=True,
             optim_func=optimize.stochastic_response_surface,
+        )
+    elif args.config == 5:
+        optres = read_and_run(
+            data_file="datainput_BraninWithInteger",
+            maxeval=100,
+            Ntrials=1,
+            NumberNewSamples=1,
+            rbf_type=rbf.RbfType.THINPLATE,
+            PlotResult=True,
+            optim_func=optimize.target_value_optimization,
         )
     else:
         raise ValueError("Invalid configuration number.")

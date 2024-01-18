@@ -44,7 +44,7 @@ class RbfModel:
 
     Parameters
     ----------
-    rbf_type : RbfType
+    type : RbfType
         Defines the function phi used in the RBF model. The options are:
 
         - RbfType.LINEAR: phi(r) = r.
@@ -206,13 +206,12 @@ class RbfModel:
         """
         dim = self.dim()
         m = x.size // dim
-        assert x.shape[1] == dim
 
         # Set up the polynomial tail matrix P
         if self.type == RbfType.LINEAR:
             return np.ones((m, 1))
         elif self.type in (RbfType.CUBIC, RbfType.THINPLATE):
-            return np.concatenate((np.ones((m, 1)), x), axis=1)
+            return np.concatenate((np.ones((m, 1)), x.reshape(m, -1)), axis=1)
         else:
             raise ValueError("Invalid polynomial tail")
 
@@ -232,8 +231,10 @@ class RbfModel:
             Matrix D where D[i, j] is the distance between the i-th input point
             and the j-th sampled point.
         """
+        dim = self.dim()
+
         # compute pairwise distances between candidates and sampled points
-        D = cdist(x, self._x[0 : self._m, :])
+        D = cdist(x.reshape(-1, dim), self.samples())
 
         Px = self.pbasis(x)
         y = np.matmul(self.phi(D), self._coef[0 : self._m]) + np.dot(
@@ -258,6 +259,11 @@ class RbfModel:
         self._fx[m - fx.size : m] = fx
 
         # replace large function values by the median of all available function values
+        # TODO: This is a smoothing step.
+        # Look in the paper: "In all RBF methods, we adopted a strategy used by
+        # Gutmann (2001) and by Björkman and Holmström
+        # (2000) of replacing large function values by the median
+        # of all available function values"
         gx = np.copy(self._fx[0:m])
         medianF = np.median(gx)
         gx[gx > medianF] = medianF
@@ -272,6 +278,7 @@ class RbfModel:
             axis=0,
         )
 
+        # TODO: See if there is a solver specific for this kind of matrix
         eta = np.sqrt(
             (1e-16)
             * np.linalg.norm(A, 1).item()
@@ -297,7 +304,7 @@ class RbfModel:
         fxNew : np.ndarray, optional
             Function values of the points in xNew.
         distNew : np.ndarray, optional
-            (self.nsamples() + m)-by-m matrix with distances between points in
+            m-by-(self.nsamples() + m) matrix with distances between points in
             xNew and points in (self.samples(), xNew). If not provided, the
             distances are computed.
         """
@@ -315,7 +322,7 @@ class RbfModel:
                 distNew = cdist(xNew, xNew)
             else:
                 distNew = cdist(
-                    xNew, np.concatenate((self._x[0:oldm, :], xNew), axis=0)
+                    xNew, np.concatenate((self.samples(), xNew), axis=0)
                 )
 
         self.reserve(m, dim)
@@ -376,7 +383,7 @@ class RbfModel:
                 raise RuntimeError("Cannot create valid initial design")
 
         # Compute distances between new points and sampled points
-        distNew = cdist(self._x[0:m, :], self._x[0:m, :])
+        distNew = cdist(self.samples(), self.samples())
 
         # Set matrix _PHI
         self._PHI[0:m, 0:m] = self.phi(distNew)
@@ -434,4 +441,103 @@ class RbfModel:
         out: np.ndarray
             i-th sampled point.
         """
-        return self._x[i, :]
+        return self.samples()[i, :]
+
+    def __test_updating_coefficients_for_new_point(
+        self, x: np.ndarray, xdist: np.ndarray
+    ):
+        # compute rbf value of the new point x
+        pdim = self.pdim()
+        new_phi = self.phi(xdist).reshape(-1, 1)
+        new_Prow = self.pbasis(x)
+
+        # set up matrices for solving the linear system
+        A_aug = np.block(
+            [
+                [
+                    self._PHI[0 : self._m, 0 : self._m],
+                    new_phi,
+                    self._P[0 : self._m, :],
+                ],
+                [
+                    new_phi.T,
+                    self.phi(0),
+                    new_Prow,
+                ],
+                [
+                    self._P[0 : self._m, :].T,
+                    new_Prow.T,
+                    np.zeros((pdim, pdim)),
+                ],
+            ]
+        )
+
+        # set up right hand side
+        rhs = np.zeros(A_aug.shape[0])
+        rhs[self._m] = 1
+
+        # solve linear system
+        # TODO: Review this strategy
+        eta = np.sqrt(
+            (1e-16)
+            * np.linalg.norm(A_aug, 1).item()
+            * np.linalg.norm(A_aug, np.inf).item()
+        )
+        coeff = np.linalg.solve(A_aug + eta * np.eye(A_aug.shape[0]), rhs)
+
+        return coeff
+
+    def bumpiness_measure(self, x: np.ndarray, target, tol: float = 1e-6):
+        # TODO: Look at:
+        # A radial basis function method for global optimization. J Glob Optim 19:201–227
+
+        # compute the bumpiness of the surrogate model for a potential sample point x
+
+        # compute distance between x and all already sampled points
+        R_y = cdist(x.reshape(1, -1), self.samples())
+
+        # point x is too close to already sampled points
+        if np.any(R_y < tol):
+            hn = 0.0  # give the bumpiness a bad bumpiness function value -> avoid sampling at this point
+        else:
+            coeff = self.__test_updating_coefficients_for_new_point(x, R_y)
+            mu = coeff[self._m]
+
+            if mu < 1e-6:
+                hn = 100.0  # mu is too inexact, give a bad value
+            else:
+                m0 = 1
+                # predict RBF value of x
+                yhat, _ = self.eval(x)
+                assert yhat.size == 1
+
+                # bumpiness measure
+                gn = (-1) ** (m0 + 1) * mu * (yhat[0] - target) ** 2
+                if gn > 0:
+                    hn = (
+                        -1 / gn
+                    )  # minimize -1/gn to avoid numerical difficulties at already sampled points
+                else:
+                    hn = -float("inf")
+
+        return hn
+
+    def mu_measure(self, x, tol: float = 1e-6):
+        # compute the value of mu in the inf step of the target value sampling
+        # strategy
+
+        # compute distance between x and all already sampled points
+        R_y = cdist(x.reshape(1, -1), self.samples())
+
+        # point x is too close to already sampled points
+        if np.any(R_y < tol):
+            return 99999  # return bad value
+        else:
+            coeff = self.__test_updating_coefficients_for_new_point(x, R_y)
+            mu = coeff[self._m]
+            if abs(mu) < 1e-6:
+                return 0
+            elif mu < 0:  # mu is too imprecise, assign bad value
+                return 99999
+            else:
+                return mu
