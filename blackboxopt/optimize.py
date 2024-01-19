@@ -75,6 +75,35 @@ class OptimizeResult:
     fevaltime: np.ndarray
 
 
+def median_filter(x: np.ndarray) -> np.ndarray:
+    """Filter values by replacing large function values by the median of all.
+
+    This strategy was proposed by `Gutmann (2001)`_ based on results from
+    `Björkman and Holmström (2000)`_.
+
+    Parameters
+    ----------
+    x : numpy.ndarray
+        Values.
+
+    Returns
+    -------
+    numpy.ndarray
+        Filtered values.
+
+    References
+    ----------
+
+    .. _Gutmann (2001): Gutmann, HM. A Radial Basis Function Method for Global Optimization. Journal of Global Optimization 19, 201–227 (2001). https://doi.org/10.1023/A:1011255519438
+
+    .. _Björkman and Holmström (2000): Björkman, M., Holmström, K. Global Optimization of Costly Nonconvex Functions Using Radial Basis Functions. Optimization and Engineering 1, 373–397 (2000). https://doi.org/10.1023/A:1011584207202
+    """
+    mx = np.median(x)
+    filtered_x = np.copy(x)
+    filtered_x[x > mx] = mx
+    return filtered_x
+
+
 def find_best(
     x: np.ndarray,
     fx: np.ndarray,
@@ -332,7 +361,7 @@ def stochastic_response_surface(
     out.fsamples[0:m], out.fevaltime[0:m] = zip(*results)
 
     # Set coefficients of the surrogate model
-    surrogateModel.update_coefficients(np.array(out.fsamples[0:m]))
+    surrogateModel.update_coefficients(median_filter(out.fsamples[0:m]))
 
     # Update output variables
     iBest = np.argmin(out.fsamples[0:m]).item()
@@ -455,7 +484,10 @@ def stochastic_response_surface(
 
         # Update surrogate model if there is another local iteration
         if m < maxeval:
-            surrogateModel.update(xselected, ySelected, distselected)
+            surrogateModel.update_samples(xselected, distselected)
+            surrogateModel.update_coefficients(
+                median_filter(out.fsamples[0:m])
+            )
 
     # Update output
     out.nfev = m
@@ -621,7 +653,7 @@ def target_value_optimization(
     out.fsamples[0:m], out.fevaltime[0:m] = zip(*results)
 
     # Set coefficients of the surrogate model
-    surrogateModel.update_coefficients(np.array(out.fsamples[0:m]))
+    surrogateModel.update_coefficients(median_filter(out.fsamples[0:m]))
 
     # Update output variables
     iBest = np.argmin(out.fsamples[0:m]).item()
@@ -739,10 +771,12 @@ def target_value_optimization(
 
         # Update surrogate model if there is another local iteration
         if m < maxeval:
-            surrogateModel.update(
+            surrogateModel.update_samples(
                 xselected.reshape(1, -1),
-                out.fsamples[m],
                 np.concatenate((distselected, np.zeros((1, 1))), axis=1),
+            )
+            surrogateModel.update_coefficients(
+                median_filter(out.fsamples[0:m])
             )
 
     # Update output

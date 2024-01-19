@@ -90,7 +90,7 @@ def read_and_run(
         rbfModel = rbf.RbfModel(rbf_type)
 
         # # Uncomment to compare with Surrogates.jl
-        # rbfModel.update(
+        # rbfModel.update_samples(
         #     np.array(
         #         [
         #             [0.3125, 0.8125, 0.8125],
@@ -290,7 +290,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    args.config = 4
+    # args.config = 4
     if args.config == 1:
         optres = read_and_run(
             data_file="datainput_Branin",
@@ -354,7 +354,7 @@ if __name__ == "__main__":
                 weightpattern=[0.3, 0.5, 0.8, 0.95],
             ),
             maxeval=100,
-            Ntrials=1,
+            Ntrials=3,
             NumberNewSamples=1,
             rbf_type=rbf.RbfType.THINPLATE,
             PlotResult=True,

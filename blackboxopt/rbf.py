@@ -33,6 +33,7 @@ __deprecated__ = False
 import numpy as np
 from enum import Enum
 from scipy.spatial.distance import cdist
+from scipy.linalg import solve
 
 from .utility import SLHDstandard
 
@@ -55,9 +56,9 @@ class RbfModel:
     def __init__(self, rbf_type: RbfType = RbfType.CUBIC):
         self.type = rbf_type
 
+        self._valid_coefficients = True
         self._m = 0
         self._x = np.array([])
-        self._fx = np.array([])
         self._coef = np.array([])
         self._PHI = np.array([])
         self._P = np.array([])
@@ -84,14 +85,6 @@ class RbfModel:
             additional_rows = max(0, maxeval - self._x.shape[0])
             self._x = np.concatenate(
                 (self._x, np.empty((additional_rows, dim))), axis=0
-            )
-
-        if self._fx.size == 0:
-            self._fx = np.empty(maxeval)
-        else:
-            additional_values = max(0, maxeval - self._fx.shape[0])
-            self._fx = np.concatenate(
-                (self._fx, np.empty(additional_values)), axis=0
             )
 
         if self._coef.size == 0:
@@ -231,6 +224,9 @@ class RbfModel:
             Matrix D where D[i, j] is the distance between the i-th input point
             and the j-th sampled point.
         """
+        if self._valid_coefficients is False:
+            raise RuntimeError("Invalid coefficients")
+
         dim = self.dim()
 
         # compute pairwise distances between candidates and sampled points
@@ -243,30 +239,16 @@ class RbfModel:
 
         return y, D
 
-    def update_coefficients(self, fx: np.ndarray = np.array([])) -> None:
+    def update_coefficients(self, fx: np.ndarray) -> None:
         """Updates the coefficients of the RBF model.
 
         Parameters
         ----------
-        fx : np.ndarray, optional
-            Function values of the last sampled points. If not provided, all
-            function values are taken from the attribute _fx.
+        fx : np.ndarray
+            Function values on the sampled points.
         """
         m = self._m
         pdim = self.pdim()
-
-        # Replace last function values by new function values
-        self._fx[m - fx.size : m] = fx
-
-        # replace large function values by the median of all available function values
-        # TODO: This is a smoothing step.
-        # Look in the paper: "In all RBF methods, we adopted a strategy used by
-        # Gutmann (2001) and by Björkman and Holmström
-        # (2000) of replacing large function values by the median
-        # of all available function values"
-        gx = np.copy(self._fx[0:m])
-        medianF = np.median(gx)
-        gx[gx > medianF] = medianF
 
         A = np.concatenate(
             (
@@ -278,21 +260,15 @@ class RbfModel:
             axis=0,
         )
 
-        # TODO: See if there is a solver specific for this kind of matrix
-        eta = np.sqrt(
-            (1e-16)
-            * np.linalg.norm(A, 1).item()
-            * np.linalg.norm(A, np.inf).item()
+        # TODO: See if there is a solver specific for saddle-point systems
+        self._coef = solve(
+            A, np.concatenate((fx, np.zeros(pdim))), assume_a="sym"
         )
-        self._coef = np.linalg.solve(
-            (A + eta * np.eye(m + pdim)),
-            np.concatenate((gx, np.zeros(pdim))),
-        )
+        self._valid_coefficients = True
 
-    def update(
+    def update_samples(
         self,
         xNew: np.ndarray,
-        fxNew: np.ndarray = np.array([]),
         distNew: np.ndarray = np.array([]),
     ) -> None:
         """Updates the RBF model with new points.
@@ -301,8 +277,6 @@ class RbfModel:
         ----------
         xNew : np.ndarray
             m-by-d matrix with m point coordinates in a d-dimensional space.
-        fxNew : np.ndarray, optional
-            Function values of the points in xNew.
         distNew : np.ndarray, optional
             m-by-(self.nsamples() + m) matrix with distances between points in
             xNew and points in (self.samples(), xNew). If not provided, the
@@ -315,6 +289,8 @@ class RbfModel:
 
         if oldm > 0:
             assert dim == self.dim()
+        if newm == 0:
+            return
 
         # Compute distances between new points and sampled points
         if distNew.size == 0:
@@ -338,10 +314,8 @@ class RbfModel:
         # Update m
         self._m = m
 
-        # Update fx and coeficients
-        if fxNew.size > 0:
-            self._fx[oldm:m] = fxNew
-            self.update_coefficients()
+        # Coefficients are not valid anymore
+        self._valid_coefficients = False
 
     def create_initial_design(
         self, dim: int, bounds: tuple, m: int = 0, iindex: tuple[int, ...] = ()
@@ -369,6 +343,9 @@ class RbfModel:
             m = 2 * pdim
             self.reserve(m, dim)
 
+        if dim <= 0:
+            return
+
         # Generate initial design and set matrix _P
         self._m = m
         count = 0
@@ -389,6 +366,9 @@ class RbfModel:
         self._PHI[0:m, 0:m] = self.phi(distNew)
         self._PHI[0:0, 0:m] = self._PHI[0:m, 0:0].T
 
+        # Coefficients are not valid
+        self._valid_coefficients = False
+
     def nsamples(self) -> int:
         """Get the number of sampled points.
 
@@ -403,7 +383,6 @@ class RbfModel:
         """Resets the RBF model."""
         self._m = 0
         self._x = np.array([])
-        self._fx = np.array([])
         self._coef = np.array([])
         self._PHI = np.array([])
         self._P = np.array([])
@@ -477,13 +456,7 @@ class RbfModel:
         rhs[self._m] = 1
 
         # solve linear system
-        # TODO: Review this strategy
-        eta = np.sqrt(
-            (1e-16)
-            * np.linalg.norm(A_aug, 1).item()
-            * np.linalg.norm(A_aug, np.inf).item()
-        )
-        coeff = np.linalg.solve(A_aug + eta * np.eye(A_aug.shape[0]), rhs)
+        coeff = solve(A_aug, rhs, assume_a="sym")
 
         return coeff
 

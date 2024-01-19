@@ -64,3 +64,4 @@ def myfun(x):
 if __name__ == "__main__":
     print(myfun(np.array([[3, 2.4013]])))
     print(myfun(np.array([[3, 2.26325204]])))
+    print(myfun(np.array([[3, 2.38247443]])))

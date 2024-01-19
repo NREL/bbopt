@@ -91,7 +91,7 @@ if __name__ == "__main__":
     print("LocalStochRBFstop Start")
 
     rbfModel = RbfModel(phifunction)
-    rbfModel.update(samples)
+    rbfModel.update_samples(samples)
 
     minxrange = np.min(data.xup - data.xlow)
     optres = stochastic_response_surface(
