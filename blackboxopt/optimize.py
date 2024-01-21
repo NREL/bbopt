@@ -32,8 +32,8 @@ __deprecated__ = False
 
 from copy import deepcopy
 import numpy as np
-import scipy.spatial as scp
-from scipy.optimize import differential_evolution
+from scipy.spatial.distance import cdist
+from scipy.optimize import differential_evolution, NonlinearConstraint
 import time
 from dataclasses import dataclass
 import concurrent.futures
@@ -78,8 +78,7 @@ class OptimizeResult:
 def median_filter(x: np.ndarray) -> np.ndarray:
     """Filter values by replacing large function values by the median of all.
 
-    This strategy was proposed by `Gutmann (2001)`_ based on results from
-    `Björkman and Holmström (2000)`_.
+    This strategy was proposed by [#]_ based on results from [#]_.
 
     Parameters
     ----------
@@ -94,9 +93,13 @@ def median_filter(x: np.ndarray) -> np.ndarray:
     References
     ----------
 
-    .. _Gutmann (2001): Gutmann, HM. A Radial Basis Function Method for Global Optimization. Journal of Global Optimization 19, 201–227 (2001). https://doi.org/10.1023/A:1011255519438
+    .. [#] Gutmann, HM. A Radial Basis Function Method for Global Optimization.
+        Journal of Global Optimization 19, 201–227 (2001).
+        https://doi.org/10.1023/A:1011255519438
 
-    .. _Björkman and Holmström (2000): Björkman, M., Holmström, K. Global Optimization of Costly Nonconvex Functions Using Radial Basis Functions. Optimization and Engineering 1, 373–397 (2000). https://doi.org/10.1023/A:1011584207202
+    .. [#] Björkman, M., Holmström, K. Global Optimization of Costly Nonconvex
+        Functions Using Radial Basis Functions. Optimization and Engineering 1,
+        373–397 (2000). https://doi.org/10.1023/A:1011584207202
     """
     mx = np.median(x)
     filtered_x = np.copy(x)
@@ -202,7 +205,7 @@ def find_best(
     for ii in range(1, n):
         # compute distance of all candidate points to the previously selected
         # candidate point
-        newDist = scp.distance.cdist(xselected[ii - 1, :].reshape(1, -1), x)[0]
+        newDist = cdist(xselected[ii - 1, :].reshape(1, -1), x)[0]
         dist = np.minimum(dist, newDist)
 
         selindex[ii] = argminscore(
@@ -257,7 +260,7 @@ def stochastic_response_surface(
     """Minimize a scalar function of one or more variables using a response
     surface model approach based on a surrogate model.
 
-    This method is based on [1]_.
+    This method is based on [#]_.
 
     Parameters
     ----------
@@ -296,7 +299,8 @@ def stochastic_response_surface(
 
     References
     ----------
-    .. [1] Rommel G Regis and Christine A Shoemaker. A stochastic radial basis
+
+    .. [#] Rommel G Regis and Christine A Shoemaker. A stochastic radial basis
         function method for the global optimization of expensive functions.
         INFORMS Journal on Computing, 19(4):497–509, 2007.
     """
@@ -597,6 +601,40 @@ def target_value_optimization(
     surrogateModel=RbfModel(),
     tol: float = 1e-3,
 ) -> OptimizeResult:
+    """Minimize a scalar function of one or more variables using the target
+    value strategy from [#]_.
+
+    Parameters
+    ----------
+    fun : callable
+        The objective function to be minimized.
+    bounds : tuple
+        Bounds for variables. Each element of the tuple must be a tuple with two
+        elements, corresponding to the lower and upper bound for the variable.
+    maxeval : int
+        Maximum number of function evaluations.
+    iindex : tuple, optional
+        Indices of the input space that are integer. The default is ().
+    surrogateModel : surrogate model, optional
+        Surrogate model to be used. The default is RbfModel().
+        On exit, the surrogate model is updated to represent the one used in the
+        last iteration.
+    tol : float, optional
+        Tolerance value for excluding candidate points that are too close to
+        already sampled points. The default is 1e-3.
+
+    Returns
+    -------
+    OptimizeResult
+        The optimization result.
+
+    References
+    ----------
+
+    .. [#] Holmström, K. An adaptive radial basis algorithm (ARBF) for expensive
+        black-box global optimization. J Glob Optim 41, 447–464 (2008).
+        https://doi.org/10.1007/s10898-007-9256-8
+    """
     ncpu = os.cpu_count() or 1  # Number of CPUs for parallel evaluations
     dim = len(bounds)  # Dimension of the problem
     assert dim > 0
@@ -681,14 +719,24 @@ def target_value_optimization(
 
         sample_stage = sample_sequence[out.nit % len(sample_sequence)]
 
+        # Candidate points should not be too close to already sampled points
+        # The constraint is min(||x-x_i||) >= tol.
+        constraints = NonlinearConstraint(
+            lambda x: [np.dot(x - y, x - y) for y in surrogateModel.samples()],
+            tol * tol,
+            np.inf,
+            jac=lambda x: 2 * (x.reshape(1, -1) - surrogateModel.samples()),
+            hess=lambda x, v: 2 * np.sum(v) * np.eye(dim),
+        )
+
         # see Holmstrom 2008 "An adaptive radial basis algorithm (ARBF) for
         # expensive black-box global optimization", JOGO
         if sample_stage == 0:  # InfStep - minimize Mu_n
             res = differential_evolution(
                 surrogateModel.mu_measure,
                 bounds,
-                args=(tol,),
                 integrality=intArgs,
+                constraints=constraints,
             )
             xselected = res.x
         elif 1 <= sample_stage <= cycleLength:  # cycle step global search
@@ -710,42 +758,45 @@ def target_value_optimization(
             res_bump = differential_evolution(
                 surrogateModel.bumpiness_measure,
                 bounds,
-                args=(f_target, tol),
+                args=(f_target,),
                 integrality=intArgs,
+                constraints=constraints,
             )
             xselected = (
                 res_bump.x
             )  # new point is the one that minimizes the bumpiness measure
         else:  # cycle step local search
             # find the minimum of RBF surface
-            res_rbf = differential_evolution(
+            res = differential_evolution(
                 lambda x: surrogateModel.eval(x)[0],
                 bounds,
                 integrality=intArgs,
             )
-            x_rbf = res_rbf.x
-            if res_rbf.fun < out.fx - 1e-6 * abs(out.fx):
-                xselected = x_rbf  # select minimum point as new sample point if sufficient improvements
+            f_rbf = res.fun
+            if f_rbf < (out.fx - 1e-6 * abs(out.fx)):
+                xselected = res.x  # select minimum point as new sample point if sufficient improvements
             else:  # otherwise, do target value strategy
                 f_target = out.fx - 1e-2 * abs(out.fx)  # target value
                 # use GA method to minimize bumpiness measure
                 res_bump = differential_evolution(
                     surrogateModel.bumpiness_measure,
                     bounds,
-                    args=(f_target, tol),
+                    args=(f_target,),
                     integrality=intArgs,
+                    constraints=constraints,
                 )
                 xselected = res_bump.x
 
         # find closest already sampled point to xselected
-        distselected = scp.distance.cdist(
+        distselected = cdist(
             xselected.reshape(1, -1), surrogateModel.samples()
         )
         while np.any(distselected < tol):
             # the selected point is too close to already evaluated point
             # randomly select point from variable domain
+            # May only happen after a local search step
             xselected = Sampler(1).get_uniform_sample(bounds, iindex=iindex)
-            distselected = scp.distance.cdist(
+            distselected = cdist(
                 xselected.reshape(1, -1), surrogateModel.samples()
             )
 

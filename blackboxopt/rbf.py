@@ -423,10 +423,28 @@ class RbfModel:
         return self.samples()[i, :]
 
     def __test_updating_coefficients_for_new_point(
-        self, x: np.ndarray, xdist: np.ndarray
-    ):
+        self, x: np.ndarray, xdist: np.ndarray = np.array([])
+    ) -> np.ndarray:
+        """Test updating coefficients for a new point x using a Dirac delta
+        function.
+
+        Parameters
+        ----------
+        x : np.ndarray
+            New point.
+        xdist : np.ndarray, optional
+            Distances between x and the sampled points. If not provided, the
+            distances are computed.
+
+        Returns
+        -------
+        np.ndarray
+            Coefficients of the RBF model.
+        """
         # compute rbf value of the new point x
         pdim = self.pdim()
+        if xdist.size == 0:
+            xdist = cdist(x.reshape(1, -1), self.samples())
         new_phi = self.phi(xdist).reshape(-1, 1)
         new_Prow = self.pbasis(x)
 
@@ -460,57 +478,79 @@ class RbfModel:
 
         return coeff
 
-    def bumpiness_measure(self, x: np.ndarray, target, tol: float = 1e-6):
-        # TODO: Look at:
-        # A radial basis function method for global optimization. J Glob Optim 19:201–227
+    def bumpiness_measure(self, x: np.ndarray, target) -> float:
+        """Compute the bumpiness of the surrogate model for a potential sample
+        point x as defined in [#]_.
 
-        # compute the bumpiness of the surrogate model for a potential sample point x
+        Parameters
+        ----------
+        x : np.ndarray
+            Possible point to be added to the surrogate model.
+        target : a number
+            Target value.
 
-        # compute distance between x and all already sampled points
-        R_y = cdist(x.reshape(1, -1), self.samples())
+        Returns
+        -------
+        float
+            Bumpiness measure of x.
 
-        # point x is too close to already sampled points
-        if np.any(R_y < tol):
-            hn = 0.0  # give the bumpiness a bad bumpiness function value -> avoid sampling at this point
+        References
+        ----------
+        .. [#] Gutmann, HM. A Radial Basis Function Method for Global
+            Optimization. Journal of Global Optimization 19, 201–227 (2001).
+            https://doi.org/10.1023/A:1011255519438
+        """
+        absmu = self.mu_measure(x)
+        assert (
+            absmu > 0
+        )  # if absmu == 0, the linear system in the surrogate model singular
+
+        # predict RBF value of x
+        yhat, _ = self.eval(x)
+        assert yhat.size == 1  # sanity check
+
+        # Compute the distance between the predicted value and the target
+        dist = abs(yhat[0] - target)
+        # if dist < tol:
+        #     dist = tol
+
+        # use sqrt(gn) as the bumpiness measure to avoid underflow
+        gn = np.sqrt(absmu) * dist
+        return gn
+
+    def mu_measure(self, x: np.ndarray) -> float:
+        """Compute the value of abs(mu) in the inf step of the target value
+        sampling strategy. See [#]_ for more details.
+
+        Parameters
+        ----------
+        x : np.ndarray
+            Possible point to be added to the surrogate model.
+
+        Returns
+        -------
+        float
+            Value of abs(mu) when adding the new x.
+
+        References
+        ----------
+        .. [#] Gutmann, HM. A Radial Basis Function Method for Global
+            Optimization. Journal of Global Optimization 19, 201–227 (2001).
+            https://doi.org/10.1023/A:1011255519438
+        """
+        coeff = self.__test_updating_coefficients_for_new_point(x)
+        mu = float(coeff[self._m].item())
+
+        # Order of the polynomial tail
+        if self.type == RbfType.LINEAR:
+            m0 = 0
+        elif self.type in (RbfType.CUBIC, RbfType.THINPLATE):
+            m0 = 1
         else:
-            coeff = self.__test_updating_coefficients_for_new_point(x, R_y)
-            mu = coeff[self._m]
+            raise ValueError("Unknown RBF type")
 
-            if mu < 1e-6:
-                hn = 100.0  # mu is too inexact, give a bad value
-            else:
-                m0 = 1
-                # predict RBF value of x
-                yhat, _ = self.eval(x)
-                assert yhat.size == 1
+        # Get the absolute value of mu
+        mu *= (-1) ** (m0 + 1)
+        assert mu >= 0
 
-                # bumpiness measure
-                gn = (-1) ** (m0 + 1) * mu * (yhat[0] - target) ** 2
-                if gn > 0:
-                    hn = (
-                        -1 / gn
-                    )  # minimize -1/gn to avoid numerical difficulties at already sampled points
-                else:
-                    hn = -float("inf")
-
-        return hn
-
-    def mu_measure(self, x, tol: float = 1e-6):
-        # compute the value of mu in the inf step of the target value sampling
-        # strategy
-
-        # compute distance between x and all already sampled points
-        R_y = cdist(x.reshape(1, -1), self.samples())
-
-        # point x is too close to already sampled points
-        if np.any(R_y < tol):
-            return 99999  # return bad value
-        else:
-            coeff = self.__test_updating_coefficients_for_new_point(x, R_y)
-            mu = coeff[self._m]
-            if abs(mu) < 1e-6:
-                return 0
-            elif mu < 0:  # mu is too imprecise, assign bad value
-                return 99999
-            else:
-                return mu
+        return mu
