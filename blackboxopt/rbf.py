@@ -250,14 +250,11 @@ class RbfModel:
         m = self._m
         pdim = self.pdim()
 
-        A = np.concatenate(
-            (
-                np.concatenate((self._PHI[0:m, 0:m], self._P[0:m, :]), axis=1),
-                np.concatenate(
-                    (self._P[0:m, :].T, np.zeros((pdim, pdim))), axis=1
-                ),
-            ),
-            axis=0,
+        A = np.block(
+            [
+                [self._PHI[0:m, 0:m], self._P[0:m, :]],
+                [self._P[0:m, :].T, np.zeros((pdim, pdim))],
+            ]
         )
 
         # TODO: See if there is a solver specific for saddle-point systems

@@ -31,6 +31,7 @@ __version__ = "0.1.0"
 __deprecated__ = False
 
 from copy import deepcopy
+from math import sqrt
 import numpy as np
 from scipy.spatial.distance import cdist
 from scipy.optimize import differential_evolution, NonlinearConstraint
@@ -112,6 +113,7 @@ def find_best(
     fx: np.ndarray,
     dist: np.ndarray,
     n: int,
+    tol: float = 1e-3,
     weightpattern=[0.3, 0.5, 0.8, 0.95],
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Select n points based on their values and distances to candidates.
@@ -167,7 +169,9 @@ def find_best(
     else:
         scaledvalue = (fx - minval) / (maxval - minval)
 
-    def argminscore(dist: np.ndarray, valueweight: float) -> np.intp:
+    def argminscore(
+        dist: np.ndarray, valueweight: float, tol: float
+    ) -> np.intp:
         """Gets the index of the candidate point that minimizes the score.
 
         Parameters
@@ -195,12 +199,12 @@ def find_best(
 
         # Assign bad values to points that are too close to already
         # evaluated/chosen points
-        score[dist == 0] = np.inf
+        score[dist < tol] = np.inf
 
         # Return index with the best (smallest) score
         return np.argmin(score)
 
-    selindex[0] = argminscore(dist, weightpattern[0])
+    selindex[0] = argminscore(dist, weightpattern[0], tol)
     xselected[0, :] = x[selindex[0], :]
     for ii in range(1, n):
         # compute distance of all candidate points to the previously selected
@@ -209,7 +213,7 @@ def find_best(
         dist = np.minimum(dist, newDist)
 
         selindex[ii] = argminscore(
-            dist, weightpattern[ii % len(weightpattern)]
+            dist, weightpattern[ii % len(weightpattern)], tol
         )
         xselected[ii, :] = x[selindex[ii], :]
 
@@ -380,6 +384,11 @@ def stochastic_response_surface(
     # tolerance parameters
     failtolerance = max(failtolerance, dim)  # must be at least dim
     succtolerance = 3  # Number of consecutive significant improvements before the algorithm modifies the sampler
+    tol = (
+        1e-3
+        * np.min([bounds[i][1] - bounds[i][0] for i in range(dim)])
+        * sqrt(dim)
+    )  # tolerance value for excluding candidate points that are too close to already sampled points
 
     # do until max number of f-evals reached or local min found
     while m < maxeval:
@@ -411,6 +420,7 @@ def stochastic_response_surface(
             CandValue,
             np.min(distMatrix, axis=1),
             NumberNewSamples,
+            tol=tol,
             weightpattern=sampler.weightpattern,
         )
         nSelected = selindex.size
@@ -599,7 +609,6 @@ def target_value_optimization(
     *,
     iindex: tuple[int, ...] = (),
     surrogateModel=RbfModel(),
-    tol: float = 1e-3,
 ) -> OptimizeResult:
     """Minimize a scalar function of one or more variables using the target
     value strategy from [#]_.
@@ -619,9 +628,6 @@ def target_value_optimization(
         Surrogate model to be used. The default is RbfModel().
         On exit, the surrogate model is updated to represent the one used in the
         last iteration.
-    tol : float, optional
-        Tolerance value for excluding candidate points that are too close to
-        already sampled points. The default is 1e-3.
 
     Returns
     -------
@@ -698,6 +704,11 @@ def target_value_optimization(
     out.x = surrogateModel.sample(iBest)
     out.fx = out.fsamples[iBest]
     out.samples[0:m, :] = surrogateModel.samples()
+
+    # Tolerance parameters
+    tol = (
+        1e-3 * np.min([bounds[i][1] - bounds[i][0] for i in range(dim)])
+    )  # tolerance value for excluding candidate points that are too close to already sampled points
 
     # 0 = inf step, (1:n) = cycle step local, n+1 = cycle step global
     cycleLength = 10  # cycle length

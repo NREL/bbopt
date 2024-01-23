@@ -130,7 +130,6 @@ def read_and_run(
                 maxeval=maxeval,
                 iindex=data.iindex,
                 surrogateModel=rbfModel,
-                tol=1e-3 * 15,
             )
         else:
             raise ValueError("Invalid optimization function.")
@@ -290,15 +289,16 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    # args.config = 4
+    # args.config = 3
     if args.config == 1:
+        mixrange = 15
         optres = read_and_run(
             data_file="datainput_Branin",
             sampler=sampling.NormalSampler(
                 1000,
-                sigma=0.2 * 15,
-                sigma_min=0.2 * 15 * 0.5**5,
-                sigma_max=0.2 * 15,
+                sigma=0.2 * mixrange,
+                sigma_min=0.2 * mixrange * 0.5**5,
+                sigma_max=0.2 * mixrange,
                 strategy=sampling.SamplingStrategy.NORMAL,
                 weightpattern=[
                     0.95,
@@ -326,13 +326,14 @@ if __name__ == "__main__":
             PlotResult=True,
         )
     elif args.config == 3:
+        mixrange = 15
         optres = read_and_run(
             data_file="datainput_BraninWithInteger",
             sampler=sampling.NormalSampler(
                 200,
-                sigma=0.2 * 15,
-                sigma_min=0.2 * 15 * 0.5**5,
-                sigma_max=0.2 * 15,
+                sigma=0.2 * mixrange,
+                sigma_min=0.2 * mixrange * 0.5**5,
+                sigma_max=0.2 * mixrange,
                 strategy=sampling.SamplingStrategy.DDS,
                 weightpattern=[0.3, 0.5, 0.8, 0.95],
             ),
@@ -343,13 +344,14 @@ if __name__ == "__main__":
             PlotResult=True,
         )
     elif args.config == 4:
+        mixrange = 15
         optres = read_and_run(
             data_file="datainput_BraninWithInteger",
             sampler=sampling.NormalSampler(
                 200,
-                sigma=0.2 * 15,
-                sigma_min=0.2 * 15 * 0.5**5,
-                sigma_max=0.2 * 15,
+                sigma=0.2 * mixrange,
+                sigma_min=0.2 * mixrange * 0.5**5,
+                sigma_max=0.2 * mixrange,
                 strategy=sampling.SamplingStrategy.DDS_UNIFORM,
                 weightpattern=[0.3, 0.5, 0.8, 0.95],
             ),
@@ -364,7 +366,7 @@ if __name__ == "__main__":
         optres = read_and_run(
             data_file="datainput_BraninWithInteger",
             maxeval=100,
-            Ntrials=1,
+            Ntrials=3,
             NumberNewSamples=1,
             rbf_type=rbf.RbfType.THINPLATE,
             PlotResult=True,
