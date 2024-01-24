@@ -289,7 +289,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    # args.config = 3
+    # args.config = 4
     if args.config == 1:
         mixrange = 15
         optres = read_and_run(

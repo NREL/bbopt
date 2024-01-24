@@ -39,7 +39,6 @@ import time
 from dataclasses import dataclass
 import concurrent.futures
 import os
-from collections import deque
 
 from .rbf import RbfModel
 from .sampling import NormalSampler, Sampler
@@ -368,9 +367,6 @@ def stochastic_response_surface(
         results = list(executor.map(__eval_fun_and_timeit, arguments))
     out.fsamples[0:m], out.fevaltime[0:m] = zip(*results)
 
-    # Set coefficients of the surrogate model
-    surrogateModel.update_coefficients(median_filter(out.fsamples[0:m]))
-
     # Update output variables
     iBest = np.argmin(out.fsamples[0:m]).item()
     out.x = surrogateModel.sample(iBest)
@@ -380,6 +376,9 @@ def stochastic_response_surface(
     # counters
     failctr = 0  # number of consecutive unsuccessful iterations
     succctr = 0  # number of consecutive successful iterations
+    countinuousSearch = (
+        0  # number of consecutive iterations with continuous search
+    )
 
     # tolerance parameters
     failtolerance = max(failtolerance, dim)  # must be at least dim
@@ -391,6 +390,8 @@ def stochastic_response_surface(
     )  # tolerance value for excluding candidate points that are too close to already sampled points
 
     # do until max number of f-evals reached or local min found
+    xselected = np.empty((0, dim))
+    distselected = np.empty((0, m))
     while m < maxeval:
         print("\n Iteration: %d \n" % out.nit)
         print("\n fEvals: %d \n" % m)
@@ -398,6 +399,10 @@ def stochastic_response_surface(
 
         # number of new samples in an iteration
         NumberNewSamples = min(newSamplesPerIteration, maxeval - m)
+
+        # Update surrogate model
+        surrogateModel.update_samples(xselected, distselected)
+        surrogateModel.update_coefficients(median_filter(out.fsamples[0:m]))
 
         # Introduce candidate points
         if isinstance(sampler, NormalSampler):
@@ -409,19 +414,25 @@ def stochastic_response_surface(
                 iindex=iindex,
                 mu=out.x,
                 probability=probability,
+                findex=iindex if countinuousSearch > 0 else (),
             )
         else:
             CandPoint = sampler.get_uniform_sample(bounds, iindex=iindex)
+            countinuousSearch = 0
 
         # select the next function evaluation points:
         CandValue, distMatrix = surrogateModel.eval(CandPoint)
+        weights = [
+            sampler.weightpattern[i % len(sampler.weightpattern)]
+            for i in range(m - m0, m - m0 + len(sampler.weightpattern))
+        ]
         selindex, xselected, distNewSamples = find_best(
             CandPoint,
             CandValue,
             np.min(distMatrix, axis=1),
             NumberNewSamples,
             tol=tol,
-            weightpattern=sampler.weightpattern,
+            weightpattern=weights,
         )
         nSelected = selindex.size
         distselected = np.concatenate(
@@ -431,12 +442,6 @@ def stochastic_response_surface(
             ),
             axis=1,
         )
-
-        # Rotate weight pattern
-        weightpattern = deque(sampler.weightpattern)
-        weightpattern.rotate(-nSelected)
-        for i in range(len(weightpattern)):
-            sampler.weightpattern[i] = weightpattern[i]
 
         # Compute f(xselected)
         ySelected = np.zeros(nSelected)
@@ -459,24 +464,32 @@ def stochastic_response_surface(
                     out.fevaltime[m + i],
                 ) = __eval_fun_and_timeit((fun, xselected[i, :]))
 
-        # determine best one of newly sampled points
+        # determine if significant improvement
         iSelectedBest = np.argmin(ySelected).item()
         fxSelectedBest = ySelected[iSelectedBest]
-        if fxSelectedBest < out.fx:
-            if (out.fx - fxSelectedBest) > expectedRelativeImprovement * abs(
-                out.fx
-            ):
-                # "significant" improvement
-                failctr = 0
+        if (out.fx - fxSelectedBest) > expectedRelativeImprovement * abs(
+            out.fx
+        ):
+            # "significant" improvement
+            failctr = 0
+            if countinuousSearch == 0:
                 succctr = succctr + 1
             else:
-                failctr = failctr + 1
-                succctr = 0
-            out.x = xselected[iSelectedBest, :]
-            out.fx = fxSelectedBest
-        else:
+                countinuousSearch = len(sampler.weightpattern)
+        elif countinuousSearch == 0:
             failctr = failctr + 1
             succctr = 0
+        else:
+            countinuousSearch = countinuousSearch - 1
+
+        # determine best one of newly sampled points
+        modifiedCoordinates = [False] * dim
+        if fxSelectedBest < out.fx:
+            modifiedCoordinates = [
+                xselected[iSelectedBest, i] != out.x[i] for i in range(dim)
+            ]
+            out.x = xselected[iSelectedBest, :]
+            out.fx = fxSelectedBest
 
         # Update m, x, y and out.nit
         out.samples[m : m + nSelected, :] = xselected
@@ -484,8 +497,19 @@ def stochastic_response_surface(
         m = m + nSelected
         out.nit = out.nit + 1
 
+        # Activate continuous search if an integer variables have changed and
+        # a significant improvement was found
+        if failctr == 0 and countinuousSearch == 0:
+            intCoordHasChanged = False
+            for i in iindex:
+                if modifiedCoordinates[i]:
+                    intCoordHasChanged = True
+                    break
+            if intCoordHasChanged:
+                countinuousSearch = len(sampler.weightpattern)
+
         # check if algorithm is in a local minimum
-        if isinstance(sampler, NormalSampler):
+        if isinstance(sampler, NormalSampler) and countinuousSearch == 0:
             if failctr >= failtolerance:
                 sampler.sigma *= 0.5
                 failctr = 0
@@ -495,13 +519,6 @@ def stochastic_response_surface(
             elif succctr >= succtolerance:
                 sampler.sigma = min(2 * sampler.sigma, sampler.sigma_max)
                 succctr = 0
-
-        # Update surrogate model if there is another local iteration
-        if m < maxeval:
-            surrogateModel.update_samples(xselected, distselected)
-            surrogateModel.update_coefficients(
-                median_filter(out.fsamples[0:m])
-            )
 
     # Update output
     out.nfev = m
