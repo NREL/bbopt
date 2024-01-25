@@ -45,16 +45,21 @@ class RbfModel:
 
     Parameters
     ----------
-    type : RbfType
+    type : RbfType, optional
         Defines the function phi used in the RBF model. The options are:
 
         - RbfType.LINEAR: phi(r) = r.
         - RbfType.CUBIC: phi(r) = r^3.
         - RbfType.THINPLATE: phi(r) = r^2 * log(r).
+    iindex : tuple, optional
+        Indices of the input space that are integer. The default is ().
     """
 
-    def __init__(self, rbf_type: RbfType = RbfType.CUBIC):
+    def __init__(
+        self, rbf_type: RbfType = RbfType.CUBIC, iindex: tuple[int, ...] = ()
+    ):
         self.type = rbf_type
+        self.iindex = iindex
 
         self._valid_coefficients = True
         self._m = 0
@@ -315,7 +320,7 @@ class RbfModel:
         self._valid_coefficients = False
 
     def create_initial_design(
-        self, dim: int, bounds: tuple, m: int = 0, iindex: tuple[int, ...] = ()
+        self, dim: int, bounds: tuple, m: int = 0
     ) -> None:
         """Creates an initial set of samples for the RBF model.
 
@@ -331,8 +336,6 @@ class RbfModel:
         m : int, optional
             Number of points to generate. If not provided, 2 * pdim() points are
             generated.
-        iindex : tuple, optional
-            Indices of the input space that are integer. The default is ().
         """
         self.reserve(m, dim)
         pdim = self.pdim()
@@ -348,7 +351,7 @@ class RbfModel:
         count = 0
         while True:
             self._x[0:m, :] = SLHDstandard(dim, m, bounds=bounds)
-            self._x[0:m, iindex] = np.round(self._x[0:m, iindex])
+            self._x[0:m, self.iindex] = np.round(self._x[0:m, self.iindex])
             self._P[0:m, :] = self.pbasis(self._x[0:m, :])
             if np.linalg.matrix_rank(self._P[0:m, :]) == pdim or m < pdim:
                 break
@@ -512,8 +515,8 @@ class RbfModel:
         #     dist = tol
 
         # use sqrt(gn) as the bumpiness measure to avoid underflow
-        gn = np.sqrt(absmu) * dist
-        return gn
+        sqrtgn = np.sqrt(absmu) * dist
+        return sqrtgn
 
     def mu_measure(self, x: np.ndarray) -> float:
         """Compute the value of abs(mu) in the inf step of the target value

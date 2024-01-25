@@ -36,7 +36,6 @@ __version__ = "0.1.0"
 __deprecated__ = False
 
 from enum import Enum
-from matplotlib.pylab import f
 import numpy as np
 
 
@@ -56,22 +55,11 @@ class Sampler:
         Sampling strategy.
     n : int
         Number of samples to be generated.
-    weightpattern : list-like
-        Weights :math:`w` in (0,1) to be used in the score function
-        :math:`w f_s(x) + (1-w) (1-d_s(x))`, where
-
-        - :math:`f_s(x)` is the estimated value for the objective function on x,
-          scaled to [0,1].
-        - :math:`d_s(x)` is the minimum distance between x and the previously
-          selected evaluation points, scaled to [-1,0].
     """
 
-    def __init__(
-        self, n: int, weightpattern=[0.2, 0.4, 0.6, 0.9, 0.95, 1]
-    ) -> None:
+    def __init__(self, n: int) -> None:
         self.strategy = SamplingStrategy.UNIFORM
         self.n = n
-        self.weightpattern = weightpattern
         assert self.n > 0
 
     def get_uniform_sample(
@@ -128,9 +116,8 @@ class NormalSampler(Sampler):
         sigma_min: float = 0,
         sigma_max: float = float("inf"),
         strategy: SamplingStrategy = SamplingStrategy.NORMAL,
-        weightpattern=[0.2, 0.4, 0.6, 0.9, 0.95, 1],
     ) -> None:
-        super().__init__(n, weightpattern)
+        super().__init__(n)
         self.sigma = sigma
         self.sigma_min = sigma_min
         self.sigma_max = sigma_max
@@ -151,7 +138,7 @@ class NormalSampler(Sampler):
         *,
         iindex: tuple = (),
         mu: np.ndarray = np.array([0]),
-        findex: tuple = (),
+        coord=(),
     ) -> np.ndarray:
         """Generate a sample from a normal distribution around a given point mu.
 
@@ -164,8 +151,9 @@ class NormalSampler(Sampler):
             Indices of the input space that are integer. The default is ().
         mu : numpy.ndarray, optional
             Point around which the sample will be generated. The default is zero.
-        findex : tuple, optional
-            Indices of the input space that are fixed. The default is ().
+        coord : tuple, optional
+            Coordinates of the input space that will vary. The default is (), which means that all
+            coordinates will vary.
 
         Returns
         -------
@@ -184,13 +172,10 @@ class NormalSampler(Sampler):
             )
 
         # Generate n samples
-        varindex = np.array([i for i in range(dim) if i not in findex])
-        xnew[:, varindex] += self.sigma * np.random.randn(
-            self.n, len(varindex)
-        )
-        xnew[:, varindex] = np.maximum(
-            xlow, np.minimum(xnew[:, varindex], xup)
-        )
+        if len(coord) == 0:
+            coord = tuple(range(dim))
+        xnew[:, coord] += self.sigma * np.random.randn(self.n, len(coord))
+        xnew[:, coord] = np.maximum(xlow, np.minimum(xnew[:, coord], xup))
 
         # Round integer variables
         xnew[:, iindex] = np.round(xnew[:, iindex])
@@ -204,7 +189,7 @@ class NormalSampler(Sampler):
         *,
         iindex: tuple = (),
         mu: np.ndarray = np.array([0]),
-        findex: tuple = (),
+        coord=(),
     ) -> np.ndarray:
         """Generate a DDS sample.
 
@@ -219,8 +204,9 @@ class NormalSampler(Sampler):
             Indices of the input space that are integer. The default is ().
         mu : numpy.ndarray, optional
             Point around which the sample will be generated. The default is zero.
-        findex : tuple, optional
-            Indices of the input space that are fixed. The default is ().
+        coord : tuple, optional
+            Coordinates of the input space that will vary. The default is (), which means that all
+            coordinates will vary.
 
         Returns
         -------
@@ -243,18 +229,19 @@ class NormalSampler(Sampler):
             raise ValueError("Probability must be between 0 and 1")
 
         # generate n samples
-        varindex = np.array([i for i in range(dim) if i not in findex])
-        vdim = len(varindex)
+        if len(coord) == 0:
+            coord = tuple(range(dim))
+        cdim = len(coord)
         for ii in range(self.n):
-            r = np.random.rand(vdim)
+            r = np.random.rand(cdim)
             ar = r < probability
             if not (any(ar)):
-                r = np.random.permutation(vdim)
+                r = np.random.permutation(cdim)
                 ar[r[0]] = True
-            for jj in range(vdim):
+            for jj in range(cdim):
                 if ar[jj]:
                     s_std = self.sigma * np.random.randn(1).item()
-                    j = varindex[jj]
+                    j = coord[jj]
                     if j in iindex:
                         # integer perturbation has to be at least 1 unit
                         if abs(s_std) < 1:
@@ -280,7 +267,7 @@ class NormalSampler(Sampler):
         iindex: tuple = (),
         mu: np.ndarray = np.array([0]),
         probability: float = 1,
-        findex: tuple = (),
+        coord=(),
     ) -> np.ndarray:
         """Generate a sample.
 
@@ -295,28 +282,30 @@ class NormalSampler(Sampler):
             Point around which the sample will be generated. The default is zero.
         probability : float, optional
             Perturbation probability. The default is 1.
-        findex : tuple, optional
-            Indices of the input space that are fixed. The default is ().
+        coord : tuple, optional
+            Coordinates of the input space that will vary. The default is (),
+            which means that all coordinates will vary.
 
         Returns
         -------
         numpy.ndarray
-            Matrix with the generated samples."""
+            Matrix with the generated samples.
+        """
         if self.strategy == SamplingStrategy.UNIFORM:
-            assert findex == ()
+            assert coord == ()
             return self.get_uniform_sample(bounds, iindex=iindex)
         elif self.strategy == SamplingStrategy.NORMAL:
             return self.get_normal_sample(
-                bounds, iindex=iindex, mu=mu, findex=findex
+                bounds, iindex=iindex, mu=mu, coord=coord
             )
         elif self.strategy == SamplingStrategy.DDS:
             return self.get_dds_sample(
-                bounds, probability, iindex=iindex, mu=mu, findex=findex
+                bounds, probability, iindex=iindex, mu=mu, coord=coord
             )
         elif self.strategy == SamplingStrategy.DDS_UNIFORM:
-            if len(findex) > 0:
+            if len(coord) > 0:
                 return self.get_dds_sample(
-                    bounds, probability, iindex=iindex, mu=mu, findex=findex
+                    bounds, probability, iindex=iindex, mu=mu, coord=coord
                 )
             else:
                 return np.concatenate(

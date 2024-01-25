@@ -33,15 +33,17 @@ __deprecated__ = False
 from copy import deepcopy
 from math import sqrt
 import numpy as np
-from scipy.spatial.distance import cdist
-from scipy.optimize import differential_evolution, NonlinearConstraint
 import time
 from dataclasses import dataclass
 import concurrent.futures
 import os
 
+from blackboxopt.acquisition import (
+    CoordinatePerturbation,
+    TargetValueAcquisition,
+)
+
 from .rbf import RbfModel
-from .sampling import NormalSampler, Sampler
 
 
 @dataclass
@@ -107,126 +109,6 @@ def median_filter(x: np.ndarray) -> np.ndarray:
     return filtered_x
 
 
-def find_best(
-    x: np.ndarray,
-    fx: np.ndarray,
-    dist: np.ndarray,
-    n: int,
-    tol: float = 1e-3,
-    weightpattern=[0.3, 0.5, 0.8, 0.95],
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Select n points based on their values and distances to candidates.
-
-    The points are chosen from x such that they minimize the expression
-    :math:`w f_s(x) + (1-w) (1-d_s(x))`, where
-
-    - :math:`w` is a weight.
-    - :math:`f_s(x)` is the estimated value for the objective function on x,
-      scaled to [0,1].
-    - :math:`d_s(x)` is the minimum distance between x and the previously
-      selected evaluation points, scaled to [-1,0].
-
-    If there are more than one new sample point to be
-    selected, the distances of the candidate points to the previously
-    selected candidate point have to be taken into account.
-
-    Parameters
-    ----------
-    x : numpy.ndarray
-        Matrix with candidate points.
-    fx : numpy.ndarray
-        Esimated values for the objective function on each candidate point.
-    dist : numpy.ndarray
-        Minimum distance between a candidate point and previously evaluated sampled points.
-    n : int
-        Number of points to be selected for the next costly evaluation.
-    tol : float
-        Tolerance value for excluding candidate points that are too close to already sampled points.
-    weightpattern: list-like, optional
-        Weight(s) `w` to be used in the score given in a circular list.
-
-    Returns
-    -------
-    numpy.ndarray
-        Vector with indexes of the selected points.
-    numpy.ndarray
-        n-by-dim matrix with the selected points.
-    numpy.ndarray
-        n-by-n symmetric matrix with the distances between the selected points.
-    """
-    assert fx.ndim == 1
-
-    selindex = np.zeros(n, dtype=np.intp)
-    xselected = np.zeros((n, x.shape[1]))
-    distNewSamples = np.zeros((n, n))
-
-    # Scale function values to [0,1]
-    minval = np.amin(fx)
-    maxval = np.amax(fx)
-    if minval == maxval:
-        scaledvalue = np.ones(fx.size)
-    else:
-        scaledvalue = (fx - minval) / (maxval - minval)
-
-    def argminscore(
-        dist: np.ndarray, valueweight: float, tol: float
-    ) -> np.intp:
-        """Gets the index of the candidate point that minimizes the score.
-
-        Parameters
-        ----------
-        dist : numpy.ndarray
-            Minimum distance between a candidate point and previously evaluated sampled points.
-        valueweight: float
-            Weight `w` to be used in the score.
-
-        Returns
-        -------
-        numpy.intp
-            Index of the selected candidate.
-        """
-        # Scale distance values to [0,1]
-        maxdist = np.amax(dist)
-        mindist = np.amin(dist)
-        if maxdist == mindist:
-            scaleddist = np.ones(dist.size)
-        else:
-            scaleddist = (maxdist - dist) / (maxdist - mindist)
-
-        # Compute weighted score for all candidates
-        score = valueweight * scaledvalue + (1 - valueweight) * scaleddist
-
-        # Assign bad values to points that are too close to already
-        # evaluated/chosen points
-        score[dist < tol] = np.inf
-
-        # Return index with the best (smallest) score
-        return np.argmin(score)
-
-    selindex[0] = argminscore(dist, weightpattern[0], tol)
-    xselected[0, :] = x[selindex[0], :]
-    for ii in range(1, n):
-        # compute distance of all candidate points to the previously selected
-        # candidate point
-        newDist = cdist(xselected[ii - 1, :].reshape(1, -1), x)[0]
-        dist = np.minimum(dist, newDist)
-
-        selindex[ii] = argminscore(
-            dist, weightpattern[ii % len(weightpattern)], tol
-        )
-        xselected[ii, :] = x[selindex[ii], :]
-
-        for j in range(ii - 1):
-            distNewSamples[ii, j] = np.linalg.norm(
-                xselected[ii, :] - xselected[j, :]
-            )
-            distNewSamples[j, ii] = distNewSamples[ii, j]
-        distNewSamples[ii, ii - 1] = newDist[selindex[ii]]
-        distNewSamples[ii - 1, ii] = distNewSamples[ii, ii - 1]
-
-    return selindex, xselected, distNewSamples
-
-
 def __eval_fun_and_timeit(args):
     """Evaluate a function and time it.
 
@@ -252,10 +134,9 @@ def stochastic_response_surface(
     fun,
     bounds: tuple,
     maxeval: int,
+    acquisitionFunc: CoordinatePerturbation,
     *,
-    iindex: tuple[int, ...] = (),
     surrogateModel=RbfModel(),
-    sampler=Sampler(1),
     newSamplesPerIteration: int = 1,
     expectedRelativeImprovement: float = 1e-3,
     failtolerance: int = 5,
@@ -274,16 +155,12 @@ def stochastic_response_surface(
         elements, corresponding to the lower and upper bound for the variable.
     maxeval : int
         Maximum number of function evaluations.
-    iindex : tuple, optional
-        Indices of the input space that are integer. The default is ().
+    acquisitionFunc : CoordinatePerturbation
+        Acquisition function to be used.
     surrogateModel : surrogate model, optional
         Surrogate model to be used. The default is RbfModel().
         On exit, the surrogate model is updated to represent the one used in the
         last iteration.
-    sampler : sampler, optional
-        Sampler to be used. The default is Sampler(1).
-        On exit, the sampler is updated to represent the one used in the last
-        iteration.
     newSamplesPerIteration : int, optional
         Number of new samples to be generated per iteration. The default is 1.
     expectedRelativeImprovement : float, optional
@@ -312,8 +189,9 @@ def stochastic_response_surface(
     assert dim > 0
 
     # Use a number of candidates that is greater than 1
-    if sampler.n <= 1:
-        sampler.n = 500 * dim
+    acquisitionFunc.maxeval = maxeval
+    if acquisitionFunc.sampler.n <= 1:
+        acquisitionFunc.sampler.n = 500 * dim
 
     # Reserve space for the surrogate model to avoid repeated allocations
     surrogateModel.reserve(maxeval, dim)
@@ -335,14 +213,14 @@ def stochastic_response_surface(
     if m == 0:
         # Initialize surrogate model
         surrogateModel.create_initial_design(
-            dim, bounds, min(maxeval, 2 * (dim + 1)), iindex
+            dim, bounds, min(maxeval, 2 * (dim + 1))
         )
         m = surrogateModel.nsamples()
     else:
         # Check if initial samples are integer values for integer variables
         if any(
-            surrogateModel.samples()[:, iindex]
-            != np.round(surrogateModel.samples()[:, iindex])
+            surrogateModel.samples()[:, surrogateModel.iindex]
+            != np.round(surrogateModel.samples()[:, surrogateModel.iindex])
         ):
             raise ValueError(
                 "Initial samples must be integer values for integer variables"
@@ -355,7 +233,6 @@ def stochastic_response_surface(
             raise ValueError(
                 "Initial samples are not sufficient to build the surrogate model"
             )
-    m0 = m  # Initial number of samples
 
     # Compute f(x0)
     with concurrent.futures.ThreadPoolExecutor(
@@ -391,7 +268,6 @@ def stochastic_response_surface(
 
     # do until max number of f-evals reached or local min found
     xselected = np.empty((0, dim))
-    distselected = np.empty((0, m))
     while m < maxeval:
         print("\n Iteration: %d \n" % out.nit)
         print("\n fEvals: %d \n" % m)
@@ -401,64 +277,42 @@ def stochastic_response_surface(
         NumberNewSamples = min(newSamplesPerIteration, maxeval - m)
 
         # Update surrogate model
-        surrogateModel.update_samples(xselected, distselected)
+        surrogateModel.update_samples(xselected)
         surrogateModel.update_coefficients(median_filter(out.fsamples[0:m]))
 
-        # Introduce candidate points
-        if isinstance(sampler, NormalSampler):
-            probability = min(20 / dim, 1) * (
-                1 - (np.log(m - m0 + 1) / np.log(maxeval - m0))
-            )
-            CandPoint = sampler.get_sample(
-                bounds,
-                iindex=iindex,
-                mu=out.x,
-                probability=probability,
-                findex=iindex if countinuousSearch > 0 else (),
-            )
+        # Acquire new samples
+        if countinuousSearch > 0:
+            coord = [i for i in range(dim) if i not in surrogateModel.iindex]
         else:
-            CandPoint = sampler.get_uniform_sample(bounds, iindex=iindex)
-            countinuousSearch = 0
-
-        # select the next function evaluation points:
-        CandValue, distMatrix = surrogateModel.eval(CandPoint)
-        weights = [
-            sampler.weightpattern[i % len(sampler.weightpattern)]
-            for i in range(m - m0, m - m0 + len(sampler.weightpattern))
-        ]
-        selindex, xselected, distNewSamples = find_best(
-            CandPoint,
-            CandValue,
-            np.min(distMatrix, axis=1),
+            coord = [i for i in range(dim)]
+        xselected = acquisitionFunc.acquire(
+            surrogateModel,
+            bounds,
+            (out.fx, np.Inf),
             NumberNewSamples,
+            xbest=out.x,
             tol=tol,
-            weightpattern=weights,
-        )
-        nSelected = selindex.size
-        distselected = np.concatenate(
-            (
-                np.reshape(distMatrix[selindex, :], (nSelected, -1)),
-                distNewSamples,
-            ),
-            axis=1,
+            coord=coord,
         )
 
         # Compute f(xselected)
-        ySelected = np.zeros(nSelected)
-        if nSelected > 1:
+        ySelected = np.zeros(NumberNewSamples)
+        if NumberNewSamples > 1:
             with concurrent.futures.ThreadPoolExecutor(
                 max_workers=min(ncpu, m)
             ) as executor:
                 # Prepare the arguments for parallel execution
-                arguments = [(fun, xselected[i, :]) for i in range(nSelected)]
+                arguments = [
+                    (fun, xselected[i, :]) for i in range(NumberNewSamples)
+                ]
                 # Use the map function to parallelize the evaluations
                 results = list(executor.map(__eval_fun_and_timeit, arguments))
             (
-                ySelected[0:nSelected],
-                out.fevaltime[m : m + nSelected],
+                ySelected[0:NumberNewSamples],
+                out.fevaltime[m : m + NumberNewSamples],
             ) = zip(*results)
         else:
-            for i in range(nSelected):
+            for i in range(NumberNewSamples):
                 (
                     ySelected[i],
                     out.fevaltime[m + i],
@@ -475,7 +329,7 @@ def stochastic_response_surface(
             if countinuousSearch == 0:
                 succctr = succctr + 1
             else:
-                countinuousSearch = len(sampler.weightpattern)
+                countinuousSearch = len(acquisitionFunc.weightpattern)
         elif countinuousSearch == 0:
             failctr = failctr + 1
             succctr = 0
@@ -492,32 +346,38 @@ def stochastic_response_surface(
             out.fx = fxSelectedBest
 
         # Update m, x, y and out.nit
-        out.samples[m : m + nSelected, :] = xselected
-        out.fsamples[m : m + nSelected] = ySelected
-        m = m + nSelected
+        out.samples[m : m + NumberNewSamples, :] = xselected
+        out.fsamples[m : m + NumberNewSamples] = ySelected
+        m = m + NumberNewSamples
         out.nit = out.nit + 1
 
-        # Activate continuous search if an integer variables have changed and
-        # a significant improvement was found
-        if failctr == 0 and countinuousSearch == 0:
-            intCoordHasChanged = False
-            for i in iindex:
-                if modifiedCoordinates[i]:
-                    intCoordHasChanged = True
-                    break
-            if intCoordHasChanged:
-                countinuousSearch = len(sampler.weightpattern)
+        if countinuousSearch == 0:
+            # Activate continuous search if an integer variables have changed and
+            # a significant improvement was found
+            if failctr == 0:
+                intCoordHasChanged = False
+                for i in surrogateModel.iindex:
+                    if modifiedCoordinates[i]:
+                        intCoordHasChanged = True
+                        break
+                if intCoordHasChanged:
+                    countinuousSearch = len(acquisitionFunc.weightpattern)
 
-        # check if algorithm is in a local minimum
-        if isinstance(sampler, NormalSampler) and countinuousSearch == 0:
-            if failctr >= failtolerance:
-                sampler.sigma *= 0.5
+            # check if algorithm is in a local minimum
+            elif failctr >= failtolerance:
+                acquisitionFunc.sampler.sigma *= 0.5
                 failctr = 0
-                if sampler.sigma < sampler.sigma_min:
+                if (
+                    acquisitionFunc.sampler.sigma
+                    < acquisitionFunc.sampler.sigma_min
+                ):
                     # Algorithm is probably in a local minimum!
                     break
             elif succctr >= succtolerance:
-                sampler.sigma = min(2 * sampler.sigma, sampler.sigma_max)
+                acquisitionFunc.sampler.sigma = min(
+                    2 * acquisitionFunc.sampler.sigma,
+                    acquisitionFunc.sampler.sigma_max,
+                )
                 succctr = 0
 
     # Update output
@@ -533,10 +393,9 @@ def multistart_stochastic_response_surface(
     fun,
     bounds: tuple,
     maxeval: int,
+    acquisitionFunc: CoordinatePerturbation,
     *,
-    iindex: tuple[int, ...] = (),
     surrogateModel=RbfModel(),
-    sampler=Sampler(1),
     newSamplesPerIteration: int = 1,
 ) -> OptimizeResult:
     """Minimize a scalar function of one or more variables using a surrogate
@@ -551,12 +410,10 @@ def multistart_stochastic_response_surface(
         elements, corresponding to the lower and upper bound for the variable.
     maxeval : int
         Maximum number of function evaluations.
-    iindex : tuple, optional
-        Indices of the input space that are integer. The default is ().
+    acquisitionFunc : CoordinatePerturbation
+        Acquisition function to be used.
     surrogateModel : surrogate model, optional
         Surrogate model to be used. The default is RbfModel().
-    sampler : sampler, optional
-        Sampler to be used. The default is Sampler(1).
     newSamplesPerIteration : int, optional
         Number of new samples to be generated per iteration. The default is 1.
 
@@ -569,7 +426,7 @@ def multistart_stochastic_response_surface(
     assert dim > 0
 
     # Record initial sampler and surrogate model
-    sampler0 = deepcopy(sampler)
+    acquisitionFunc0 = deepcopy(acquisitionFunc)
     surrogateModel0 = deepcopy(surrogateModel)
 
     # Initialize output
@@ -590,9 +447,8 @@ def multistart_stochastic_response_surface(
             fun,
             bounds,
             maxeval - out.nfev,
-            iindex=iindex,
+            acquisitionFunc0,
             surrogateModel=surrogateModel0,
-            sampler=sampler0,
             newSamplesPerIteration=newSamplesPerIteration,
         )
 
@@ -614,7 +470,7 @@ def multistart_stochastic_response_surface(
 
         # Update surrogate model and sampler for next iteration
         surrogateModel0.reset()
-        sampler0 = deepcopy(sampler)
+        acquisitionFunc0 = deepcopy(acquisitionFunc)
 
     return out
 
@@ -623,8 +479,8 @@ def target_value_optimization(
     fun,
     bounds: tuple,
     maxeval: int,
+    acquisitionFunc: TargetValueAcquisition,
     *,
-    iindex: tuple[int, ...] = (),
     surrogateModel=RbfModel(),
 ) -> OptimizeResult:
     """Minimize a scalar function of one or more variables using the target
@@ -639,8 +495,6 @@ def target_value_optimization(
         elements, corresponding to the lower and upper bound for the variable.
     maxeval : int
         Maximum number of function evaluations.
-    iindex : tuple, optional
-        Indices of the input space that are integer. The default is ().
     surrogateModel : surrogate model, optional
         Surrogate model to be used. The default is RbfModel().
         On exit, the surrogate model is updated to represent the one used in the
@@ -682,14 +536,14 @@ def target_value_optimization(
     if m == 0:
         # Initialize surrogate model
         surrogateModel.create_initial_design(
-            dim, bounds, min(maxeval, 2 * (dim + 1)), iindex
+            dim, bounds, min(maxeval, 2 * (dim + 1))
         )
         m = surrogateModel.nsamples()
     else:
         # Check if initial samples are integer values for integer variables
         if any(
-            surrogateModel.samples()[:, iindex]
-            != np.round(surrogateModel.samples()[:, iindex])
+            surrogateModel.samples()[:, surrogateModel.iindex]
+            != np.round(surrogateModel.samples()[:, surrogateModel.iindex])
         ):
             raise ValueError(
                 "Initial samples must be integer values for integer variables"
@@ -727,106 +581,24 @@ def target_value_optimization(
         1e-3 * np.min([bounds[i][1] - bounds[i][0] for i in range(dim)])
     )  # tolerance value for excluding candidate points that are too close to already sampled points
 
-    # 0 = inf step, (1:n) = cycle step local, n+1 = cycle step global
-    cycleLength = 10  # cycle length
-    sample_sequence = np.arange(cycleLength + 2)
-
-    # Convert iindex to boolean array
-    intArgs = [False] * dim
-    for i in iindex:
-        intArgs[i] = True
-
     # Record max function value
     maxf = np.max(out.fsamples[0:m]).item()
 
     # do until max number of f-evals reached or local min found
+    xselected = np.empty((0, dim))
     while m < maxeval:
         print("\n Iteration: %d \n" % out.nit)
         print("\n fEvals: %d \n" % m)
         print("\n Best value: %f \n" % out.fx)
 
-        sample_stage = sample_sequence[out.nit % len(sample_sequence)]
+        # Update surrogate model
+        surrogateModel.update_samples(xselected)
+        surrogateModel.update_coefficients(median_filter(out.fsamples[0:m]))
 
-        # Candidate points should not be too close to already sampled points
-        # The constraint is min(||x-x_i||) >= tol.
-        constraints = NonlinearConstraint(
-            lambda x: [np.dot(x - y, x - y) for y in surrogateModel.samples()],
-            tol * tol,
-            np.inf,
-            jac=lambda x: 2 * (x.reshape(1, -1) - surrogateModel.samples()),
-            hess=lambda x, v: 2 * np.sum(v) * np.eye(dim),
+        # Acquire new samples
+        xselected = acquisitionFunc.acquire(
+            surrogateModel, bounds, (out.fx, maxf), tol=tol
         )
-
-        # see Holmstrom 2008 "An adaptive radial basis algorithm (ARBF) for
-        # expensive black-box global optimization", JOGO
-        if sample_stage == 0:  # InfStep - minimize Mu_n
-            res = differential_evolution(
-                surrogateModel.mu_measure,
-                bounds,
-                integrality=intArgs,
-                constraints=constraints,
-            )
-            xselected = res.x
-        elif 1 <= sample_stage <= cycleLength:  # cycle step global search
-            # find min of surrogate model
-            res = differential_evolution(
-                lambda x: surrogateModel.eval(x)[0],
-                bounds,
-                integrality=intArgs,
-            )
-            f_rbf = res.fun
-            wk = (
-                1 - sample_stage / cycleLength
-            ) ** 2  # select weight for computing target value
-            f_target = f_rbf - wk * (
-                maxf - f_rbf
-            )  # target for objective function value
-
-            # use GA method to minimize bumpiness measure
-            res_bump = differential_evolution(
-                surrogateModel.bumpiness_measure,
-                bounds,
-                args=(f_target,),
-                integrality=intArgs,
-                constraints=constraints,
-            )
-            xselected = (
-                res_bump.x
-            )  # new point is the one that minimizes the bumpiness measure
-        else:  # cycle step local search
-            # find the minimum of RBF surface
-            res = differential_evolution(
-                lambda x: surrogateModel.eval(x)[0],
-                bounds,
-                integrality=intArgs,
-            )
-            f_rbf = res.fun
-            if f_rbf < (out.fx - 1e-6 * abs(out.fx)):
-                xselected = res.x  # select minimum point as new sample point if sufficient improvements
-            else:  # otherwise, do target value strategy
-                f_target = out.fx - 1e-2 * abs(out.fx)  # target value
-                # use GA method to minimize bumpiness measure
-                res_bump = differential_evolution(
-                    surrogateModel.bumpiness_measure,
-                    bounds,
-                    args=(f_target,),
-                    integrality=intArgs,
-                    constraints=constraints,
-                )
-                xselected = res_bump.x
-
-        # find closest already sampled point to xselected
-        distselected = cdist(
-            xselected.reshape(1, -1), surrogateModel.samples()
-        )
-        while np.any(distselected < tol):
-            # the selected point is too close to already evaluated point
-            # randomly select point from variable domain
-            # May only happen after a local search step
-            xselected = Sampler(1).get_uniform_sample(bounds, iindex=iindex)
-            distselected = cdist(
-                xselected.reshape(1, -1), surrogateModel.samples()
-            )
 
         # Perform function evaluation
         out.fsamples[m], out.fevaltime[m] = __eval_fun_and_timeit(
@@ -847,16 +619,6 @@ def target_value_optimization(
 
         # Update m
         m = m + 1
-
-        # Update surrogate model if there is another local iteration
-        if m < maxeval:
-            surrogateModel.update_samples(
-                xselected.reshape(1, -1),
-                np.concatenate((distselected, np.zeros((1, 1))), axis=1),
-            )
-            surrogateModel.update_coefficients(
-                median_filter(out.fsamples[0:m])
-            )
 
     # Update output
     out.nfev = m

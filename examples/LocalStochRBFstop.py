@@ -35,6 +35,7 @@ from blackboxopt.rbf import RbfType, RbfModel
 from blackboxopt.optimize import stochastic_response_surface
 from blackboxopt.utility import SLHDstandard
 from blackboxopt.sampling import NormalSampler, SamplingStrategy
+from blackboxopt.acquisition import CoordinatePerturbation
 import numpy as np
 
 if __name__ == "__main__":
@@ -103,12 +104,15 @@ if __name__ == "__main__":
         ),
         maxeval=maxeval - numevals,
         surrogateModel=rbfModel,
-        sampler=NormalSampler(
-            nCand,
-            sigma=0.2 * minxrange,
-            sigma_min=0.2 * minxrange * 0.5**5,
-            sigma_max=0.2 * minxrange,
-            strategy=SamplingStrategy.NORMAL,
+        acquisitionFunc=CoordinatePerturbation(
+            maxeval - numevals,
+            NormalSampler(
+                nCand,
+                sigma=0.2 * minxrange,
+                sigma_min=0.2 * minxrange * 0.5**5,
+                sigma_max=0.2 * minxrange,
+                strategy=SamplingStrategy.NORMAL,
+            ),
             weightpattern=[0.3, 0.5],
         ),
         newSamplesPerIteration=NumberNewSamples,

@@ -35,12 +35,17 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pickle as p
 from blackboxopt import rbf, optimize, sampling
+from blackboxopt.acquisition import (
+    CoordinatePerturbation,
+    TargetValueAcquisition,
+)
 from data import Data
 
 
 def read_and_run(
     data_file: str,
-    sampler: sampling.Sampler = sampling.Sampler(1),
+    sampler: sampling.NormalSampler = sampling.NormalSampler(1, 1),
+    weightpattern: list[float] = [0.3, 0.5, 0.8, 0.95],
     maxeval: int = 0,
     Ntrials: int = 0,
     NumberNewSamples: int = 0,
@@ -58,8 +63,10 @@ def read_and_run(
     ----------
     data_file : str
         Path for the data file.
-    sampler : sampling.Sampler
+    sampler : sampling.NormalSampler, optional
         Sampler to be used.
+    weightpattern : list[float], optional
+        List of weights for the weighted RBF.
     maxeval : int, optional
         Maximum number of allowed function evaluations per trial.
     Ntrials : int, optional
@@ -87,7 +94,7 @@ def read_and_run(
     optres = []
     for j in range(Ntrials):
         # Create empty RBF model
-        rbfModel = rbf.RbfModel(rbf_type)
+        rbfModel = rbf.RbfModel(rbf_type, data.iindex)
 
         # # Uncomment to compare with Surrogates.jl
         # rbfModel.update_samples(
@@ -116,9 +123,10 @@ def read_and_run(
                     (data.xlow[i], data.xup[i]) for i in range(data.dim)
                 ),
                 maxeval=maxeval,
-                iindex=data.iindex,
                 surrogateModel=rbfModel,
-                sampler=sampler,
+                acquisitionFunc=CoordinatePerturbation(
+                    maxeval, sampler, weightpattern
+                ),
                 newSamplesPerIteration=NumberNewSamples,
             )
         elif optim_func == optimize.target_value_optimization:
@@ -128,7 +136,7 @@ def read_and_run(
                     (data.xlow[i], data.xup[i]) for i in range(data.dim)
                 ),
                 maxeval=maxeval,
-                iindex=data.iindex,
+                acquisitionFunc=TargetValueAcquisition(),
                 surrogateModel=rbfModel,
             )
         else:
@@ -300,10 +308,10 @@ if __name__ == "__main__":
                 sigma_min=0.2 * mixrange * 0.5**5,
                 sigma_max=0.2 * mixrange,
                 strategy=sampling.SamplingStrategy.NORMAL,
-                weightpattern=[
-                    0.95,
-                ],
             ),
+            weightpattern=[
+                0.95,
+            ],
             maxeval=200,
             Ntrials=3,
             NumberNewSamples=1,
@@ -318,8 +326,8 @@ if __name__ == "__main__":
                 sigma_min=0.2 * 0.5**6,
                 sigma_max=0.2,
                 strategy=sampling.SamplingStrategy.DDS,
-                weightpattern=[0.3, 0.5, 0.8, 0.95],
             ),
+            weightpattern=[0.3, 0.5, 0.8, 0.95],
             maxeval=200,
             Ntrials=1,
             NumberNewSamples=1,
@@ -335,8 +343,8 @@ if __name__ == "__main__":
                 sigma_min=0.2 * mixrange * 0.5**5,
                 sigma_max=0.2 * mixrange,
                 strategy=sampling.SamplingStrategy.DDS,
-                weightpattern=[0.3, 0.5, 0.8, 0.95],
             ),
+            weightpattern=[0.3, 0.5, 0.8, 0.95],
             maxeval=100,
             Ntrials=3,
             NumberNewSamples=1,
@@ -353,8 +361,8 @@ if __name__ == "__main__":
                 sigma_min=0.2 * mixrange * 0.5**5,
                 sigma_max=0.2 * mixrange,
                 strategy=sampling.SamplingStrategy.DDS_UNIFORM,
-                weightpattern=[0.3, 0.5, 0.8, 0.95],
             ),
+            weightpattern=[0.3, 0.5, 0.8, 0.95],
             maxeval=100,
             Ntrials=3,
             NumberNewSamples=1,
