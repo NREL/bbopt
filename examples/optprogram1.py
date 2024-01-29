@@ -50,6 +50,7 @@ def read_and_run(
     Ntrials: int = 0,
     NumberNewSamples: int = 0,
     rbf_type: rbf.RbfType = rbf.RbfType.CUBIC,
+    filter: rbf.RbfFilter = rbf.RbfFilter(),
     PlotResult: bool = True,
     optim_func=optimize.multistart_stochastic_response_surface,
 ) -> list[optimize.OptimizeResult]:
@@ -94,7 +95,7 @@ def read_and_run(
     optres = []
     for j in range(Ntrials):
         # Create empty RBF model
-        rbfModel = rbf.RbfModel(rbf_type, data.iindex)
+        rbfModel = rbf.RbfModel(rbf_type, data.iindex, filter=filter)
 
         # # Uncomment to compare with Surrogates.jl
         # rbfModel.update_samples(
@@ -138,6 +139,18 @@ def read_and_run(
                 maxeval=maxeval,
                 acquisitionFunc=TargetValueAcquisition(),
                 surrogateModel=rbfModel,
+            )
+        elif optim_func == optimize.cptv:
+            opt = optim_func(
+                data.objfunction,
+                bounds=tuple(
+                    (data.xlow[i], data.xup[i]) for i in range(data.dim)
+                ),
+                maxeval=maxeval,
+                surrogateModel=rbfModel,
+                acquisitionFunc=CoordinatePerturbation(
+                    maxeval, sampler, weightpattern
+                ),
             )
         else:
             raise ValueError("Invalid optimization function.")
@@ -309,6 +322,7 @@ if __name__ == "__main__":
                 sigma_max=0.2 * mixrange,
                 strategy=sampling.SamplingStrategy.NORMAL,
             ),
+            filter=rbf.MedianLpfFilter(),
             weightpattern=[
                 0.95,
             ],
@@ -327,6 +341,7 @@ if __name__ == "__main__":
                 sigma_max=0.2,
                 strategy=sampling.SamplingStrategy.DDS,
             ),
+            filter=rbf.MedianLpfFilter(),
             weightpattern=[0.3, 0.5, 0.8, 0.95],
             maxeval=200,
             Ntrials=1,
@@ -344,6 +359,7 @@ if __name__ == "__main__":
                 sigma_max=0.2 * mixrange,
                 strategy=sampling.SamplingStrategy.DDS,
             ),
+            filter=rbf.RbfFilter(),
             weightpattern=[0.3, 0.5, 0.8, 0.95],
             maxeval=100,
             Ntrials=3,
@@ -362,6 +378,7 @@ if __name__ == "__main__":
                 sigma_max=0.2 * mixrange,
                 strategy=sampling.SamplingStrategy.DDS_UNIFORM,
             ),
+            filter=rbf.RbfFilter(),
             weightpattern=[0.3, 0.5, 0.8, 0.95],
             maxeval=100,
             Ntrials=3,
@@ -373,12 +390,33 @@ if __name__ == "__main__":
     elif args.config == 5:
         optres = read_and_run(
             data_file="datainput_BraninWithInteger",
+            filter=rbf.RbfFilter(),
             maxeval=100,
             Ntrials=3,
             NumberNewSamples=1,
             rbf_type=rbf.RbfType.THINPLATE,
             PlotResult=True,
             optim_func=optimize.target_value_optimization,
+        )
+    elif args.config == 6:
+        mixrange = 15
+        optres = read_and_run(
+            data_file="datainput_BraninWithInteger",
+            sampler=sampling.NormalSampler(
+                200,
+                sigma=0.2 * mixrange,
+                sigma_min=0.2 * mixrange * 0.5**5,
+                sigma_max=0.2 * mixrange,
+                strategy=sampling.SamplingStrategy.DDS,
+            ),
+            filter=rbf.RbfFilter(),
+            weightpattern=[0.3, 0.5, 0.8, 0.95],
+            maxeval=100,
+            Ntrials=3,
+            NumberNewSamples=1,
+            rbf_type=rbf.RbfType.THINPLATE,
+            PlotResult=True,
+            optim_func=optimize.cptv,
         )
     else:
         raise ValueError("Invalid configuration number.")

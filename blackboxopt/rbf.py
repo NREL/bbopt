@@ -40,10 +40,48 @@ from .utility import SLHDstandard
 RbfType = Enum("RbfType", ["LINEAR", "CUBIC", "THINPLATE"])
 
 
+class RbfFilter:
+    def __call__(self, x: np.ndarray) -> np.ndarray:
+        return x
+
+
+class MedianLpfFilter(RbfFilter):
+    def __call__(self, x: np.ndarray) -> np.ndarray:
+        """Filter values by replacing large function values by the median of all.
+
+        This strategy was proposed by [#]_ based on results from [#]_.
+
+        Parameters
+        ----------
+        x : numpy.ndarray
+            Values.
+
+        Returns
+        -------
+        numpy.ndarray
+            Filtered values.
+
+        References
+        ----------
+
+        .. [#] Gutmann, HM. A Radial Basis Function Method for Global Optimization.
+            Journal of Global Optimization 19, 201–227 (2001).
+            https://doi.org/10.1023/A:1011255519438
+
+        .. [#] Björkman, M., Holmström, K. Global Optimization of Costly Nonconvex
+            Functions Using Radial Basis Functions. Optimization and Engineering 1,
+            373–397 (2000). https://doi.org/10.1023/A:1011584207202
+        """
+        mx = np.median(x)
+        filtered_x = np.copy(x)
+        filtered_x[x > mx] = mx
+        return filtered_x
+
+
 class RbfModel:
     """Radial Basis Function model.
 
-    Parameters
+    Attributes
     ----------
     type : RbfType, optional
         Defines the function phi used in the RBF model. The options are:
@@ -53,17 +91,25 @@ class RbfModel:
         - RbfType.THINPLATE: phi(r) = r^2 * log(r).
     iindex : tuple, optional
         Indices of the input space that are integer. The default is ().
+    filter : RbfFilter, optional
+        Filter used with the function values. The default is RbfFilter() which
+        is the identity function.
     """
 
     def __init__(
-        self, rbf_type: RbfType = RbfType.CUBIC, iindex: tuple[int, ...] = ()
+        self,
+        rbf_type: RbfType = RbfType.CUBIC,
+        iindex: tuple[int, ...] = (),
+        filter: RbfFilter = RbfFilter(),
     ):
         self.type = rbf_type
         self.iindex = iindex
+        self.filter = filter
 
         self._valid_coefficients = True
         self._m = 0
         self._x = np.array([])
+        self._fx = np.array([])
         self._coef = np.array([])
         self._PHI = np.array([])
         self._P = np.array([])
@@ -90,6 +136,14 @@ class RbfModel:
             additional_rows = max(0, maxeval - self._x.shape[0])
             self._x = np.concatenate(
                 (self._x, np.empty((additional_rows, dim))), axis=0
+            )
+
+        if self._fx.size == 0:
+            self._fx = np.empty(maxeval)
+        else:
+            additional_values = max(0, maxeval - self._fx.size)
+            self._fx = np.concatenate(
+                (self._fx, np.empty(additional_values)), axis=0
             )
 
         if self._coef.size == 0:
@@ -244,7 +298,9 @@ class RbfModel:
 
         return y, D
 
-    def update_coefficients(self, fx: np.ndarray) -> None:
+    def update_coefficients(
+        self, fx: np.ndarray, filter: RbfFilter = None
+    ) -> None:
         """Updates the coefficients of the RBF model.
 
         Parameters
@@ -252,6 +308,13 @@ class RbfModel:
         fx : np.ndarray
             Function values on the sampled points.
         """
+        if fx.size <= self._m:
+            self.get_fsamples()[self._m - fx.size : self._m] = fx
+        else:
+            raise ValueError("Invalid number of function values")
+        if filter is None:
+            filter = self.filter
+
         m = self._m
         pdim = self.pdim()
 
@@ -264,7 +327,9 @@ class RbfModel:
 
         # TODO: See if there is a solver specific for saddle-point systems
         self._coef = solve(
-            A, np.concatenate((fx, np.zeros(pdim))), assume_a="sym"
+            A,
+            np.concatenate((filter(self.get_fsamples()), np.zeros(pdim))),
+            assume_a="sym",
         )
         self._valid_coefficients = True
 
@@ -382,10 +447,11 @@ class RbfModel:
     def reset(self) -> None:
         """Resets the RBF model."""
         self._m = 0
-        self._x = np.array([])
-        self._coef = np.array([])
-        self._PHI = np.array([])
-        self._P = np.array([])
+        # self._x = np.array([])
+        # self._fx = np.array([])
+        # self._coef = np.array([])
+        # self._PHI = np.array([])
+        # self._P = np.array([])
 
     def samples(self) -> np.ndarray:
         """Get the sampled points.
@@ -396,6 +462,16 @@ class RbfModel:
             m-by-d matrix with m point coordinates in a d-dimensional space.
         """
         return self._x[0 : self._m, :]
+
+    def get_fsamples(self) -> np.ndarray:
+        """Get f(x) for the sampled points.
+
+        Returns
+        -------
+        out: np.ndarray
+            m vector with the function values.
+        """
+        return self._fx[0 : self._m]
 
     def get_matrixP(self) -> np.ndarray:
         """Get the matrix P.
@@ -422,24 +498,30 @@ class RbfModel:
         """
         return self.samples()[i, :]
 
-    def __test_updating_coefficients_for_new_point(
+    def mu_measure(
         self, x: np.ndarray, xdist: np.ndarray = np.array([])
-    ) -> np.ndarray:
-        """Test updating coefficients for a new point x using a Dirac delta
-        function.
+    ) -> float:
+        """Compute the value of abs(mu) in the inf step of the target value
+        sampling strategy. See [#]_ for more details.
 
         Parameters
         ----------
         x : np.ndarray
-            New point.
+            Possible point to be added to the surrogate model.
         xdist : np.ndarray, optional
             Distances between x and the sampled points. If not provided, the
             distances are computed.
 
         Returns
         -------
-        np.ndarray
-            Coefficients of the RBF model.
+        float
+            Value of abs(mu) when adding the new x.
+
+        References
+        ----------
+        .. [#] Gutmann, HM. A Radial Basis Function Method for Global
+            Optimization. Journal of Global Optimization 19, 201–227 (2001).
+            https://doi.org/10.1023/A:1011255519438
         """
         # compute rbf value of the new point x
         pdim = self.pdim()
@@ -473,10 +555,23 @@ class RbfModel:
         rhs = np.zeros(A_aug.shape[0])
         rhs[self._m] = 1
 
-        # solve linear system
+        # solve linear system and get mu
         coeff = solve(A_aug, rhs, assume_a="sym")
+        mu = float(coeff[self._m].item())
 
-        return coeff
+        # Order of the polynomial tail
+        if self.type == RbfType.LINEAR:
+            m0 = 0
+        elif self.type in (RbfType.CUBIC, RbfType.THINPLATE):
+            m0 = 1
+        else:
+            raise ValueError("Unknown RBF type")
+
+        # Get the absolute value of mu
+        mu *= (-1) ** (m0 + 1)
+        assert mu >= 0
+
+        return mu
 
     def bumpiness_measure(self, x: np.ndarray, target) -> float:
         """Compute the bumpiness of the surrogate model for a potential sample
@@ -517,40 +612,3 @@ class RbfModel:
         # use sqrt(gn) as the bumpiness measure to avoid underflow
         sqrtgn = np.sqrt(absmu) * dist
         return sqrtgn
-
-    def mu_measure(self, x: np.ndarray) -> float:
-        """Compute the value of abs(mu) in the inf step of the target value
-        sampling strategy. See [#]_ for more details.
-
-        Parameters
-        ----------
-        x : np.ndarray
-            Possible point to be added to the surrogate model.
-
-        Returns
-        -------
-        float
-            Value of abs(mu) when adding the new x.
-
-        References
-        ----------
-        .. [#] Gutmann, HM. A Radial Basis Function Method for Global
-            Optimization. Journal of Global Optimization 19, 201–227 (2001).
-            https://doi.org/10.1023/A:1011255519438
-        """
-        coeff = self.__test_updating_coefficients_for_new_point(x)
-        mu = float(coeff[self._m].item())
-
-        # Order of the polynomial tail
-        if self.type == RbfType.LINEAR:
-            m0 = 0
-        elif self.type in (RbfType.CUBIC, RbfType.THINPLATE):
-            m0 = 1
-        else:
-            raise ValueError("Unknown RBF type")
-
-        # Get the absolute value of mu
-        mu *= (-1) ** (m0 + 1)
-        assert mu >= 0
-
-        return mu

@@ -31,7 +31,7 @@ __version__ = "0.1.0"
 __deprecated__ = False
 
 from examples.optprogram1 import read_check_data_file
-from blackboxopt.rbf import RbfType, RbfModel
+from blackboxopt.rbf import RbfType, RbfModel, MedianLpfFilter
 from blackboxopt.optimize import stochastic_response_surface
 from blackboxopt.utility import SLHDstandard
 from blackboxopt.sampling import NormalSampler, SamplingStrategy
@@ -91,8 +91,7 @@ if __name__ == "__main__":
     print(samples)
     print("LocalStochRBFstop Start")
 
-    rbfModel = RbfModel(phifunction)
-    rbfModel.update_samples(samples)
+    rbfModel = RbfModel(phifunction, filter=MedianLpfFilter())
 
     minxrange = np.min(data.xup - data.xlow)
     optres = stochastic_response_surface(
@@ -104,6 +103,7 @@ if __name__ == "__main__":
         ),
         maxeval=maxeval - numevals,
         surrogateModel=rbfModel,
+        samples=samples,
         acquisitionFunc=CoordinatePerturbation(
             maxeval - numevals,
             NormalSampler(
