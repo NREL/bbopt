@@ -126,12 +126,18 @@ def stochastic_response_surface(
         elements, corresponding to the lower and upper bound for the variable.
     maxeval : int
         Maximum number of function evaluations.
-    acquisitionFunc : CoordinatePerturbation
-        Acquisition function to be used.
+    x0y0 : tuple, optional
+        Initial guess for the solution and the value of the objective function
+        at the initial guess.
     surrogateModel : surrogate model, optional
         Surrogate model to be used. The default is RbfModel().
         On exit, the surrogate model is updated to represent the one used in the
         last iteration.
+    acquisitionFunc : CoordinatePerturbation
+        Acquisition function to be used.
+    samples : np.ndarray, optional
+        Initial samples to be added to the surrogate model. The default is an
+        empty array.
     newSamplesPerIteration : int, optional
         Number of new samples to be generated per iteration. The default is 1.
     expectedRelativeImprovement : float, optional
@@ -142,6 +148,9 @@ def stochastic_response_surface(
     failtolerance : int, optional
         Number of consecutive insignificant improvements before the algorithm
         modifies the sampler. The default is 5.
+    performContinuousSearch : bool, optional
+        If True, the algorithm will perform a continuous search when a
+        significant improvement is found. The default is True.
 
     Returns
     -------
@@ -178,10 +187,22 @@ def stochastic_response_surface(
         fevaltime=np.zeros(maxeval),
     )
 
-    # Number of initial samples to be added to the surrogate model
+    # Number of initial samples
+    m0 = surrogateModel.nsamples()
     m = min(samples.shape[0], maxeval)
 
-    # Add initial samples to the surrogate model
+    # Initialize out.x and out.fx
+    if m0 > 0:
+        iBest = np.argmin(surrogateModel.get_fsamples()).item()
+        out.x = surrogateModel.sample(iBest)
+        out.fx = surrogateModel.get_fsamples()[iBest].item()
+    else:
+        out.x = np.array(
+            [(bounds[i][0] + bounds[i][1]) / 2 for i in range(dim)]
+        )
+        out.fx = np.Inf
+
+    # Add new samples to the surrogate model
     if m == 0 and surrogateModel.nsamples() == 0:
         # Initialize surrogate model
         surrogateModel.create_initial_design(
@@ -211,31 +232,34 @@ def stochastic_response_surface(
 
     # Evaluate initial samples
     if m > 0:
+        # Add new samples to the output
+        out.samples[0:m, :] = surrogateModel.samples()[m0:, :]
+
         # Compute f(samples)
-        m0 = surrogateModel.nsamples() - m
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=min(ncpu, m)
         ) as executor:
             # Prepare the arguments for parallel execution
-            arguments = [
-                (fun, surrogateModel.sample(m0 + i)) for i in range(m)
-            ]
+            arguments = [(fun, np.copy(out.samples[i, :])) for i in range(m)]
             # Use the map function to parallelize the evaluations
             results = list(executor.map(__eval_fun_and_timeit, arguments))
         out.fsamples[0:m], out.fevaltime[0:m] = zip(*results)
 
         # Update output variables
         iBest = np.argmin(out.fsamples[0:m]).item()
-        out.x = surrogateModel.sample(m0 + iBest)
-        out.fx = out.fsamples[iBest].item()
-        out.samples[0:m, :] = surrogateModel.samples()[m0:, :]
-    elif len(x0y0) == 2:
-        # Compute f(x0)
-        out.x = x0y0[0]
-        out.fx = x0y0[1]
-    else:
+        if out.fsamples[iBest] < out.fx:
+            out.x = out.samples[iBest, :]
+            out.fx = out.fsamples[iBest].item()
+
+    # If initial guess is provided, consider it in the output
+    if len(x0y0) == 2:
+        if x0y0[1] < out.fx:
+            out.x = x0y0[0]
+            out.fx = x0y0[1]
+
+    if out.fx == np.inf:
         raise ValueError(
-            "Either initial samples or an initial guess must be provided"
+            "Provide feasible initial samples or an initial guess"
         )
 
     # counters
@@ -256,7 +280,7 @@ def stochastic_response_surface(
 
     # do until max number of f-evals reached or local min found
     xselected = np.empty((0, dim))
-    ySelected = np.copy(out.fsamples[0:m])
+    ySelected = out.fsamples[0:m]
     while m < maxeval:
         print("\n Iteration: %d \n" % out.nit)
         print("\n fEvals: %d \n" % m)
@@ -400,12 +424,16 @@ def multistart_stochastic_response_surface(
         elements, corresponding to the lower and upper bound for the variable.
     maxeval : int
         Maximum number of function evaluations.
-    acquisitionFunc : CoordinatePerturbation
-        Acquisition function to be used.
     surrogateModel : surrogate model, optional
         Surrogate model to be used. The default is RbfModel().
+    acquisitionFunc : CoordinatePerturbation
+        Acquisition function to be used.
     newSamplesPerIteration : int, optional
         Number of new samples to be generated per iteration. The default is 1.
+    performContinuousSearch : bool, optional
+        If True, the algorithm will perform a continuous search when a
+        significant improvement is found among the integer coordinates. The
+        default is True.
 
     Returns
     -------
@@ -470,6 +498,7 @@ def target_value_optimization(
     fun,
     bounds: tuple,
     maxeval: int,
+    x0y0: tuple = (),
     *,
     surrogateModel=RbfModel(),
     acquisitionFunc: TargetValueAcquisition,
@@ -489,10 +518,18 @@ def target_value_optimization(
         elements, corresponding to the lower and upper bound for the variable.
     maxeval : int
         Maximum number of function evaluations.
+    x0y0 : tuple, optional
+        Initial guess for the solution and the value of the objective function
+        at the initial guess.
     surrogateModel : surrogate model, optional
         Surrogate model to be used. The default is RbfModel().
         On exit, the surrogate model is updated to represent the one used in the
         last iteration.
+    acquisitionFunc : TargetValueAcquisition
+        Acquisition function to be used.
+    samples : np.ndarray, optional
+        Initial samples to be added to the surrogate model. The default is an
+        empty array.
     expectedRelativeImprovement : float, optional
         Expected relative improvement with respect to the current best value.
         An improvement is considered significant if it is greater than
@@ -534,19 +571,31 @@ def target_value_optimization(
     )
 
     # Number of initial samples
+    m0 = surrogateModel.nsamples()
     m = min(samples.shape[0], maxeval)
 
-    # Add initial samples to the surrogate model
+    # Initialize out.x, out.fx and maxf
+    if m0 > 0:
+        iBest = np.argmin(surrogateModel.get_fsamples()).item()
+        out.x = surrogateModel.sample(iBest)
+        out.fx = surrogateModel.get_fsamples()[iBest].item()
+        maxf = np.max(surrogateModel.get_fsamples()).item()
+    else:
+        out.x = np.array(
+            [(bounds[i][0] + bounds[i][1]) / 2 for i in range(dim)]
+        )
+        out.fx = np.Inf
+        maxf = -np.Inf
+
+    # Add new samples to the surrogate model
     if m == 0 and surrogateModel.nsamples() == 0:
         # Initialize surrogate model
-        m0 = 0
         surrogateModel.create_initial_design(
             dim, bounds, min(maxeval, 2 * (dim + 1))
         )
         m = surrogateModel.nsamples()
     else:
         # Add samples to the surrogate model
-        m0 = surrogateModel.nsamples()
         if m > 0:
             surrogateModel.update_samples(samples)
         # Check if samples are integer values for integer variables
@@ -566,29 +615,41 @@ def target_value_optimization(
                 "Initial samples are not sufficient to build the surrogate model"
             )
 
-    # Evaluate initial samples
+    # Evaluate initial samples and update output
     if m > 0:
+        # Add new samples to the output
+        out.samples[0:m, :] = surrogateModel.samples()[m0:, :]
+
         # Compute f(samples)
         with concurrent.futures.ThreadPoolExecutor(
             max_workers=min(ncpu, m)
         ) as executor:
             # Prepare the arguments for parallel execution
-            arguments = [
-                (fun, surrogateModel.sample(m0 + i)) for i in range(m)
-            ]
+            arguments = [(fun, np.copy(out.samples[i, :])) for i in range(m)]
             # Use the map function to parallelize the evaluations
             results = list(executor.map(__eval_fun_and_timeit, arguments))
         out.fsamples[0:m], out.fevaltime[0:m] = zip(*results)
 
-        # Update output variables
+        # Update output variables and maxf
         iBest = np.argmin(out.fsamples[0:m]).item()
-        out.x = surrogateModel.sample(m0 + iBest)
-        out.fx = out.fsamples[iBest].item()
-        out.samples[0:m, :] = surrogateModel.samples()[m0:, :]
-        maxf = np.max(out.fsamples[0:m]).item()
-    else:
-        out.fx = np.Inf
-        maxf = -np.Inf
+        if out.fsamples[iBest] < out.fx:
+            out.x = out.samples[iBest, :]
+            out.fx = out.fsamples[iBest].item()
+        maxf = max(np.max(out.fsamples[0:m]).item(), maxf)
+
+    # If initial guess is provided, consider it in the output
+    if len(x0y0) == 2:
+        if x0y0[1] < out.fx:
+            out.x = x0y0[0]
+            out.fx = x0y0[1]
+
+        # Update maxf
+        maxf = max(maxf, x0y0[1])
+
+    if out.fx == np.inf:
+        raise ValueError(
+            "Provide feasible initial samples or an initial guess"
+        )
 
     # counters
     failctr = 0  # number of consecutive unsuccessful iterations
@@ -601,13 +662,6 @@ def target_value_optimization(
     tol = (
         1e-3 * np.min([bounds[i][1] - bounds[i][0] for i in range(dim)])
     )  # tolerance value for excluding candidate points that are too close to already sampled points
-
-    # Record max function value
-    if m0 > 0:
-        minf = min(out.fx, np.min(surrogateModel._fx[0:m0]).item())
-        maxf = max(maxf, np.max(surrogateModel._fx[0:m0]).item())
-    else:
-        minf = out.fx
 
     # do until max number of f-evals reached or local min found
     xselected = np.empty((0, dim))
@@ -623,30 +677,28 @@ def target_value_optimization(
 
         # Acquire new samples
         xselected = acquisitionFunc.acquire(
-            surrogateModel, bounds, (minf, maxf), tol=tol
+            surrogateModel, bounds, (out.fx, maxf), tol=tol
         )
 
         # Perform function evaluation
         out.fsamples[m], out.fevaltime[m] = __eval_fun_and_timeit(
             (fun, xselected)
         )
+        ySelected = np.copy(out.fsamples[m])
 
-        # Update maxf and minf
-        minf = min(minf, out.fsamples[m])
-        maxf = max(maxf, out.fsamples[m])
+        # Update maxf
+        maxf = max(maxf, ySelected.item())
 
         # determine if significant improvement
-        if (out.fx - out.fsamples[m]) > expectedRelativeImprovement * abs(
-            out.fx
-        ):
+        if (out.fx - ySelected) > expectedRelativeImprovement * abs(out.fx):
             failctr = 0
         else:
             failctr += 1
 
         # Update best point found so far if necessary
-        if out.fsamples[m] < out.fx:
+        if ySelected < out.fx:
             out.x = xselected
-            out.fx = out.fsamples[m]
+            out.fx = ySelected.item()
 
         # Update remaining output variables
         out.samples[m, :] = xselected
@@ -710,16 +762,32 @@ def cptv(
                 failtolerance=failtolerance,
                 performContinuousSearch=False,
             )
+            surrogateModel.update_samples(
+                out_local.samples[out_local.nfev - 1, :].reshape(1, -1)
+            )
+            surrogateModel.update_coefficients(
+                out_local.fsamples[out_local.nfev - 1]
+            )
+            print("CP step ended after ", out_local.nfev, "f evals.")
         else:
             out_local = target_value_optimization(
                 fun,
                 bounds,
                 maxeval - out.nfev,
+                x0y0=(out.x, out.fx),
                 surrogateModel=surrogateModel,
                 acquisitionFunc=TargetValueAcquisition(),
                 expectedRelativeImprovement=expectedRelativeImprovement,
                 failtolerance=failtolerance,
             )
+            surrogateModel.update_samples(
+                out_local.samples[out_local.nfev - 1, :].reshape(1, -1)
+            )
+            surrogateModel.update_coefficients(
+                out_local.fsamples[out_local.nfev - 1]
+            )
+            print("TV step ended after ", out_local.nfev, "f evals.")
+        print("Surrogate model samples: ", surrogateModel.nsamples())
 
         # Update output
         if out_local.fx < out.fx:

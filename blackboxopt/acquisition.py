@@ -186,9 +186,9 @@ class CoordinatePerturbation(AcquisitionFunction):
     ----------
     maxeval : int
         Maximum number of evaluations.
-    sampler : Sampler
+    sampler : NormalSampler
         Sampler to generate candidate points.
-    weightpattern : list-like
+    weightpattern : list-like, optional
         Weights :math:`w` in (0,1) to be used in the score function
         :math:`w f_s(x) + (1-w) (1-d_s(x))`, where
 
@@ -196,6 +196,8 @@ class CoordinatePerturbation(AcquisitionFunction):
           scaled to [0,1].
         - :math:`d_s(x)` is the minimum distance between x and the previously
           selected evaluation points, scaled to [-1,0].
+
+        The default is [0.2, 0.4, 0.6, 0.9, 0.95, 1].
     """
 
     def __init__(
@@ -356,7 +358,15 @@ class UniformAcquisition(AcquisitionFunction):
 
 
 class TargetValueAcquisition(AcquisitionFunction):
-    """Target value acquisition function."""
+    """Target value acquisition function.
+
+    Attributes
+    ----------
+    sample_stage : int
+        Current sample stage.
+    cycleLength : int
+        Length of the cycle.
+    """
 
     def __init__(self) -> None:
         self.sample_stage = 0
