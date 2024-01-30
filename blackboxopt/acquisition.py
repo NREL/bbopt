@@ -368,9 +368,10 @@ class TargetValueAcquisition(AcquisitionFunction):
         Length of the cycle.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, popsize: int = 10) -> None:
         self.sample_stage = 0
         self.cycleLength = 10
+        self.popsize = popsize
         pass
 
     def acquire(
@@ -428,6 +429,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                 bounds,
                 integrality=intArgs,
                 constraints=constraints,
+                popsize=self.popsize,
             )
             xselected = res.x
         elif (
@@ -438,6 +440,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                 lambda x: surrogateModel.eval(x)[0],
                 bounds,
                 integrality=intArgs,
+                popsize=self.popsize,
             )
             f_rbf = res.fun
             wk = (
@@ -454,6 +457,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                 args=(f_target,),
                 integrality=intArgs,
                 constraints=constraints,
+                popsize=self.popsize,
             )
             xselected = (
                 res_bump.x
@@ -464,6 +468,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                 lambda x: surrogateModel.eval(x)[0],
                 bounds,
                 integrality=intArgs,
+                popsize=self.popsize,
             )
             f_rbf = res.fun
             if f_rbf < (fbounds[0] - 1e-6 * abs(fbounds[0])):
@@ -492,6 +497,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                     args=(f_target,),
                     integrality=intArgs,
                     constraints=constraints,
+                    popsize=self.popsize,
                 )
                 xselected = res_bump.x
 
