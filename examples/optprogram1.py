@@ -140,7 +140,10 @@ def read_and_run(
                 acquisitionFunc=TargetValueAcquisition(),
                 surrogateModel=rbfModel,
             )
-        elif optim_func == optimize.cptv:
+        elif (
+            optim_func == optimize.cptv
+            or optim_func == optimize.multistart_cptv
+        ):
             opt = optim_func(
                 data.objfunction,
                 bounds=tuple(
@@ -310,7 +313,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    # args.config = 4
+    # args.config = 6
     if args.config == 1:
         mixrange = 15
         optres = read_and_run(
@@ -403,9 +406,9 @@ if __name__ == "__main__":
         optres = read_and_run(
             data_file="datainput_BraninWithInteger",
             sampler=sampling.NormalSampler(
-                200,
+                1000,
                 sigma=0.2 * mixrange,
-                sigma_min=0.2 * mixrange * 0.5**5,
+                sigma_min=0.2 * mixrange * 0.5**6,
                 sigma_max=0.2 * mixrange,
                 strategy=sampling.SamplingStrategy.DDS,
             ),

@@ -31,7 +31,6 @@ __version__ = "0.1.0"
 __deprecated__ = False
 
 from copy import deepcopy
-from math import sqrt
 import numpy as np
 import time
 from dataclasses import dataclass
@@ -169,9 +168,8 @@ def stochastic_response_surface(
     assert dim > 0
 
     # Use a number of candidates that is greater than 1
-    acquisitionFunc.maxeval = maxeval
     if acquisitionFunc.sampler.n <= 1:
-        acquisitionFunc.sampler.n = 500 * dim
+        acquisitionFunc.sampler.n = min(500 * dim, 5000)
 
     # Reserve space for the surrogate model to avoid repeated allocations
     surrogateModel.reserve(surrogateModel.nsamples() + maxeval, dim)
@@ -272,11 +270,6 @@ def stochastic_response_surface(
     # tolerance parameters
     failtolerance = max(failtolerance, dim)  # must be at least dim
     succtolerance = 3  # Number of consecutive significant improvements before the algorithm modifies the sampler
-    tol = (
-        1e-3
-        * np.min([bounds[i][1] - bounds[i][0] for i in range(dim)])
-        * sqrt(dim)
-    )  # tolerance value for excluding candidate points that are too close to already sampled points
 
     # do until max number of f-evals reached or local min found
     xselected = np.empty((0, dim))
@@ -304,7 +297,6 @@ def stochastic_response_surface(
             (out.fx, np.Inf),
             NumberNewSamples,
             xbest=out.x,
-            tol=tol,
             coord=coord,
         )
 
@@ -659,9 +651,6 @@ def target_value_optimization(
         failtolerance = maxeval
     else:
         failtolerance = max(failtolerance, dim)  # must be at least dim
-    tol = (
-        1e-3 * np.min([bounds[i][1] - bounds[i][0] for i in range(dim)])
-    )  # tolerance value for excluding candidate points that are too close to already sampled points
 
     # do until max number of f-evals reached or local min found
     xselected = np.empty((0, dim))
@@ -677,7 +666,7 @@ def target_value_optimization(
 
         # Acquire new samples
         xselected = acquisitionFunc.acquire(
-            surrogateModel, bounds, (out.fx, maxf), tol=tol
+            surrogateModel, bounds, (out.fx, maxf)
         )
 
         # Perform function evaluation
@@ -729,12 +718,54 @@ def cptv(
     acquisitionFunc: CoordinatePerturbation,
     expectedRelativeImprovement: float = 1e-3,
     failtolerance: int = 5,
+    consecutiveQuickFailuresTol: int = 0,
 ) -> OptimizeResult:
+    """Minimize a scalar function of one or more variables using the coordinate
+    perturbation and target value strategy.
+
+    Parameters
+    ----------
+    fun : callable
+        The objective function to be minimized.
+    bounds : tuple
+        Bounds for variables. Each element of the tuple must be a tuple with two
+        elements, corresponding to the lower and upper bound for the variable.
+    maxeval : int
+        Maximum number of function evaluations.
+    surrogateModel : surrogate model, optional
+        Surrogate model. The default is RbfModel().
+    acquisitionFunc : CoordinatePerturbation
+        Acquisition function to be used in the CP step.
+    expectedRelativeImprovement : float, optional
+        Expected relative improvement with respect to the current best value.
+        An improvement is considered significant if it is greater than
+        ``expectedRelativeImprovement`` times the absolute value of the current
+        best value. The default is 1e-3.
+    failtolerance : int, optional
+        Number of consecutive insignificant improvements before the algorithm
+        switches between the CP and TV steps. The default is 5.
+    consecutiveQuickFailuresTol : int, optional
+        Number of times that the CP step or the TV step fails quickly before the
+        algorithm stops. The default is 0, which means the algorithm will stop
+        after ``maxeval`` function evaluations. A quick failure is when the
+        acquisition function in the CP or TV step does not find any significant
+        improvement.
+
+    Returns
+    -------
+    OptimizeResult
+        The optimization result.
+    """
     dim = len(bounds)  # Dimension of the problem
     assert dim > 0
 
-    # Record initial sampler and surrogate model
+    # Record initial sampler
     acquisitionFunc0 = deepcopy(acquisitionFunc)
+
+    # Tolerance for the tv step
+    tol = 1e-3 * np.min([bounds[i][1] - bounds[i][0] for i in range(dim)])
+    if consecutiveQuickFailuresTol == 0:
+        consecutiveQuickFailuresTol = maxeval
 
     # Initialize output
     out = OptimizeResult(
@@ -749,7 +780,11 @@ def cptv(
 
     # do until max number of f-evals reached
     method = 0
-    while out.nfev < maxeval:
+    consecutiveQuickFailures = 0
+    while (
+        out.nfev < maxeval
+        and consecutiveQuickFailures < consecutiveQuickFailuresTol
+    ):
         if method == 0:
             out_local = stochastic_response_surface(
                 fun,
@@ -762,12 +797,19 @@ def cptv(
                 failtolerance=failtolerance,
                 performContinuousSearch=False,
             )
+
             surrogateModel.update_samples(
                 out_local.samples[out_local.nfev - 1, :].reshape(1, -1)
             )
             surrogateModel.update_coefficients(
                 out_local.fsamples[out_local.nfev - 1]
             )
+
+            if out_local.nfev == failtolerance:
+                consecutiveQuickFailures += 1
+            else:
+                consecutiveQuickFailures = 0
+
             print("CP step ended after ", out_local.nfev, "f evals.")
         else:
             out_local = target_value_optimization(
@@ -776,16 +818,25 @@ def cptv(
                 maxeval - out.nfev,
                 x0y0=(out.x, out.fx),
                 surrogateModel=surrogateModel,
-                acquisitionFunc=TargetValueAcquisition(),
+                acquisitionFunc=TargetValueAcquisition(tol),
                 expectedRelativeImprovement=expectedRelativeImprovement,
                 failtolerance=failtolerance,
             )
+
             surrogateModel.update_samples(
                 out_local.samples[out_local.nfev - 1, :].reshape(1, -1)
             )
             surrogateModel.update_coefficients(
                 out_local.fsamples[out_local.nfev - 1]
             )
+
+            if out_local.nfev == failtolerance:
+                consecutiveQuickFailures += 1
+                tol /= 2
+            else:
+                consecutiveQuickFailures = 0
+
+            acquisitionFunc0.neval += out_local.nfev
             print("TV step ended after ", out_local.nfev, "f evals.")
         print("Surrogate model samples: ", surrogateModel.nsamples())
 
@@ -805,13 +856,108 @@ def cptv(
         # Update counters
         out.nit = out.nit + 1
 
-        # Update surrogate model and sampler for next iteration
-        acquisitionFunc0 = deepcopy(acquisitionFunc)
-
         # Switch method
         if method == 0:
             method = 1
         else:
             method = 0
 
+    # Update output
+    out.samples.resize(out.nfev, dim)
+    out.fsamples.resize(out.nfev)
+    out.fevaltime.resize(out.nfev)
+
     return out
+
+
+# def multistart_cptv(
+#     fun,
+#     bounds: tuple,
+#     maxeval: int,
+#     *,
+#     surrogateModel=RbfModel(),
+#     acquisitionFunc: CoordinatePerturbation,
+#     expectedRelativeImprovement: float = 1e-3,
+#     failtolerance: int = 5,
+# ) -> OptimizeResult:
+#     """Minimize a scalar function of one or more variables using a surrogate
+#     model.
+
+#     Parameters
+#     ----------
+#     fun : callable
+#         The objective function to be minimized.
+#     bounds : tuple
+#         Bounds for variables. Each element of the tuple must be a tuple with two
+#         elements, corresponding to the lower and upper bound for the variable.
+#     maxeval : int
+#         Maximum number of function evaluations.
+#     surrogateModel : surrogate model, optional
+#         Surrogate model to be used. The default is RbfModel().
+#     acquisitionFunc : CoordinatePerturbation
+#         Acquisition function to be used.
+#     newSamplesPerIteration : int, optional
+#         Number of new samples to be generated per iteration. The default is 1.
+#     performContinuousSearch : bool, optional
+#         If True, the algorithm will perform a continuous search when a
+#         significant improvement is found among the integer coordinates. The
+#         default is True.
+
+#     Returns
+#     -------
+#     OptimizeResult
+#         The optimization result.
+#     """
+#     dim = len(bounds)  # Dimension of the problem
+#     assert dim > 0
+
+#     # Record initial sampler and surrogate model
+#     acquisitionFunc0 = deepcopy(acquisitionFunc)
+#     surrogateModel0 = deepcopy(surrogateModel)
+
+#     # Initialize output
+#     out = OptimizeResult(
+#         x=np.zeros(dim),
+#         fx=np.inf,
+#         nit=0,
+#         nfev=0,
+#         samples=np.zeros((maxeval, dim)),
+#         fsamples=np.zeros(maxeval),
+#         fevaltime=np.zeros(maxeval),
+#     )
+
+#     # do until max number of f-evals reached
+#     while out.nfev < maxeval:
+#         # Run local optimization
+#         out_local = cptv(
+#             fun,
+#             bounds,
+#             maxeval - out.nfev,
+#             surrogateModel=surrogateModel0,
+#             acquisitionFunc=acquisitionFunc0,
+#             expectedRelativeImprovement=expectedRelativeImprovement,
+#             failtolerance=failtolerance,
+#             consecutiveQuickFailuresTol=failtolerance,
+#         )
+
+#         # Update output
+#         if out_local.fx < out.fx:
+#             out.x = out_local.x
+#             out.fx = out_local.fx
+#         out.samples[
+#             out.nfev : out.nfev + out_local.nfev, :
+#         ] = out_local.samples
+#         out.fsamples[out.nfev : out.nfev + out_local.nfev] = out_local.fsamples
+#         out.fevaltime[
+#             out.nfev : out.nfev + out_local.nfev
+#         ] = out_local.fevaltime
+#         out.nfev = out.nfev + out_local.nfev
+
+#         # Update counters
+#         out.nit = out.nit + 1
+
+#         # Update surrogate model and sampler for next iteration
+#         surrogateModel0.reset()
+#         acquisitionFunc0 = deepcopy(acquisitionFunc)
+
+#     return out

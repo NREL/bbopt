@@ -31,6 +31,7 @@ __version__ = "0.1.0"
 __deprecated__ = False
 
 import numpy as np
+from numpy.linalg import cond
 from enum import Enum
 from scipy.spatial.distance import cdist
 from scipy.linalg import solve
@@ -320,10 +321,20 @@ class RbfModel:
 
         A = np.block(
             [
-                [self._PHI[0:m, 0:m], self._P[0:m, :]],
-                [self._P[0:m, :].T, np.zeros((pdim, pdim))],
+                [self._PHI[0:m, 0:m], self.get_matrixP()],
+                [self.get_matrixP().T, np.zeros((pdim, pdim))],
             ]
         )
+
+        condA = cond(A)
+        print(f"Condition number of A: {condA}")
+
+        # condPHIP = cond(np.block([[self._PHI[0:m, 0:m], self.get_matrixP()]]))
+        # print(f"Condition number of [PHI,P]: {condPHIP}")
+        # condP = cond(self.get_matrixP())
+        # print(f"Condition number of P: {condP}")
+        # condPHI = cond(self._PHI[0:m, 0:m])
+        # print(f"Condition number of PHI: {condPHI}")
 
         # TODO: See if there is a solver specific for saddle-point systems
         self._coef = solve(
@@ -536,7 +547,7 @@ class RbfModel:
                 [
                     self._PHI[0 : self._m, 0 : self._m],
                     new_phi,
-                    self._P[0 : self._m, :],
+                    self.get_matrixP(),
                 ],
                 [
                     new_phi.T,
@@ -544,7 +555,7 @@ class RbfModel:
                     new_Prow,
                 ],
                 [
-                    self._P[0 : self._m, :].T,
+                    self.get_matrixP().T,
                     new_Prow.T,
                     np.zeros((pdim, pdim)),
                 ],

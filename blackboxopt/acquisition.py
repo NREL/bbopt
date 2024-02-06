@@ -17,10 +17,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-
+import random
 import numpy as np
 from math import log
 from scipy.spatial.distance import cdist
+from scipy.spatial import KDTree
 from scipy.optimize import NonlinearConstraint, differential_evolution
 from .sampling import NormalSampler, Sampler
 
@@ -87,9 +88,7 @@ def find_best(
     else:
         scaledvalue = (fx - minval) / (maxval - minval)
 
-    def argminscore(
-        dist: np.ndarray, valueweight: float, tol: float
-    ) -> np.intp:
+    def argminscore(dist: np.ndarray, valueweight: float) -> np.intp:
         """Gets the index of the candidate point that minimizes the score.
 
         Parameters
@@ -119,11 +118,12 @@ def find_best(
         # Assign bad values to points that are too close to already
         # evaluated/chosen points
         score[dist < tol] = np.inf
+        assert np.min(score) != np.inf
 
         # Return index with the best (smallest) score
         return np.argmin(score)
 
-    selindex = argminscore(dist, weightpattern[0], tol)
+    selindex = argminscore(dist, weightpattern[0])
     xselected[0, :] = x[selindex, :]
     distselected[0, 0:m] = distx[selindex, :]
     for ii in range(1, n):
@@ -132,9 +132,7 @@ def find_best(
         newDist = cdist(xselected[ii - 1, :].reshape(1, -1), x)[0]
         dist = np.minimum(dist, newDist)
 
-        selindex = argminscore(
-            dist, weightpattern[ii % len(weightpattern)], tol
-        )
+        selindex = argminscore(dist, weightpattern[ii % len(weightpattern)])
         xselected[ii, :] = x[selindex, :]
 
         distselected[ii, 0:m] = distx[selindex, :]
@@ -184,6 +182,8 @@ class CoordinatePerturbation(AcquisitionFunction):
 
     Attributes
     ----------
+    neval : int
+        Number of evaluations done so far.
     maxeval : int
         Maximum number of evaluations.
     sampler : NormalSampler
@@ -198,6 +198,10 @@ class CoordinatePerturbation(AcquisitionFunction):
           selected evaluation points, scaled to [-1,0].
 
         The default is [0.2, 0.4, 0.6, 0.9, 0.95, 1].
+    reltol : float, optional
+        Candidate points are chosen s.t.
+            ||x - xbest|| >= reltol * sqrt(dim) * sigma,
+        where sigma is the standard deviation of the normal distribution.
     """
 
     def __init__(
@@ -205,11 +209,13 @@ class CoordinatePerturbation(AcquisitionFunction):
         maxeval: int,
         sampler: NormalSampler = NormalSampler(1, 1),
         weightpattern=[0.2, 0.4, 0.6, 0.9, 0.95, 1],
+        reltol: float = 0.01,
     ) -> None:
+        self.neval = 0
         self.maxeval = maxeval
         self.sampler = sampler
         self.weightpattern = weightpattern
-        self._neval = 0
+        self.reltol = reltol
 
     def acquire(
         self,
@@ -219,7 +225,6 @@ class CoordinatePerturbation(AcquisitionFunction):
         n: int = 1,
         *,
         xbest: np.ndarray = np.array([0]),
-        tol: float = 1e-3,
         coord=(),
     ) -> np.ndarray:
         """Acquire n points.
@@ -236,9 +241,6 @@ class CoordinatePerturbation(AcquisitionFunction):
             Number of points to be acquired. The default is 1.
         xbest : numpy.ndarray, optional
             Best point so far. The default is np.array([0]).
-        tol : float, optional
-            Tolerance value for excluding candidate points that are too close to already sampled points.
-            The default is 1e-3.
         coord : tuple, optional
             Coordinates of the input space that will vary. The default is (),
             which means that all coordinates will vary.
@@ -252,9 +254,12 @@ class CoordinatePerturbation(AcquisitionFunction):
         dim = len(bounds)  # Dimension of the problem
 
         # Probability
-        self._prob = min(20 / dim, 1) * (
-            1 - (log(self._neval + 1) / log(self.maxeval))
-        )
+        if self.maxeval > 1:
+            self._prob = min(20 / dim, 1) * (
+                1 - (log(self.neval + 1) / log(self.maxeval))
+            )
+        else:
+            self._prob = 1.0
 
         CandPoint = self.sampler.get_sample(
             bounds,
@@ -267,19 +272,19 @@ class CoordinatePerturbation(AcquisitionFunction):
             CandPoint,
             n,
             surrogateModel,
-            tol=tol,
+            tol=self.reltol * self.sampler.sigma * np.sqrt(dim),
             weightpattern=self.weightpattern,
         )
         assert n == xselected.shape[0]
 
         # Rotate weight pattern
-        self.weightpattern = (
+        self.weightpattern[:] = (
             self.weightpattern[n % len(self.weightpattern) :]
             + self.weightpattern[: n % len(self.weightpattern)]
         )
 
         # Update number of evaluations
-        self._neval += n
+        self.neval += n
 
         return xselected
 
@@ -301,24 +306,23 @@ class UniformAcquisition(AcquisitionFunction):
           selected evaluation points, scaled to [-1,0].
 
         The default is 0.95.
+    tol : float, optional
+        Tolerance value for excluding candidate points that are too close to already sampled points.
+        The default is 1e-3.
     """
 
     def __init__(
         self,
         nSamples: int,
         weight: float = 0.95,
+        tol: float = 1e-3,
     ) -> None:
         self.sampler = Sampler(nSamples)
         self.weight = weight
+        self.tol = tol
 
     def acquire(
-        self,
-        surrogateModel,
-        bounds: tuple,
-        fbounds: tuple,
-        n: int = 1,
-        *,
-        tol: float = 1e-3,
+        self, surrogateModel, bounds: tuple, fbounds: tuple, n: int = 1
     ) -> np.ndarray:
         """Acquire n points.
 
@@ -332,9 +336,6 @@ class UniformAcquisition(AcquisitionFunction):
             Bounds of the objective function so far.
         n : int, optional
             Number of points to be acquired. The default is 1.
-        tol : float, optional
-            Tolerance value for excluding candidate points that are too close to already sampled points.
-            The default is 1e-3.
 
         Returns
         -------
@@ -349,7 +350,7 @@ class UniformAcquisition(AcquisitionFunction):
             CandPoint,
             n,
             surrogateModel,
-            tol=tol,
+            tol=self.tol,
             weightpattern=(self.weight,),
         )
         assert n == xselected.shape[0]
@@ -362,26 +363,19 @@ class TargetValueAcquisition(AcquisitionFunction):
 
     Attributes
     ----------
-    sample_stage : int
-        Current sample stage.
     cycleLength : int
         Length of the cycle.
+    tol : float
+        Tolerance value for excluding candidate points that are too close to already sampled points.
+        Default is 1e-3.
     """
 
-    def __init__(self, popsize: int = 10) -> None:
-        self.sample_stage = 0
+    def __init__(self, tol=1e-3) -> None:
         self.cycleLength = 10
-        self.popsize = popsize
-        pass
+        self.tol = tol
 
     def acquire(
-        self,
-        surrogateModel,
-        bounds: tuple,
-        fbounds: tuple,
-        n: int = 1,
-        *,
-        tol: float = 1e-3,
+        self, surrogateModel, bounds: tuple, fbounds: tuple, n: int = 1
     ) -> np.ndarray:
         """Acquire n points.
 
@@ -395,9 +389,6 @@ class TargetValueAcquisition(AcquisitionFunction):
             Bounds of the objective function so far.
         n : int, optional
             Number of points to be acquired. The default is 1.
-        tol : float, optional
-            Tolerance value for excluding candidate points that are too close to already sampled points.
-            The default is 1e-3.
 
         Returns
         -------
@@ -408,12 +399,19 @@ class TargetValueAcquisition(AcquisitionFunction):
             raise NotImplementedError
         dim = len(bounds)  # Dimension of the problem
 
+        # constraints = NonlinearConstraint(
+        #     lambda x: [np.dot(x - y, x - y) for y in surrogateModel.samples()],
+        #     tol * tol,
+        #     np.inf,
+        #     jac=lambda x: 2 * (x.reshape(1, -1) - surrogateModel.samples()),
+        #     hess=lambda x, v: 2 * np.sum(v) * np.eye(dim),
+        # )
+
+        tree = KDTree(surrogateModel.samples())
         constraints = NonlinearConstraint(
-            lambda x: [np.dot(x - y, x - y) for y in surrogateModel.samples()],
-            tol * tol,
+            lambda x: tree.query(x)[0],
+            self.tol,
             np.inf,
-            jac=lambda x: 2 * (x.reshape(1, -1) - surrogateModel.samples()),
-            hess=lambda x, v: 2 * np.sum(v) * np.eye(dim),
         )
 
         # Convert iindex to boolean array
@@ -423,28 +421,25 @@ class TargetValueAcquisition(AcquisitionFunction):
 
         # see Holmstrom 2008 "An adaptive radial basis algorithm (ARBF) for
         # expensive black-box global optimization", JOGO
-        if self.sample_stage == 0:  # InfStep - minimize Mu_n
+        sample_stage = random.sample(range(0, self.cycleLength + 2), 1)[0]
+        if sample_stage == 0:  # InfStep - minimize Mu_n
             res = differential_evolution(
                 surrogateModel.mu_measure,
                 bounds,
                 integrality=intArgs,
                 constraints=constraints,
-                popsize=self.popsize,
             )
             xselected = res.x
-        elif (
-            1 <= self.sample_stage <= self.cycleLength
-        ):  # cycle step global search
+        elif 1 <= sample_stage <= self.cycleLength:  # cycle step global search
             # find min of surrogate model
             res = differential_evolution(
                 lambda x: surrogateModel.eval(x)[0],
                 bounds,
                 integrality=intArgs,
-                popsize=self.popsize,
             )
             f_rbf = res.fun
             wk = (
-                1 - self.sample_stage / self.cycleLength
+                1 - sample_stage / self.cycleLength
             ) ** 2  # select weight for computing target value
             f_target = f_rbf - wk * (
                 fbounds[1] - f_rbf
@@ -457,7 +452,6 @@ class TargetValueAcquisition(AcquisitionFunction):
                 args=(f_target,),
                 integrality=intArgs,
                 constraints=constraints,
-                popsize=self.popsize,
             )
             xselected = (
                 res_bump.x
@@ -468,25 +462,17 @@ class TargetValueAcquisition(AcquisitionFunction):
                 lambda x: surrogateModel.eval(x)[0],
                 bounds,
                 integrality=intArgs,
-                popsize=self.popsize,
             )
             f_rbf = res.fun
             if f_rbf < (fbounds[0] - 1e-6 * abs(fbounds[0])):
                 # select minimum point as new sample point if sufficient improvements
                 xselected = res.x
-                # find closest already sampled point to xselected
-                distselected = cdist(
-                    xselected.reshape(1, -1), surrogateModel.samples()
-                )
-                while np.any(distselected < tol):
+                while np.any(tree.query(xselected)[0] < self.tol):
                     # the selected point is too close to already evaluated point
                     # randomly select point from variable domain
                     # May only happen after a local search step
                     xselected = Sampler(1).get_uniform_sample(
                         bounds, iindex=surrogateModel.iindex
-                    )
-                    distselected = cdist(
-                        xselected.reshape(1, -1), surrogateModel.samples()
                     )
             else:  # otherwise, do target value strategy
                 f_target = fbounds[0] - 1e-2 * abs(fbounds[0])  # target value
@@ -497,11 +483,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                     args=(f_target,),
                     integrality=intArgs,
                     constraints=constraints,
-                    popsize=self.popsize,
                 )
                 xselected = res_bump.x
-
-        # update sample stage
-        self.sample_stage = (self.sample_stage + 1) % (self.cycleLength + 2)
 
         return xselected.reshape(1, -1)
