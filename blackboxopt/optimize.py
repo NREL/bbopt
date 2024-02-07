@@ -32,6 +32,7 @@ __deprecated__ = False
 
 from copy import deepcopy
 import numpy as np
+from scipy.optimize import minimize
 import time
 from dataclasses import dataclass
 import concurrent.futures
@@ -719,6 +720,7 @@ def cptv(
     expectedRelativeImprovement: float = 1e-3,
     failtolerance: int = 5,
     consecutiveQuickFailuresTol: int = 0,
+    useLocalSearch: bool = False,
 ) -> OptimizeResult:
     """Minimize a scalar function of one or more variables using the coordinate
     perturbation and target value strategy.
@@ -759,6 +761,10 @@ def cptv(
     dim = len(bounds)  # Dimension of the problem
     assert dim > 0
 
+    # Get index and bounds of the continuous variables
+    cindex = [i for i in range(dim) if i not in surrogateModel.iindex]
+    cbounds = [bounds[i] for i in cindex]
+
     # Record initial sampler
     acquisitionFunc0 = deepcopy(acquisitionFunc)
 
@@ -781,6 +787,8 @@ def cptv(
     # do until max number of f-evals reached
     method = 0
     consecutiveQuickFailures = 0
+    localSearchCounter = 0
+    k = 0
     while (
         out.nfev < maxeval
         and consecutiveQuickFailures < consecutiveQuickFailuresTol
@@ -811,7 +819,24 @@ def cptv(
                 consecutiveQuickFailures = 0
 
             print("CP step ended after ", out_local.nfev, "f evals.")
-        else:
+
+            # Switch method
+            if useLocalSearch:
+                if out.nfev == 0 or (
+                    out.fx - out_local.fx
+                ) > expectedRelativeImprovement * abs(out.fx):
+                    localSearchCounter = 0
+                else:
+                    localSearchCounter += 1
+
+                if localSearchCounter >= 3:
+                    method = 2
+                    localSearchCounter = 0
+                else:
+                    method = 1
+            else:
+                method = 1
+        elif method == 1:
             out_local = target_value_optimization(
                 fun,
                 bounds,
@@ -838,36 +863,97 @@ def cptv(
 
             acquisitionFunc0.neval += out_local.nfev
             print("TV step ended after ", out_local.nfev, "f evals.")
+
+            # Switch method and update counter for local search
+            method = 0
+            if useLocalSearch:
+                if out.nfev == 0 or (
+                    out.fx - out_local.fx
+                ) > expectedRelativeImprovement * abs(out.fx):
+                    localSearchCounter = 0
+                else:
+                    localSearchCounter += 1
+        else:
+
+            def func_continuous_search(x):
+                x_ = out.x
+                x_[cindex] = x
+                return fun(x_)
+
+            out_local_ = minimize(
+                func_continuous_search,
+                out.x[cindex],
+                method="Powell",
+                bounds=cbounds,
+                options={"maxfev": maxeval - out.nfev, "disp": False},
+            )
+            xbest = out.x
+            xbest[cindex] = out_local_.x
+            out_local = OptimizeResult(
+                x=xbest,
+                fx=out_local_.fun,
+                nit=out_local_.nit,
+                nfev=out_local_.nfev,
+                samples=xbest.reshape(1, -1),
+                fsamples=np.array([out_local_.fun]),
+                fevaltime=np.array([0]),
+            )
+
+            print("Local step ended after ", out_local.nfev, "f evals.")
+
+            # Switch method
+            method = 1
+
         print("Surrogate model samples: ", surrogateModel.nsamples())
+
+        # Update knew
+        knew = out_local.samples.shape[0]
 
         # Update output
         if out_local.fx < out.fx:
             out.x = out_local.x
             out.fx = out_local.fx
-        out.samples[
-            out.nfev : out.nfev + out_local.nfev, :
-        ] = out_local.samples
-        out.fsamples[out.nfev : out.nfev + out_local.nfev] = out_local.fsamples
-        out.fevaltime[
-            out.nfev : out.nfev + out_local.nfev
-        ] = out_local.fevaltime
+        out.samples[k : k + knew, :] = out_local.samples
+        out.fsamples[k : k + knew] = out_local.fsamples
+        out.fevaltime[k : k + knew] = out_local.fevaltime
         out.nfev = out.nfev + out_local.nfev
+
+        # Update k
+        k = k + knew
 
         # Update counters
         out.nit = out.nit + 1
 
-        # Switch method
-        if method == 0:
-            method = 1
-        else:
-            method = 0
-
     # Update output
-    out.samples.resize(out.nfev, dim)
-    out.fsamples.resize(out.nfev)
-    out.fevaltime.resize(out.nfev)
+    out.samples.resize(k, dim)
+    out.fsamples.resize(k)
+    out.fevaltime.resize(k)
 
     return out
+
+
+def cptvi(
+    fun,
+    bounds: tuple,
+    maxeval: int,
+    *,
+    surrogateModel=RbfModel(),
+    acquisitionFunc: CoordinatePerturbation,
+    expectedRelativeImprovement: float = 1e-3,
+    failtolerance: int = 5,
+    consecutiveQuickFailuresTol: int = 0,
+) -> OptimizeResult:
+    return cptv(
+        fun,
+        bounds,
+        maxeval,
+        surrogateModel=surrogateModel,
+        acquisitionFunc=acquisitionFunc,
+        expectedRelativeImprovement=expectedRelativeImprovement,
+        failtolerance=failtolerance,
+        consecutiveQuickFailuresTol=consecutiveQuickFailuresTol,
+        useLocalSearch=True,
+    )
 
 
 # def multistart_cptv(

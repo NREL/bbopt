@@ -142,6 +142,7 @@ def read_and_run(
             )
         elif (
             optim_func == optimize.cptv
+            or optim_func == optimize.cptvi
             or optim_func == optimize.multistart_cptv
         ):
             opt = optim_func(
@@ -313,7 +314,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    # args.config = 6
+    # args.config = 7
     if args.config == 1:
         mixrange = 15
         optres = read_and_run(
@@ -420,6 +421,26 @@ if __name__ == "__main__":
             rbf_type=rbf.RbfType.THINPLATE,
             PlotResult=True,
             optim_func=optimize.cptv,
+        )
+    elif args.config == 7:
+        mixrange = 15
+        optres = read_and_run(
+            data_file="datainput_BraninWithInteger",
+            sampler=sampling.NormalSampler(
+                1000,
+                sigma=0.2 * mixrange,
+                sigma_min=0.2 * mixrange * 0.5**6,
+                sigma_max=0.2 * mixrange,
+                strategy=sampling.SamplingStrategy.DDS,
+            ),
+            filter=rbf.RbfFilter(),
+            weightpattern=[0.3, 0.5, 0.8, 0.95],
+            maxeval=100,
+            Ntrials=3,
+            NumberNewSamples=1,
+            rbf_type=rbf.RbfType.THINPLATE,
+            PlotResult=True,
+            optim_func=optimize.cptvi,
         )
     else:
         raise ValueError("Invalid configuration number.")
