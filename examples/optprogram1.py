@@ -31,6 +31,7 @@ __deprecated__ = False
 
 
 import importlib
+from math import sqrt
 import numpy as np
 import matplotlib.pyplot as plt
 import pickle as p
@@ -38,14 +39,15 @@ from blackboxopt import rbf, optimize, sampling
 from blackboxopt.acquisition import (
     CoordinatePerturbation,
     TargetValueAcquisition,
+    AcquisitionFunction,
+    MinimizeSurrogate,
 )
 from data import Data
 
 
 def read_and_run(
     data_file: str,
-    sampler: sampling.NormalSampler = sampling.NormalSampler(1, 1),
-    weightpattern: list[float] = [0.3, 0.5, 0.8, 0.95],
+    acquisitionFunc: AcquisitionFunction,
     maxeval: int = 0,
     Ntrials: int = 0,
     NumberNewSamples: int = 0,
@@ -125,9 +127,7 @@ def read_and_run(
                 ),
                 maxeval=maxeval,
                 surrogateModel=rbfModel,
-                acquisitionFunc=CoordinatePerturbation(
-                    maxeval, sampler, weightpattern
-                ),
+                acquisitionFunc=acquisitionFunc,
                 newSamplesPerIteration=NumberNewSamples,
             )
         elif optim_func == optimize.target_value_optimization:
@@ -137,14 +137,11 @@ def read_and_run(
                     (data.xlow[i], data.xup[i]) for i in range(data.dim)
                 ),
                 maxeval=maxeval,
-                acquisitionFunc=TargetValueAcquisition(),
+                acquisitionFunc=acquisitionFunc,
+                newSamplesPerIteration=NumberNewSamples,
                 surrogateModel=rbfModel,
             )
-        elif (
-            optim_func == optimize.cptv
-            or optim_func == optimize.cptvi
-            or optim_func == optimize.multistart_cptv
-        ):
+        elif optim_func == optimize.cptv or optim_func == optimize.cptvi:
             opt = optim_func(
                 data.objfunction,
                 bounds=tuple(
@@ -152,9 +149,7 @@ def read_and_run(
                 ),
                 maxeval=maxeval,
                 surrogateModel=rbfModel,
-                acquisitionFunc=CoordinatePerturbation(
-                    maxeval, sampler, weightpattern
-                ),
+                acquisitionFunc=acquisitionFunc,
             )
         else:
             raise ValueError("Invalid optimization function.")
@@ -314,22 +309,25 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    # args.config = 7
+    # args.config = 8
     if args.config == 1:
         mixrange = 15
         optres = read_and_run(
             data_file="datainput_Branin",
-            sampler=sampling.NormalSampler(
-                1000,
-                sigma=0.2 * mixrange,
-                sigma_min=0.2 * mixrange * 0.5**5,
-                sigma_max=0.2 * mixrange,
-                strategy=sampling.SamplingStrategy.NORMAL,
+            acquisitionFunc=CoordinatePerturbation(
+                200,
+                sampling.NormalSampler(
+                    1000,
+                    sigma=0.2 * mixrange,
+                    sigma_min=0.2 * mixrange * 0.5**5,
+                    sigma_max=0.2 * mixrange,
+                    strategy=sampling.SamplingStrategy.NORMAL,
+                ),
+                [
+                    0.95,
+                ],
             ),
             filter=rbf.MedianLpfFilter(),
-            weightpattern=[
-                0.95,
-            ],
             maxeval=200,
             Ntrials=3,
             NumberNewSamples=1,
@@ -338,15 +336,18 @@ if __name__ == "__main__":
     elif args.config == 2:
         optres = read_and_run(
             data_file="datainput_hartman3",
-            sampler=sampling.NormalSampler(
-                300,
-                sigma=0.2,
-                sigma_min=0.2 * 0.5**6,
-                sigma_max=0.2,
-                strategy=sampling.SamplingStrategy.DDS,
+            acquisitionFunc=CoordinatePerturbation(
+                200,
+                sampling.NormalSampler(
+                    300,
+                    sigma=0.2,
+                    sigma_min=0.2 * 0.5**6,
+                    sigma_max=0.2,
+                    strategy=sampling.SamplingStrategy.DDS,
+                ),
+                [0.3, 0.5, 0.8, 0.95],
             ),
             filter=rbf.MedianLpfFilter(),
-            weightpattern=[0.3, 0.5, 0.8, 0.95],
             maxeval=200,
             Ntrials=1,
             NumberNewSamples=1,
@@ -356,15 +357,18 @@ if __name__ == "__main__":
         mixrange = 15
         optres = read_and_run(
             data_file="datainput_BraninWithInteger",
-            sampler=sampling.NormalSampler(
-                200,
-                sigma=0.2 * mixrange,
-                sigma_min=0.2 * mixrange * 0.5**5,
-                sigma_max=0.2 * mixrange,
-                strategy=sampling.SamplingStrategy.DDS,
+            acquisitionFunc=CoordinatePerturbation(
+                100,
+                sampling.NormalSampler(
+                    200,
+                    sigma=0.2 * mixrange,
+                    sigma_min=0.2 * mixrange * 0.5**5,
+                    sigma_max=0.2 * mixrange,
+                    strategy=sampling.SamplingStrategy.DDS,
+                ),
+                [0.3, 0.5, 0.8, 0.95],
             ),
             filter=rbf.RbfFilter(),
-            weightpattern=[0.3, 0.5, 0.8, 0.95],
             maxeval=100,
             Ntrials=3,
             NumberNewSamples=1,
@@ -375,15 +379,18 @@ if __name__ == "__main__":
         mixrange = 15
         optres = read_and_run(
             data_file="datainput_BraninWithInteger",
-            sampler=sampling.NormalSampler(
-                200,
-                sigma=0.2 * mixrange,
-                sigma_min=0.2 * mixrange * 0.5**5,
-                sigma_max=0.2 * mixrange,
-                strategy=sampling.SamplingStrategy.DDS_UNIFORM,
+            acquisitionFunc=CoordinatePerturbation(
+                100,
+                sampling.NormalSampler(
+                    200,
+                    sigma=0.2 * mixrange,
+                    sigma_min=0.2 * mixrange * 0.5**5,
+                    sigma_max=0.2 * mixrange,
+                    strategy=sampling.SamplingStrategy.DDS_UNIFORM,
+                ),
+                [0.3, 0.5, 0.8, 0.95],
             ),
             filter=rbf.RbfFilter(),
-            weightpattern=[0.3, 0.5, 0.8, 0.95],
             maxeval=100,
             Ntrials=3,
             NumberNewSamples=1,
@@ -392,8 +399,10 @@ if __name__ == "__main__":
             optim_func=optimize.stochastic_response_surface,
         )
     elif args.config == 5:
+        mixrange = 15
         optres = read_and_run(
             data_file="datainput_BraninWithInteger",
+            acquisitionFunc=TargetValueAcquisition(0.001 * mixrange),
             filter=rbf.RbfFilter(),
             maxeval=100,
             Ntrials=3,
@@ -406,15 +415,18 @@ if __name__ == "__main__":
         mixrange = 15
         optres = read_and_run(
             data_file="datainput_BraninWithInteger",
-            sampler=sampling.NormalSampler(
-                1000,
-                sigma=0.2 * mixrange,
-                sigma_min=0.2 * mixrange * 0.5**6,
-                sigma_max=0.2 * mixrange,
-                strategy=sampling.SamplingStrategy.DDS,
+            acquisitionFunc=CoordinatePerturbation(
+                100,
+                sampling.NormalSampler(
+                    1000,
+                    sigma=0.2 * mixrange,
+                    sigma_min=0.2 * mixrange * 0.5**6,
+                    sigma_max=0.2 * mixrange,
+                    strategy=sampling.SamplingStrategy.DDS,
+                ),
+                [0.3, 0.5, 0.8, 0.95],
             ),
             filter=rbf.RbfFilter(),
-            weightpattern=[0.3, 0.5, 0.8, 0.95],
             maxeval=100,
             Ntrials=3,
             NumberNewSamples=1,
@@ -426,21 +438,37 @@ if __name__ == "__main__":
         mixrange = 15
         optres = read_and_run(
             data_file="datainput_BraninWithInteger",
-            sampler=sampling.NormalSampler(
-                1000,
-                sigma=0.2 * mixrange,
-                sigma_min=0.2 * mixrange * 0.5**6,
-                sigma_max=0.2 * mixrange,
-                strategy=sampling.SamplingStrategy.DDS,
+            acquisitionFunc=CoordinatePerturbation(
+                100,
+                sampling.NormalSampler(
+                    1000,
+                    sigma=0.2 * mixrange,
+                    sigma_min=0.2 * mixrange * 0.5**6,
+                    sigma_max=0.2 * mixrange,
+                    strategy=sampling.SamplingStrategy.DDS,
+                ),
+                [0.3, 0.5, 0.8, 0.95],
             ),
             filter=rbf.RbfFilter(),
-            weightpattern=[0.3, 0.5, 0.8, 0.95],
             maxeval=100,
             Ntrials=3,
             NumberNewSamples=1,
             rbf_type=rbf.RbfType.THINPLATE,
             PlotResult=True,
             optim_func=optimize.cptvi,
+        )
+    elif args.config == 8:
+        mixrange = 15
+        optres = read_and_run(
+            data_file="datainput_BraninWithInteger",
+            acquisitionFunc=MinimizeSurrogate(100, 0.005 * mixrange * sqrt(2)),
+            filter=rbf.RbfFilter(),
+            maxeval=100,
+            Ntrials=3,
+            NumberNewSamples=10,
+            rbf_type=rbf.RbfType.THINPLATE,
+            PlotResult=True,
+            optim_func=optimize.target_value_optimization,
         )
     else:
         raise ValueError("Invalid configuration number.")

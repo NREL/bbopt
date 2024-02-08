@@ -22,6 +22,7 @@ import numpy as np
 from math import log
 from scipy.spatial.distance import cdist
 from scipy.spatial import KDTree
+from scipy.special import gamma
 from scipy.optimize import NonlinearConstraint, differential_evolution
 from .sampling import NormalSampler, Sampler
 
@@ -155,7 +156,7 @@ class AcquisitionFunction:
 
     def acquire(
         self, surrogateModel, bounds: tuple, fbounds: tuple, n: int = 1
-    ) -> tuple[np.ndarray, np.ndarray]:
+    ) -> np.ndarray:
         """Acquire n points.
 
         Parameters
@@ -313,11 +314,11 @@ class UniformAcquisition(AcquisitionFunction):
 
     def __init__(
         self,
-        nSamples: int,
+        nCand: int,
         weight: float = 0.95,
         tol: float = 1e-3,
     ) -> None:
-        self.sampler = Sampler(nSamples)
+        self.sampler = Sampler(nCand)
         self.weight = weight
         self.tol = tol
 
@@ -399,6 +400,7 @@ class TargetValueAcquisition(AcquisitionFunction):
             raise NotImplementedError
         dim = len(bounds)  # Dimension of the problem
 
+        # Too expensive
         # constraints = NonlinearConstraint(
         #     lambda x: [np.dot(x - y, x - y) for y in surrogateModel.samples()],
         #     tol * tol,
@@ -487,3 +489,158 @@ class TargetValueAcquisition(AcquisitionFunction):
                 xselected = res_bump.x
 
         return xselected.reshape(1, -1)
+
+
+class MinimizeSurrogate(AcquisitionFunction):
+    def __init__(self, nCand: int, tol=1e-3) -> None:
+        self.sampler = Sampler(nCand)
+        self.initialPopulationSampler = NormalSampler(20, 1)
+        self.tol = tol
+
+    def acquire(
+        self, surrogateModel, bounds: tuple, fbounds: tuple, n: int = 0
+    ) -> np.ndarray:
+        """Acquire n points.
+
+        Parameters
+        ----------
+        surrogateModel : Surrogate model
+            Surrogate model.
+        bounds : tuple
+            Bounds of the search space.
+        fbounds : tuple
+            Bounds of the objective function so far.
+        n : int, optional
+            Max number of points to be acquired. The default is 1.
+
+        Returns
+        -------
+        numpy.ndarray
+            n-by-dim matrix with the selected points.
+        """
+        dim = len(bounds)
+        volumeBounds = np.prod([b[1] - b[0] for b in bounds])
+
+        # Convert iindex to boolean array
+        intArgs = [False] * dim
+        for i in surrogateModel.iindex:
+            intArgs[i] = True
+
+        maxiter = 10
+        sigma = 4.0  # default value for computing crit distance
+        critdist = (
+            (gamma(1 + (dim / 2)) * volumeBounds * sigma) ** (1 / dim)
+        ) / np.sqrt(np.pi)  # critical distance when 2 points are equal
+
+        candidates = np.empty((self.sampler.n * maxiter, dim))
+        distCandidates = np.empty(
+            (self.sampler.n * maxiter, self.sampler.n * maxiter)
+        )
+        fcand = np.empty(self.sampler.n * maxiter)
+        startpID = np.full((self.sampler.n * maxiter,), False)
+        selected = np.empty((n, dim))
+        tree = KDTree(surrogateModel.samples())
+
+        iter = 0
+        k = 0
+        while iter < maxiter and k < n:
+            iStart = iter * self.sampler.n
+            iEnd = (iter + 1) * self.sampler.n
+
+            # Critical distance for the i-th iteration
+            critdistiter = critdist * (log(iEnd) / iEnd) ** (1 / dim)
+            self.initialPopulationSampler.sigma = critdistiter
+            print("Critical distance: ", critdistiter)
+
+            # Consider only the best points to start local minimization
+            counterLocalStart = iEnd // maxiter
+
+            # Choose candidate points uniformly in the search space
+            candidates[iStart:iEnd, :] = self.sampler.get_uniform_sample(
+                bounds, iindex=surrogateModel.iindex
+            )
+
+            # Compute the distance between the candidate points
+            distCandidates[iStart:iEnd, iStart:iEnd] = cdist(
+                candidates[iStart:iEnd, :], candidates[iStart:iEnd, :]
+            )
+            distCandidates[0:iStart, iStart:iEnd] = cdist(
+                candidates[0:iStart, :], candidates[iStart:iEnd, :]
+            )
+            distCandidates[iStart:iEnd, 0:iStart] = distCandidates[
+                0:iStart, iStart:iEnd
+            ].T
+
+            # Evaluate the surrogate model on the candidate points and sort them
+            fcand[iStart:iEnd], _ = surrogateModel.eval(
+                candidates[iStart:iEnd, :]
+            )
+            ids = np.argsort(fcand[0:iEnd])
+
+            # Select the best points that are not too close to each other
+            chosenIds = np.zeros((counterLocalStart,), dtype=int)
+            nSelected = 0
+            for i in range(counterLocalStart):
+                if not startpID[ids[i]]:
+                    select = True
+                    for j in range(i):
+                        if distCandidates[ids[i], ids[j]] <= critdistiter:
+                            select = False
+                            break
+                    if select:
+                        nSelected += 1
+                        chosenIds[nSelected] = ids[i]
+                        startpID[ids[i]] = True
+
+            for i in range(nSelected):
+                initPopulation = self.initialPopulationSampler.get_sample(
+                    bounds,
+                    iindex=surrogateModel.iindex,
+                    mu=candidates[chosenIds[i], :],
+                )
+                res = differential_evolution(
+                    lambda x: surrogateModel.eval(x)[0],
+                    bounds,
+                    integrality=intArgs,
+                    init=initPopulation,
+                )
+
+                if tree.n == 0 or tree.query(res.x)[0] > self.tol:
+                    selected[k, :] = res.x
+                    k += 1
+                    if k == n:
+                        break
+                    else:
+                        tree = KDTree(
+                            np.concatenate(
+                                (surrogateModel.samples(), selected[0:k, :]),
+                                axis=0,
+                            )
+                        )
+
+            if k == n:
+                break
+
+            e_nlocmin = (
+                k * (counterLocalStart - 1) / (counterLocalStart - k - 2)
+            )
+            e_domain = (
+                (counterLocalStart - k - 1)
+                * (counterLocalStart + k)
+                / (counterLocalStart * (counterLocalStart - 1))
+            )
+            if (e_nlocmin - k < 0.5) and (e_domain >= 0.995):
+                break
+
+            iter += 1
+
+        if k > 0:
+            return selected[0:k, :]
+        else:
+            print("No new points found by the differential evolution method")
+            xlow = np.array([bounds[i][0] for i in range(dim)])
+            xup = np.array([bounds[i][1] for i in range(dim)])
+            selected = xlow + np.random.rand(1, dim) * (xup - xlow)
+            while tree.query(selected)[0] > self.tol:
+                selected = xlow + np.random.rand(1, dim) * (xup - xlow)
+            return selected.reshape(1, -1)

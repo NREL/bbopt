@@ -244,6 +244,58 @@ class RbfModel:
         else:
             raise ValueError("Unknown RBF type")
 
+    def dphi(self, r):
+        """Derivative of the function phi at the distance(s) r.
+
+        Parameters
+        ----------
+        r : array_like
+            Distance(s) between points.
+
+        Returns
+        -------
+        out: array_like
+            Derivative of the phi-value of the distances provided on input.
+        """
+        if self.type == RbfType.LINEAR:
+            return np.ones(r.shape)
+        elif self.type == RbfType.CUBIC:
+            return 3 * np.power(r, 2)
+        elif self.type == RbfType.THINPLATE:
+            return np.where(
+                r > 0,
+                2 * np.multiply(r, np.log(r)) + r,
+                0,
+            )
+        else:
+            raise ValueError("Unknown RBF type")
+
+    def ddphi(self, r):
+        """Second derivative of the function phi at the distance(s) r.
+
+        Parameters
+        ----------
+        r : array_like
+            Distance(s) between points.
+
+        Returns
+        -------
+        out: array_like
+            Second derivative of the phi-value of the distances provided on input.
+        """
+        if self.type == RbfType.LINEAR:
+            return np.zeros(r.shape)
+        elif self.type == RbfType.CUBIC:
+            return 6 * r
+        elif self.type == RbfType.THINPLATE:
+            return np.where(
+                r > 0,
+                2 * np.log(r) + 3,
+                0,
+            )
+        else:
+            raise ValueError("Unknown RBF type")
+
     def pbasis(self, x: np.ndarray) -> np.ndarray:
         """Computes the polynomial tail matrix for a given set of points.
 
@@ -265,6 +317,54 @@ class RbfModel:
             return np.ones((m, 1))
         elif self.type in (RbfType.CUBIC, RbfType.THINPLATE):
             return np.concatenate((np.ones((m, 1)), x.reshape(m, -1)), axis=1)
+        else:
+            raise ValueError("Invalid polynomial tail")
+
+    def dpbasis(self, x: np.ndarray) -> np.ndarray:
+        """Computes the derivative of the polynomial tail matrix for a given x.
+
+        Parameters
+        ----------
+        x : numpy.ndarray
+            Point in a d-dimensional space.
+
+        Returns
+        -------
+        out: numpy.ndarray
+            Derivative of the polynomial tail matrix for the input point.
+        """
+        dim = self.dim()
+
+        if self.type == RbfType.LINEAR:
+            return np.zeros((1, 1))
+        elif self.type in (RbfType.CUBIC, RbfType.THINPLATE):
+            return np.concatenate((np.zeros((1, dim)), np.eye(dim)), axis=0)
+        else:
+            raise ValueError("Invalid polynomial tail")
+
+    def ddpbasis(self, x: np.ndarray, p: np.ndarray) -> np.ndarray:
+        """Computes the second derivative of the polynomial tail matrix for a
+        given x and direction p.
+
+        Parameters
+        ----------
+        x : numpy.ndarray
+            Point in a d-dimensional space.
+        p : numpy.ndarray
+            Direction in which the second derivative is evaluated.
+
+        Returns
+        -------
+        out: numpy.ndarray
+            Second derivative of the polynomial tail matrix for the input point
+            and direction.
+        """
+        dim = self.dim()
+
+        if self.type == RbfType.LINEAR:
+            return np.zeros((1, 1))
+        elif self.type in (RbfType.CUBIC, RbfType.THINPLATE):
+            return np.zeros((dim + 1, dim))
         else:
             raise ValueError("Invalid polynomial tail")
 
@@ -298,6 +398,75 @@ class RbfModel:
         )
 
         return y, D
+
+    def jac(self, x: np.ndarray) -> np.ndarray:
+        """Evaluates the derivative of the model at one point.
+
+        Parameters
+        ----------
+        x : np.ndarray
+            Point in a d-dimensional space.
+
+        Returns
+        -------
+        numpy.ndarray
+            Value for the derivative of the RBF model on the input point.
+        """
+        if self._valid_coefficients is False:
+            raise RuntimeError("Invalid coefficients")
+
+        dim = self.dim()
+
+        # compute pairwise distances between candidates and sampled points
+        d = cdist(x.reshape(-1, dim), self.samples()).flatten()
+
+        A = np.array([self.dphi(d[i]) * x / d[i] for i in range(d.size)])
+        B = self.dpbasis(x)
+
+        y = np.matmul(A.T, self._coef[0 : self._m]) + np.matmul(
+            B.T, self._coef[self._m : self._m + B.shape[0]]
+        )
+
+        return y.flatten()
+
+    def hessp(self, x: np.ndarray, p: np.ndarray) -> np.ndarray:
+        """Evaluates the Hessian of the model at x in the direction of p.
+
+        Parameters
+        ----------
+        x : np.ndarray
+            Point in a d-dimensional space.
+        p : np.ndarray
+            Direction in which the Hessian is evaluated.
+
+        Returns
+        -------
+        numpy.ndarray
+            Value for the Hessian of the RBF model at x in the direction of p.
+        """
+        if self._valid_coefficients is False:
+            raise RuntimeError("Invalid coefficients")
+
+        dim = self.dim()
+
+        # compute pairwise distances between candidates and sampled points
+        d = cdist(x.reshape(-1, dim), self.samples()).flatten()
+
+        xxTp = np.dot(p, x) * x
+        A = np.array(
+            [
+                self.ddphi(d[i]) * (xxTp / (d[i] * d[i]))
+                + (self.dphi(d[i]) / d[i]) * (p - (xxTp / (d[i] * d[i])))
+                for i in range(d.size)
+            ]
+        )
+        B = self.ddpbasis(x, p)
+
+        y = np.matmul(A.T, self._coef[0 : self._m]) + np.matmul(
+            B.T, self._coef[self._m : self._m + B.shape[0]]
+        )
+
+        return y.flatten()
 
     def update_coefficients(
         self, fx: np.ndarray, filter: RbfFilter = None

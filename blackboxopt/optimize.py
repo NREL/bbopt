@@ -41,6 +41,7 @@ import os
 from blackboxopt.acquisition import (
     CoordinatePerturbation,
     TargetValueAcquisition,
+    AcquisitionFunction,
 )
 
 from .rbf import RbfModel
@@ -302,6 +303,7 @@ def stochastic_response_surface(
         )
 
         # Compute f(xselected)
+        NumberNewSamples = xselected.shape[0]
         ySelected = np.zeros(NumberNewSamples)
         if NumberNewSamples > 1:
             with concurrent.futures.ThreadPoolExecutor(
@@ -401,7 +403,7 @@ def multistart_stochastic_response_surface(
     maxeval: int,
     *,
     surrogateModel=RbfModel(),
-    acquisitionFunc: CoordinatePerturbation,
+    acquisitionFunc: CoordinatePerturbation = CoordinatePerturbation(0),
     newSamplesPerIteration: int = 1,
     performContinuousSearch: bool = True,
 ) -> OptimizeResult:
@@ -419,7 +421,7 @@ def multistart_stochastic_response_surface(
         Maximum number of function evaluations.
     surrogateModel : surrogate model, optional
         Surrogate model to be used. The default is RbfModel().
-    acquisitionFunc : CoordinatePerturbation
+    acquisitionFunc : CoordinatePerturbation, optional
         Acquisition function to be used.
     newSamplesPerIteration : int, optional
         Number of new samples to be generated per iteration. The default is 1.
@@ -494,8 +496,9 @@ def target_value_optimization(
     x0y0: tuple = (),
     *,
     surrogateModel=RbfModel(),
-    acquisitionFunc: TargetValueAcquisition,
+    acquisitionFunc: AcquisitionFunction = TargetValueAcquisition(),
     samples: np.ndarray = np.array([]),
+    newSamplesPerIteration: int = 1,
     expectedRelativeImprovement: float = 1e-3,
     failtolerance: int = -1,
 ) -> OptimizeResult:
@@ -518,11 +521,13 @@ def target_value_optimization(
         Surrogate model to be used. The default is RbfModel().
         On exit, the surrogate model is updated to represent the one used in the
         last iteration.
-    acquisitionFunc : TargetValueAcquisition
+    acquisitionFunc : AcquisitionFunction, optional
         Acquisition function to be used.
     samples : np.ndarray, optional
         Initial samples to be added to the surrogate model. The default is an
         empty array.
+    newSamplesPerIteration : int, optional
+        Number of new samples to be generated per iteration. The default is 1.
     expectedRelativeImprovement : float, optional
         Expected relative improvement with respect to the current best value.
         An improvement is considered significant if it is greater than
@@ -661,41 +666,65 @@ def target_value_optimization(
         print("\n fEvals: %d \n" % m)
         print("\n Best value: %f \n" % out.fx)
 
+        # number of new samples in an iteration
+        NumberNewSamples = min(newSamplesPerIteration, maxeval - m)
+
         # Update surrogate model
         surrogateModel.update_samples(xselected)
         surrogateModel.update_coefficients(ySelected)
 
         # Acquire new samples
         xselected = acquisitionFunc.acquire(
-            surrogateModel, bounds, (out.fx, maxf)
+            surrogateModel, bounds, (out.fx, maxf), NumberNewSamples
         )
 
-        # Perform function evaluation
-        out.fsamples[m], out.fevaltime[m] = __eval_fun_and_timeit(
-            (fun, xselected)
-        )
-        ySelected = np.copy(out.fsamples[m])
+        # Compute f(xselected)
+        NumberNewSamples = xselected.shape[0]
+        ySelected = np.zeros(NumberNewSamples)
+        if NumberNewSamples > 1:
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=min(ncpu, m)
+            ) as executor:
+                # Prepare the arguments for parallel execution
+                arguments = [
+                    (fun, xselected[i, :]) for i in range(NumberNewSamples)
+                ]
+                # Use the map function to parallelize the evaluations
+                results = list(executor.map(__eval_fun_and_timeit, arguments))
+            (
+                ySelected[0:NumberNewSamples],
+                out.fevaltime[m : m + NumberNewSamples],
+            ) = zip(*results)
+        else:
+            for i in range(NumberNewSamples):
+                (
+                    ySelected[i],
+                    out.fevaltime[m + i],
+                ) = __eval_fun_and_timeit((fun, xselected[i, :]))
 
         # Update maxf
-        maxf = max(maxf, ySelected.item())
+        maxf = max(maxf, np.max(ySelected).item())
 
         # determine if significant improvement
-        if (out.fx - ySelected) > expectedRelativeImprovement * abs(out.fx):
+        iSelectedBest = np.argmin(ySelected).item()
+        fxSelectedBest = ySelected[iSelectedBest]
+        if (out.fx - fxSelectedBest) > expectedRelativeImprovement * abs(
+            out.fx
+        ):
             failctr = 0
         else:
             failctr += 1
 
         # Update best point found so far if necessary
-        if ySelected < out.fx:
-            out.x = xselected
-            out.fx = ySelected.item()
+        if fxSelectedBest < out.fx:
+            out.x = xselected[iSelectedBest, :]
+            out.fx = fxSelectedBest
 
         # Update remaining output variables
-        out.samples[m, :] = xselected
+        out.samples[m : m + NumberNewSamples, :] = xselected
+        out.fsamples[m : m + NumberNewSamples] = ySelected
+        m = m + NumberNewSamples
         out.nit = out.nit + 1
-
-        # Update m
-        m = m + 1
 
         # break if algorithm is not making progress
         if failctr >= failtolerance:
@@ -716,7 +745,7 @@ def cptv(
     maxeval: int,
     *,
     surrogateModel=RbfModel(),
-    acquisitionFunc: CoordinatePerturbation,
+    acquisitionFunc: CoordinatePerturbation = CoordinatePerturbation(0),
     expectedRelativeImprovement: float = 1e-3,
     failtolerance: int = 5,
     consecutiveQuickFailuresTol: int = 0,
@@ -736,7 +765,7 @@ def cptv(
         Maximum number of function evaluations.
     surrogateModel : surrogate model, optional
         Surrogate model. The default is RbfModel().
-    acquisitionFunc : CoordinatePerturbation
+    acquisitionFunc : CoordinatePerturbation, optional
         Acquisition function to be used in the CP step.
     expectedRelativeImprovement : float, optional
         Expected relative improvement with respect to the current best value.
@@ -938,11 +967,12 @@ def cptvi(
     maxeval: int,
     *,
     surrogateModel=RbfModel(),
-    acquisitionFunc: CoordinatePerturbation,
+    acquisitionFunc: CoordinatePerturbation = CoordinatePerturbation(0),
     expectedRelativeImprovement: float = 1e-3,
     failtolerance: int = 5,
     consecutiveQuickFailuresTol: int = 0,
 ) -> OptimizeResult:
+    """See cptv."""
     return cptv(
         fun,
         bounds,
