@@ -1,7 +1,13 @@
 import pandas as pd
+import os
+
+dirPath = os.path.dirname(os.path.realpath(__file__))
+
 
 # Load the dataset
-marthedata = pd.read_csv("marthedata.txt", delim_whitespace=True, header=0)
+marthedata = pd.read_csv(
+    dirPath + "/marthedata.txt", delim_whitespace=True, header=0
+)
 
 # Extract input variables
 per1 = marthedata["per1"]

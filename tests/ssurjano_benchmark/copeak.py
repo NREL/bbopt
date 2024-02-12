@@ -1,7 +1,9 @@
 import numpy as np
-def copeak(xx, u=np.array([0.5]*len(xx)), a=np.array([5]*len(xx))):
+
+
+def copeak(xx, u=0.5, a=5):
     d = len(xx)
-    sum = np.sum(a*xx)
-    
-    y = (1 + sum)**(-d-1)
-    return(y)
+    sum = np.sum(a * xx)
+
+    y = (1 + sum) ** (-d - 1)
+    return y

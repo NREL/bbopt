@@ -1,7 +1,7 @@
-from borehole import borehole
-from wingweight import wingweight
-from otlcircuit import otlcircuit
-from piston import piston
+from .borehole import borehole
+from .wingweight import wingweight
+from .otlcircuit import otlcircuit
+from .piston import piston
 
 
 def moonetal12(xx):

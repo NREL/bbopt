@@ -57,9 +57,3 @@ def park91alc(xx):
 
     y = term1 + term2 + 0.5
     return y
-
-
-# Test the function
-xx_test = np.random.rand(4)  # Example input
-result = park91alc(xx_test)
-print("Result:", result)

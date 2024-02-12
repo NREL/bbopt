@@ -1,28 +1,14 @@
-def morcaf95a(xx):
-    ###############################################
-    #OLD CODE
-    d = len(xx)
-    fact1 = (1 + 1/d)**d
-    prod = np.prod(xx**(1/d))
-    y = fact1 * prod
-    return y
+import numpy as np
 
-NEW CODE
-def morcaf95a(xx):
-    ###############################################
-    #OLD CODE
-    d = len(xx)
-    fact1 = (1 + 1/d)**d
-    prod = np.prod(xx**(1/d))
-    y = fact1 * prod
-    return y
 
-NEW CODE
 def morcaf95a(xx):
-    ###############################################
-    #OLD CODE
+    """
+    MOROKOFF & CAFLISCH (1995) FUNCTION 1
+    """
     d = len(xx)
-    fact1 = (1 + 1/d)**d
-    prod = np.prod(xx**(1/d))
+    fact1 = (1 + 1 / d) ** d
+
+    prod = np.prod(np.array(xx) ** (1 / d))
+
     y = fact1 * prod
     return y

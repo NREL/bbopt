@@ -89,9 +89,3 @@ def shekel(xx, m=10):
 
     y = -outer
     return y
-
-
-# Test the function
-xx_test = np.random.rand(4)  # Example input
-result = shekel(xx_test)
-print("Result:", result)

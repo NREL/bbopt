@@ -1,8 +1,14 @@
-import numpy as np
+import math
+
+
 def drop(xx):
-    ##########################################################################\n # DROP-WAVE FUNCTION\n ############################\n \n x1 = xx[0]
-x2 = xx[1]
-frac1 = 1 + np.cos(12*np.sqrt(x1**2+x2**2))
-frac2 = (x1**2+x2**2) / 2 + 2
-y = -frac1/frac2
-return y
+    """
+    DROP-WAVE FUNCTION
+    """
+    x1, x2 = xx
+
+    frac1 = 1 + math.cos(12 * math.sqrt(x1**2 + x2**2))
+    frac2 = 0.5 * (x1**2 + x2**2) + 2
+
+    y = -frac1 / frac2
+    return y

@@ -16,6 +16,7 @@ sphinx = "^7.2.6"
 myst-parser = "^2.0.0"
 sphinx-rtd-theme = "^2.0.0"
 ruff = "^0.1.9"
+pandas = "^2.2.0"
 
 [tool.ruff]
 line-length = 79
