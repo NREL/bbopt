@@ -1,0 +1,7 @@
+import numpy as np
+def zakharov(xx):
+    ##########################################################################\n # ZAKHAROV FUNCTION\n ############################################################\n # Authors: Sonja Surjanovic, Simon Fraser University\n #          Derek Bingham, Simon Fraser University\n # Questions/Comments: Please email Derek Bingham at dbingham@stat.sfu.ca.\n # Copyright2013.DerekBingham,SimonFraserUniversity.\n # ThereisNO WARRANTY,EXPRESSORIMPLIED.WE DO NOTASSUMEANYLIABILITY\n # FOR THE USE OF THIS SOFTWARE. Ifsoftwareismodifiedtoproduce\n # derivativeworks,suchmodifiedsoftwareshouldbeclearlymarked.\n # Additionally,thisprogramisfreeware;youcanredistributeit\n # and/ormodifyitunderthetermsoftheGNUGeneralPublicLicenseas\n # publishedbytheFreeSoftwareFoundation;version2.0ofthelicense.\n # Accordingly,thisscriptisdistributedinthedesperatetothehopethatthe\n # itwillbeuseful,butWITHOUTANYWARRANTY;withexcepttowithout\n # theimpliedwarantyofMERCHANTABILITYORFITNESSFORAPARTICULARPURPOSE.See\n # theGNUGeneralPublicLicenseformoredetails.\n # Forfunctiondetailsandreferencenformation,see:\n # http://www.sfu.ca/~ssurjano/\n ##########################################################################\n \n ii = np.arange(1, len(xx)+1)
+sum1 = np.sum(xx**2)
+sum2 = 0.5*ii*xx
+y = sum1 + (sum2**2+sum2**4)
+return y
