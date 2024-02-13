@@ -31,18 +31,30 @@ import tests.ssurjano_benchmark as ssbmk
 
 
 @pytest.mark.parametrize("func", list(ssbmk.rfuncs.keys()))
-def test_API(func):
-    """Test the API of the module."""
+def test_API(func: str):
+    """Test function func can be called from the R API.
+
+    Parameters
+    ----------
+    func : str
+        Name of the function to be tested.
+    """
     rfunc = getattr(ssbmk.r, func)
     nArgs = ssbmk.rfuncs[func]
+
+    # If the function takes a variable number of arguments, use the minimum number
     if not isinstance(nArgs, int):
         nArgs = nArgs[0]
 
+    # Generate random input values
     rx = robjects.FloatVector(np.random.rand(nArgs).tolist())
     if func in ("qianetal08", "zhouetal11", "hanetal09"):
         rx[1] = 1
 
+    # Call the function
     ry = rfunc(rx)
+
+    # Check if the function returned a valid value
     y = np.array(ry)
     if np.any(np.isnan(y)):
         raise ValueError(f"Function {func} returned NaN.")

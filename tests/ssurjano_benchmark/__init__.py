@@ -1,7 +1,12 @@
 from rpy2.robjects import r
 import os
 
-
+# The following dictionary contains the name of the R function and the number of
+# arguments it takes. If the function takes a variable number of arguments, the
+# value is a tuple with the minimum and maximum number of arguments. If the
+# function takes a fixed number of arguments, the value is an integer. -1 is used
+# to indicate that the function takes a variable number of arguments, but the
+# maximum number is unknown.
 rfuncs = {
     "limetal02non": 2,
     "hump": 2,
@@ -124,9 +129,11 @@ rfuncs = {
     "levy13": 2,
 }
 
+# Load the R functions
 benchPath = os.path.dirname(os.path.realpath(__file__))
 for rfile, _ in rfuncs.items():
     r.source(os.path.join(benchPath, rfile + ".r"))
 
+# Clean up the namespace
 del benchPath, rfile
 del os
