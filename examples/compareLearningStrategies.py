@@ -1,8 +1,7 @@
-"""Example with optimization and plot.
+"""Compare different learning strategies for RBF surrogate optimization.
 """
 
 # Copyright (C) 2024 National Renewable Energy Laboratory
-# Copyright (C) 2014 Cornell University
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -17,15 +16,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-__authors__ = ["Juliane Mueller", "Christine A. Shoemaker"]
-__contact__ = "juliane.mueller@nrel.gov"
+__authors__ = ["Weslley S. Pereira"]
+__contact__ = "weslley.dasilvapereira@nrel.gov"
 __maintainer__ = "Weslley S. Pereira"
 __email__ = "weslley.dasilvapereira@nrel.gov"
-__credits__ = [
-    "Juliane Mueller",
-    "Christine A. Shoemaker",
-    "Weslley S. Pereira",
-]
+__credits__ = ["Weslley S. Pereira"]
 __version__ = "0.1.0"
 __deprecated__ = False
 
@@ -34,7 +29,6 @@ import importlib
 from math import sqrt
 import numpy as np
 import matplotlib.pyplot as plt
-import pickle as p
 from blackboxopt import rbf, optimize, sampling
 from blackboxopt.acquisition import (
     CoordinatePerturbation,
@@ -53,7 +47,6 @@ def read_and_run(
     NumberNewSamples: int = 0,
     rbf_type: rbf.RbfType = rbf.RbfType.CUBIC,
     filter: rbf.RbfFilter = rbf.RbfFilter(),
-    PlotResult: bool = True,
     optim_func=optimize.multistart_stochastic_response_surface,
 ) -> list[optimize.OptimizeResult]:
     """Perform the optimization, save the solution and plot.
@@ -78,8 +71,6 @@ def read_and_run(
         Number of new samples per step of the optimization algorithm.
     rbf_type : rbf.RbfType, optional
         Type of RBF to be used.
-    PlotResult : bool, optional
-        Plot the results.
 
     Returns
     -------
@@ -156,29 +147,16 @@ def read_and_run(
         optres.append(opt)
     ## End Optimization
 
-    # save solution to file
-    f = open("Results.data", mode="wb")
-    p.dump(optres, f)
-    f.close()
-    # TODO: Is it the best option?
-
-    ## Plot Result
-    if PlotResult:
-        plot_results(optres, "RBFPlot.png")
-    ## End Plot Result
-
     return optres
 
 
-def plot_results(optres: list[optimize.OptimizeResult], filename: str):
-    """Plot the results.
+def get_meanPerNEval(optres: list[optimize.OptimizeResult]) -> np.ndarray:
+    """Get mean of the best function values per number of function evaluations.
 
     Parameters
     ----------
     optres: list[optimize.OptimizeResult]
         List of optimize.OptimizeResult objects with the optimization results.
-    filename : str
-        Path for the plot file.
     """
     Ntrials = len(optres)
     maxeval = min([len(optres[i].fsamples) for i in range(Ntrials)])
@@ -193,16 +171,7 @@ def plot_results(optres: list[optimize.OptimizeResult], filename: str):
                 Y_cur_best[j, ii] = Y_cur_best[j - 1, ii]
     # compute means over matrix of current best values (Y_cur_best has dimension
     # maxeval x Ntrials)
-    Ymean = np.mean(Y_cur_best, axis=1)
-
-    plt.rcParams.update({"font.size": 16})
-
-    plt.plot(np.arange(1, maxeval + 1), Ymean)
-    plt.xlabel("Number of function evaluations")
-    plt.ylabel("Average best function value")
-    plt.draw()
-    # show()
-    plt.savefig(filename)
+    return np.mean(Y_cur_best, axis=1)
 
 
 def read_check_data_file(data_file: str) -> Data:
@@ -296,25 +265,15 @@ def check_set_parameters(
 
 
 if __name__ == "__main__":
-    import argparse
-
     np.random.seed(3)
 
-    parser = argparse.ArgumentParser(
-        description="Run the optimization and plot the results."
-    )
-    parser.add_argument(
-        "--config",
-        type=int,
-        help="Configuration number to be used.",
-        default=1,
-    )
-    args = parser.parse_args()
+    comparisonList = [3, 6, 7]
+    optresList = {}
+    strategyName = []
 
-    # args.config = 8
-    if args.config == 1:
+    if 1 in comparisonList:
         mixrange = 15
-        optres = read_and_run(
+        optresList[1] = read_and_run(
             data_file="datainput_Branin",
             acquisitionFunc=CoordinatePerturbation(
                 200,
@@ -333,10 +292,9 @@ if __name__ == "__main__":
             maxeval=200,
             Ntrials=3,
             NumberNewSamples=1,
-            PlotResult=True,
         )
-    elif args.config == 2:
-        optres = read_and_run(
+    if 2 in comparisonList:
+        optresList[2] = read_and_run(
             data_file="datainput_hartman3",
             acquisitionFunc=CoordinatePerturbation(
                 200,
@@ -353,18 +311,18 @@ if __name__ == "__main__":
             maxeval=200,
             Ntrials=1,
             NumberNewSamples=1,
-            PlotResult=True,
         )
-    elif args.config == 3:
+    if 3 in comparisonList:
+        strategyName.append("DYCORS with multistart")
         mixrange = 15
-        optres = read_and_run(
+        optresList[3] = read_and_run(
             data_file="datainput_BraninWithInteger",
             acquisitionFunc=CoordinatePerturbation(
                 100,
                 sampling.NormalSampler(
-                    200,
+                    1000,
                     sigma=0.2 * mixrange,
-                    sigma_min=0.2 * mixrange * 0.5**5,
+                    sigma_min=0.2 * mixrange * 0.5**6,
                     sigma_max=0.2 * mixrange,
                     strategy=sampling.SamplingStrategy.DDS,
                 ),
@@ -375,11 +333,10 @@ if __name__ == "__main__":
             Ntrials=3,
             NumberNewSamples=1,
             rbf_type=rbf.RbfType.THINPLATE,
-            PlotResult=True,
         )
-    elif args.config == 4:
+    if 4 in comparisonList:
         mixrange = 15
-        optres = read_and_run(
+        optresList[4] = read_and_run(
             data_file="datainput_BraninWithInteger",
             acquisitionFunc=CoordinatePerturbation(
                 100,
@@ -397,12 +354,11 @@ if __name__ == "__main__":
             Ntrials=3,
             NumberNewSamples=1,
             rbf_type=rbf.RbfType.THINPLATE,
-            PlotResult=True,
             optim_func=optimize.stochastic_response_surface,
         )
-    elif args.config == 5:
+    if 5 in comparisonList:
         mixrange = 15
-        optres = read_and_run(
+        optresList[5] = read_and_run(
             data_file="datainput_BraninWithInteger",
             acquisitionFunc=TargetValueAcquisition(0.001 * mixrange),
             filter=rbf.RbfFilter(),
@@ -410,12 +366,12 @@ if __name__ == "__main__":
             Ntrials=3,
             NumberNewSamples=1,
             rbf_type=rbf.RbfType.THINPLATE,
-            PlotResult=True,
             optim_func=optimize.target_value_optimization,
         )
-    elif args.config == 6:
+    if 6 in comparisonList:
+        strategyName.append("CPTV")
         mixrange = 15
-        optres = read_and_run(
+        optresList[6] = read_and_run(
             data_file="datainput_BraninWithInteger",
             acquisitionFunc=CoordinatePerturbation(
                 100,
@@ -433,12 +389,12 @@ if __name__ == "__main__":
             Ntrials=3,
             NumberNewSamples=1,
             rbf_type=rbf.RbfType.THINPLATE,
-            PlotResult=True,
             optim_func=optimize.cptv,
         )
-    elif args.config == 7:
+    if 7 in comparisonList:
+        strategyName.append("CPTVI")
         mixrange = 15
-        optres = read_and_run(
+        optresList[7] = read_and_run(
             data_file="datainput_BraninWithInteger",
             acquisitionFunc=CoordinatePerturbation(
                 100,
@@ -456,12 +412,11 @@ if __name__ == "__main__":
             Ntrials=3,
             NumberNewSamples=1,
             rbf_type=rbf.RbfType.THINPLATE,
-            PlotResult=True,
             optim_func=optimize.cptvi,
         )
-    elif args.config == 8:
+    if 8 in comparisonList:
         mixrange = 15
-        optres = read_and_run(
+        optresList[8] = read_and_run(
             data_file="datainput_BraninWithInteger",
             acquisitionFunc=MinimizeSurrogate(100, 0.005 * mixrange * sqrt(2)),
             filter=rbf.RbfFilter(),
@@ -469,18 +424,19 @@ if __name__ == "__main__":
             Ntrials=3,
             NumberNewSamples=10,
             rbf_type=rbf.RbfType.THINPLATE,
-            PlotResult=True,
             optim_func=optimize.target_value_optimization,
         )
-    else:
-        raise ValueError("Invalid configuration number.")
 
-    Ntrials = len(optres)
-    print("BestValues", [optres[i].fx for i in range(Ntrials)])
-    print("BestPoints", [optres[i].x for i in range(Ntrials)])
-    print("NumFuncEval", [optres[i].nfev for i in range(Ntrials)])
-    print(
-        "AvgFUncEvalTime",
-        [np.mean(optres[i].fevaltime) for i in range(Ntrials)],
-    )
-    print("NumberOfIterations", [optres[i].nit for i in range(Ntrials)])
+    ## Plot Results
+    plt.rcParams.update({"font.size": 16})
+    j = 0
+    for i in comparisonList:
+        Ymean = get_meanPerNEval(optresList[i])
+        plt.plot(np.arange(1, Ymean.size + 1), Ymean, label=strategyName[j])
+        j += 1
+    plt.xlabel("Number of function evaluations")
+    plt.ylabel("Average best function value")
+    plt.legend()
+    plt.yscale("log")
+    plt.draw()
+    plt.savefig("RBFComparePlot.png")
