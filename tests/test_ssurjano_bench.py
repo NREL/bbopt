@@ -24,6 +24,7 @@ __credits__ = ["Weslley S. Pereira"]
 __version__ = "0.1.0"
 __deprecated__ = False
 
+from random import randint
 import numpy as np
 import pytest
 from rpy2 import robjects
@@ -42,19 +43,38 @@ def test_API(func: str):
     rfunc = getattr(ssbmk.r, func)
     nArgs = ssbmk.rfuncs[func]
 
-    # If the function takes a variable number of arguments, use the minimum number
+    # If the function takes a variable number of arguments, use the lower bound
     if not isinstance(nArgs, int):
         nArgs = nArgs[0]
 
+    # Get the function domain
+    bounds = ssbmk.get_function_domain(func, nArgs)
+    if isinstance(bounds[0], list) and len(bounds) == 1:
+        bounds = bounds[0]
+    assert (len(bounds) == nArgs) or (len(bounds) == 2 and nArgs == 1)
+
+    # Transform input to [0.0, 1.0] if unknown
+    if nArgs == 1 and bounds is None:
+        bounds = [0.0, 1.0]
+    else:
+        for i in range(nArgs):
+            if bounds[i] is None:
+                bounds[i] = [0.0, 1.0]
+
     # Generate random input values
-    rx = robjects.FloatVector(np.random.rand(nArgs).tolist())
-    if func in ("qianetal08", "zhouetal11", "hanetal09"):
-        rx[1] = 1
+    x = []
+    if nArgs == 1:
+        x.append(np.random.uniform(bounds[0], bounds[1]))
+    else:
+        for b in bounds:
+            if isinstance(b[0], int) and isinstance(b[1], int):
+                x.append(randint(b[0], b[1]))
+            else:
+                x.append(np.random.uniform(b[0], b[1]))
 
     # Call the function
-    ry = rfunc(rx)
+    y = np.array(rfunc(robjects.FloatVector(x)))
 
     # Check if the function returned a valid value
-    y = np.array(ry)
     if np.any(np.isnan(y)):
         raise ValueError(f"Function {func} returned NaN.")

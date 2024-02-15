@@ -129,6 +129,363 @@ rfuncs = {
     "levy13": 2,
 }
 
+
+def get_function_domain(func: str, d: int = 2) -> list[list] | list:
+    """Get the domain of the function func.
+
+    Parameters
+    ----------
+    func : str
+        Name of the function.
+    d : int
+        Dimension of the input space. Default is 2. Note that some functions
+        have a fixed predefined dimension.
+
+    Returns
+    -------
+    list
+        List with the domain boundaries for each dimension.
+    """
+    from math import pi
+
+    if func == "hump":
+        return [[-5.0, 5.0] for i in range(2)]  # Same as camel3
+    if func == "ishigami":
+        return [[-pi, pi] for i in range(3)]
+    if func == "boha1" or func == "boha2" or func == "boha3":
+        return [[-100.0, 100.0] for i in range(2)]
+    if func == "steelcol":
+        return [None] * 9
+    if func == "webetal96":
+        return [[1.0, 10.0], None]
+    if func == "eldetal07ratio":
+        return [None] * 2
+    if func == "oakoh04":
+        return [None] * 15
+    if func == "shortcol":
+        return [None] * 3
+    if func == "disc":
+        return [[0.0, 1.0] for i in range(d)]
+    if func == "linketal06nosig":
+        return [[0.0, 1.0] for i in range(10)]
+    if func == "camel3":
+        return [[-5.0, 5.0] for i in range(2)]
+    if func == "soblev99":
+        return [[0.0, 1.0] for i in range(d)]
+    if func == "colville":
+        return [[-10.0, 10.0] for i in range(4)]
+    if func == "perm0db":
+        return [[-d * 1.0, d * 1.0] for i in range(d)]
+    if func == "environ":
+        return [[7.0, 13.0], [0.02, 0.12], [0.01, 3.0], [30.01, 30.295]]
+    if func == "levy":
+        return [[-10.0, 10.0] for i in range(d)]
+    if func == "curretal88sin":
+        return [0.0, 1.0]
+    if func == "curretal91":
+        return [[0.0, 1.0] for i in range(2)]
+    if func == "detpep10exp":
+        return [[0.0, 1.0] for i in range(3)]
+    if func == "prpeak":
+        return [[0.0, 1.0] for i in range(d)]
+    if func == "piston":
+        return [
+            [30.0, 60.0],
+            [0.005, 0.02],
+            [0.002, 0.01],
+            [1000.0, 5000.0],
+            [90000.0, 110000.0],
+            [290.0, 296.0],
+            [340.0, 360.0],
+        ]
+    if func == "linketal06sin":
+        return [[0.0, 1.0] for i in range(10)]
+    if func == "dejong5":
+        return [[-65.536, 65.536] for i in range(2)]
+    if func == "branin" or func == "braninsc" or func == "braninmodif":
+        return [[-5.0, 10.0], [0.0, 15.0]]
+    if func == "drop":
+        return [[-5.12, 5.12] for i in range(2)]
+    if func == "zhouetal11":
+        return [[0.0, 1.0], [1, 3]]
+    if func == "stybtang":
+        return [[-5.0, 5.0] for i in range(d)]
+    if func == "forretal08":
+        return [0.0, 1.0]
+    if func == "park91b":
+        return [[0.0, 1.0] for i in range(4)]
+    if func == "limetal02non":
+        return [[0.0, 1.0] for i in range(2)]
+    if func == "holder":
+        return [[-10.0, 10.0] for i in range(2)]
+    if func == "moon10mix":
+        return [[0.0, 1.0], [0.0, 1.0], [1, 2]]
+    if func == "moonetal12":
+        return [
+            # "Borehole Function": [
+            [0.05, 0.15],
+            [100.0, 50000.0],
+            [63070.0, 115600.0],
+            [990.0, 1110.0],
+            [63.1, 116.0],
+            [700.0, 820.0],
+            [1120.0, 1680.0],
+            [9855.0, 12045.0],
+            # ],
+            # "Wing Weight Function": [
+            [150.0, 200.0],
+            [220.0, 300.0],
+            [6.0, 10.0],
+            [-10.0, 10.0],
+            [16.0, 45.0],
+            [0.5, 1.0],
+            [0.08, 0.18],
+            [2.5, 6.0],
+            [1700.0, 2500.0],
+            [0.025, 0.08],
+            # ],
+            # "OTL Circuit Function": [
+            [50.0, 150.0],
+            [25.0, 70.0],
+            [0.5, 3.0],
+            [1.2, 2.5],
+            [0.25, 1.2],
+            [50.0, 300.0],
+            # ],
+            # "Piston Simulation Function": [
+            [30.0, 60.0],
+            [0.005, 0.02],
+            [0.002, 0.01],
+            [1000.0, 5000.0],
+            [90000.0, 110000.0],
+            [290.0, 296.0],
+            [340.0, 360.0],
+            # ],
+        ]
+    if func == "hanetal09":
+        return [[0.0, 1.0], [1, 3]]
+    if func == "schaffer2":
+        return [[-100.0, 100.0] for i in range(2)]
+    if func == "sulf":
+        return [None] * 9
+    if func == "bratleyetal92":
+        return [[0.0, 1.0] for i in range(d)]
+    if func == "morcaf95b":
+        return [[0.0, 1.0] for i in range(d)]
+    if func == "dixonpr":
+        return [[-10.0, 10.0] for i in range(d)]
+    if func == "grlee09":
+        return [[0.0, 1.0] for i in range(6)]
+    if func == "matya":
+        return [[-10.0, 10.0] for i in range(2)]
+    if func == "rastr":
+        return [[-5.12, 5.12] for i in range(d)]
+    if func == "goldpr" or func == "goldprsc":
+        return [[-2.0, 2.0] for i in range(2)]
+    if func == "shekel":
+        return [[0.0, 10.0] for i in range(4)]
+    if func == "sumpow":
+        return [[-1.0, 1.0] for i in range(d)]
+    if func == "zhou98":
+        return [[0.0, 1.0] for i in range(d)]
+    if func == "sumsqu":
+        return [[-10.0, 10.0] for i in range(d)]
+    if func == "permdb":
+        return [[-d * 1.0, d * 1.0] for i in range(d)]
+    if func == "hig02":
+        return [0.0, 10.0]
+    if func == "borehole":
+        return [
+            [0.05, 0.15],
+            [100.0, 50000.0],
+            [63070.0, 115600.0],
+            [990.0, 1110.0],
+            [63.1, 116.0],
+            [700.0, 820.0],
+            [1120.0, 1680.0],
+            [9855.0, 12045.0],
+        ]
+    if func == "michal":
+        return [[0.0, pi] for i in range(d)]
+    if func == "linketal06dec":
+        return [[0.0, 1.0] for i in range(10)]
+    if func == "wingweight":
+        return [
+            [150.0, 200.0],
+            [220.0, 300.0],
+            [6.0, 10.0],
+            [-10.0, 10.0],
+            [16.0, 45.0],
+            [0.5, 1.0],
+            [0.08, 0.18],
+            [2.5, 6.0],
+            [1700.0, 2500.0],
+            [0.025, 0.08],
+        ]
+    if func == "schaffer4":
+        return [[-100.0, 100.0] for i in range(2)]
+    if func == "gfunc":
+        return [[0.0, 1.0] for i in range(d)]
+    if func == "franke2d":
+        return [[0.0, 1.0] for i in range(2)]
+    if func == "powersum":
+        return [[0.0, d * 1.0] for i in range(d)]
+    if func == "gaussian":
+        return [[0.0, 1.0] for i in range(d)]
+    if func == "ackley":
+        return [[-32.768, 32.768] for i in range(d)]
+    if func == "oscil":
+        return [[0.0, 1.0] for i in range(d)]
+    if func == "grlee12":
+        return [0.5, 2.5]
+    if func == "robot":
+        return [
+            [0.0, 2 * pi],
+            [0.0, 2 * pi],
+            [0.0, 2 * pi],
+            [0.0, 2 * pi],
+            [0.0, 1.0],
+            [0.0, 1.0],
+            [0.0, 1.0],
+            [0.0, 1.0],
+        ]
+    if func == "morretal06":
+        return [[0.0, 1.0] for i in range(30)]
+    if (
+        func == "moon10hd"
+        or func == "moon10hdc1"
+        or func == "moon10hdc2"
+        or func == "moon10hdc3"
+    ):
+        return [[0.0, 1.0] for i in range(20)]
+    if func == "marthe":
+        return [
+            [1.0, 15.0],
+            [5.0, 20.0],
+            [1.0, 15.0],
+            [1.0, 15.0],
+            [1.0, 15.0],
+            [1.0, 15.0],
+            [1.0, 15.0],
+            [0.05, 2.0],
+            [0.05, 2.0],
+            [0.05, 2.0],
+            [0.0005, 0.2],
+            [0.0005, 0.2],
+            [0.0005, 0.2],
+            None,
+            None,
+            None,
+            [0.3, 0.37],
+            [0.0, 0.0001],
+            [0.0, 0.01],
+            [0.0, 0.1],
+        ]
+    if func == "otlcircuit":
+        return [
+            [50.0, 150.0],
+            [25.0, 70.0],
+            [0.5, 3.0],
+            [1.2, 2.5],
+            [0.25, 1.2],
+            [50.0, 300.0],
+        ]
+    if func == "hart6" or func == "hart6sc":
+        return [[0.0, 1.0] for i in range(6)]
+    if func == "mccorm":
+        return [[-1.5, 4.0], [-3.0, 4.0]]
+    if func == "moon10low":
+        return [[0.0, 1.0] for i in range(3)]
+    if func == "grlee08":
+        return [[-2.0, 6.0] for i in range(2)]
+    if func == "willetal06":
+        return [[0.0, 1.0] for i in range(3)]
+    if func == "bukin6":
+        return [[-15.0, -5.0], [-3.0, 3.0]]
+    if func == "oakoh022d":
+        return [[-0.01, 0.01] for i in range(2)]
+    if func == "langer":
+        return [[0.0, 10.0] for i in range(d)]
+    if func == "curretal88exp":
+        return [[0.0, 1.0] for i in range(2)]
+    if func == "roosarn63":
+        return [[0.0, 1.0] for i in range(d)]
+    if func == "zakharov":
+        return [[-5.0, 10.0] for i in range(d)]
+    if func == "cont":
+        return [[0.0, 1.0] for i in range(d)]
+    if func == "chsan10":
+        return [[0.0, 1.0] for i in range(2)]
+    if func == "welchetal92":
+        return [[-0.5, 0.5] for i in range(20)]
+    if func == "easom":
+        return [[-100.0, 100.0] for i in range(2)]
+    if func == "spheref" or func == "spherefmod":
+        return [[-5.12, 5.12] for i in range(d)]
+    if func == "egg":
+        return [[-512.0, 512.0] for i in range(2)]
+    if func == "loepetal13":
+        return [[0.0, 1.0] for i in range(10)]
+    if func == "camel6":
+        return [[-3.0, 3.0], [-2.0, 2.0]]
+    if func == "qianetal08":
+        return [[0.0, 1.0], [1, 2]]
+    if func == "holsetal13sin":
+        return [0.0, 10.0]
+    if func == "linketal06simple":
+        return [[0.0, 1.0] for i in range(10)]
+    if func == "beale":
+        return [[-4.5, 4.5] for i in range(2)]
+    if func == "rosen" or func == "rosensc":
+        return [[-5.0, 10.0] for i in range(d)]
+    if func == "shubert":
+        return [[-10.0, 10.0] for i in range(2)]
+    if func == "morcaf95a":
+        return [[0.0, 1.0] for i in range(d)]
+    if func == "booth":
+        return [[-10.0, 10.0] for i in range(2)]
+    if func == "hart4":
+        return [[0.0, 1.0] for i in range(4)]
+    if func == "santetal03dc":
+        return [0.0, 1.0]
+    if func == "schwef":
+        return [[-500.0, 500.0] for i in range(d)]
+    if func == "copeak":
+        return [[0.0, 1.0] for i in range(d)]
+    if func == "levy13":
+        return [[-10.0, 10.0] for i in range(2)]
+    if func == "limetal02pol":
+        return [[0.0, 1.0] for i in range(2)]
+    if func == "powell":
+        return [[-4.0, 5.0] for i in range(4)]
+    if func == "trid":
+        return [[-(1.0 * d**2), 1.0 * d**2] for i in range(d)]
+    if func == "fried":
+        return [[0.0, 1.0] for i in range(5)]
+    if func == "crossit":
+        return [[-10.0, 10.0] for i in range(2)]
+    if func == "hig02grlee08":
+        return [0.0, 20.0]
+    if func == "park91a":
+        return [[0.0, 1.0] for i in range(4)]
+    if func == "hart3":
+        return [[0.0, 1.0] for i in range(3)]
+    if func == "rothyp":
+        return [[-65.536, 65.536] for i in range(d)]
+    if func == "curretal88sur":
+        return [0.0, 1.0]
+    if func == "detpep108d":
+        return [[0.0, 1.0] for i in range(8)]
+    if func == "detpep10curv":
+        return [[0.0, 1.0] for i in range(3)]
+    if func == "griewank":
+        return [[-600.0, 600.0] for i in range(d)]
+    if func == "holsetal13log":
+        return [0.0, 5.0]
+    else:
+        return [None] * d
+
+
 # Load the R functions
 benchPath = os.path.dirname(os.path.realpath(__file__))
 for rfile, _ in rfuncs.items():
@@ -137,3 +494,23 @@ for rfile, _ in rfuncs.items():
 # Clean up the namespace
 del benchPath, rfile
 del os
+
+if __name__ == "__main__":
+    print("SSURJANO benchmark loaded.")
+    print("Available functions:")
+
+    for func in rfuncs:
+        try:
+            print(
+                func,
+                "(" + str(rfuncs[func]) + " arguments) in domain",
+                get_function_domain(
+                    func,
+                    rfuncs[func]
+                    if isinstance(rfuncs[func], int)
+                    else rfuncs[func][0],
+                ),
+            )
+        except Exception as _:
+            print(func, "(" + str(rfuncs[func]) + " arguments)")
+    print("")
