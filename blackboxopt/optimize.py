@@ -101,7 +101,7 @@ def __eval_fun_and_timeit(args):
 
 def stochastic_response_surface(
     fun,
-    bounds: tuple,
+    bounds: tuple | list,
     maxeval: int,
     x0y0: tuple = (),
     *,
@@ -122,7 +122,7 @@ def stochastic_response_surface(
     ----------
     fun : callable
         The objective function to be minimized.
-    bounds : tuple
+    bounds : tuple | list
         Bounds for variables. Each element of the tuple must be a tuple with two
         elements, corresponding to the lower and upper bound for the variable.
     maxeval : int
@@ -214,13 +214,14 @@ def stochastic_response_surface(
         if m > 0:
             surrogateModel.update_samples(samples)
         # Check if samples are integer values for integer variables
-        if any(
-            surrogateModel.samples()[:, surrogateModel.iindex]
-            != np.round(surrogateModel.samples()[:, surrogateModel.iindex])
-        ):
-            raise ValueError(
-                "Initial samples must be integer values for integer variables"
-            )
+        if surrogateModel.iindex:
+            if any(
+                surrogateModel.samples()[:, surrogateModel.iindex]
+                != np.round(surrogateModel.samples()[:, surrogateModel.iindex])
+            ):
+                raise ValueError(
+                    "Initial samples must be integer values for integer variables"
+                )
         # Check if samples are sufficient to build the surrogate model
         if (
             np.linalg.matrix_rank(surrogateModel.get_matrixP())
@@ -248,7 +249,7 @@ def stochastic_response_surface(
         # Update output variables
         iBest = np.argmin(out.fsamples[0:m]).item()
         if out.fsamples[iBest] < out.fx:
-            out.x = out.samples[iBest, :]
+            out.x[:] = out.samples[iBest, :]
             out.fx = out.fsamples[iBest].item()
 
     # If initial guess is provided, consider it in the output
@@ -277,9 +278,9 @@ def stochastic_response_surface(
     xselected = np.empty((0, dim))
     ySelected = out.fsamples[0:m]
     while m < maxeval:
-        print("\n Iteration: %d \n" % out.nit)
-        print("\n fEvals: %d \n" % m)
-        print("\n Best value: %f \n" % out.fx)
+        # print("\n Iteration: %d \n" % out.nit)
+        # print("\n fEvals: %d \n" % m)
+        # print("\n Best value: %f \n" % out.fx)
 
         # number of new samples in an iteration
         NumberNewSamples = min(newSamplesPerIteration, maxeval - m)
@@ -399,7 +400,7 @@ def stochastic_response_surface(
 
 def multistart_stochastic_response_surface(
     fun,
-    bounds: tuple,
+    bounds: tuple | list,
     maxeval: int,
     *,
     surrogateModel=RbfModel(),
@@ -414,7 +415,7 @@ def multistart_stochastic_response_surface(
     ----------
     fun : callable
         The objective function to be minimized.
-    bounds : tuple
+    bounds : tuple | list
         Bounds for variables. Each element of the tuple must be a tuple with two
         elements, corresponding to the lower and upper bound for the variable.
     maxeval : int
@@ -491,7 +492,7 @@ def multistart_stochastic_response_surface(
 
 def target_value_optimization(
     fun,
-    bounds: tuple,
+    bounds: tuple | list,
     maxeval: int,
     x0y0: tuple = (),
     *,
@@ -509,7 +510,7 @@ def target_value_optimization(
     ----------
     fun : callable
         The objective function to be minimized.
-    bounds : tuple
+    bounds : tuple | list
         Bounds for variables. Each element of the tuple must be a tuple with two
         elements, corresponding to the lower and upper bound for the variable.
     maxeval : int
@@ -597,13 +598,14 @@ def target_value_optimization(
         if m > 0:
             surrogateModel.update_samples(samples)
         # Check if samples are integer values for integer variables
-        if any(
-            surrogateModel.samples()[:, surrogateModel.iindex]
-            != np.round(surrogateModel.samples()[:, surrogateModel.iindex])
-        ):
-            raise ValueError(
-                "Initial samples must be integer values for integer variables"
-            )
+        if surrogateModel.iindex:
+            if any(
+                surrogateModel.samples()[:, surrogateModel.iindex]
+                != np.round(surrogateModel.samples()[:, surrogateModel.iindex])
+            ):
+                raise ValueError(
+                    "Initial samples must be integer values for integer variables"
+                )
         # Check if samples are sufficient to build the surrogate model
         if (
             np.linalg.matrix_rank(surrogateModel.get_matrixP())
@@ -662,9 +664,9 @@ def target_value_optimization(
     xselected = np.empty((0, dim))
     ySelected = np.copy(out.fsamples[0:m])
     while m < maxeval:
-        print("\n Iteration: %d \n" % out.nit)
-        print("\n fEvals: %d \n" % m)
-        print("\n Best value: %f \n" % out.fx)
+        # print("\n Iteration: %d \n" % out.nit)
+        # print("\n fEvals: %d \n" % m)
+        # print("\n Best value: %f \n" % out.fx)
 
         # number of new samples in an iteration
         NumberNewSamples = min(newSamplesPerIteration, maxeval - m)
@@ -741,7 +743,7 @@ def target_value_optimization(
 
 def cptv(
     fun,
-    bounds: tuple,
+    bounds: tuple | list,
     maxeval: int,
     *,
     surrogateModel=RbfModel(),
@@ -750,6 +752,7 @@ def cptv(
     failtolerance: int = 5,
     consecutiveQuickFailuresTol: int = 0,
     useLocalSearch: bool = False,
+    disp: bool = False,
 ) -> OptimizeResult:
     """Minimize a scalar function of one or more variables using the coordinate
     perturbation and target value strategy.
@@ -758,7 +761,7 @@ def cptv(
     ----------
     fun : callable
         The objective function to be minimized.
-    bounds : tuple
+    bounds : tuple | list
         Bounds for variables. Each element of the tuple must be a tuple with two
         elements, corresponding to the lower and upper bound for the variable.
     maxeval : int
@@ -781,6 +784,13 @@ def cptv(
         after ``maxeval`` function evaluations. A quick failure is when the
         acquisition function in the CP or TV step does not find any significant
         improvement.
+    useLocalSearch : bool, optional
+        If True, the algorithm will perform a local search when a significant
+        improvement is not found in a sequence of (CP,TV,CP) steps. The default
+        is False.
+    disp : bool, optional
+        If True, print information about the optimization process. The default
+        is False.
 
     Returns
     -------
@@ -847,7 +857,8 @@ def cptv(
             else:
                 consecutiveQuickFailures = 0
 
-            print("CP step ended after ", out_local.nfev, "f evals.")
+            if disp:
+                print("CP step ended after ", out_local.nfev, "f evals.")
 
             # Switch method
             if useLocalSearch:
@@ -891,7 +902,9 @@ def cptv(
                 consecutiveQuickFailures = 0
 
             acquisitionFunc0.neval += out_local.nfev
-            print("TV step ended after ", out_local.nfev, "f evals.")
+
+            if disp:
+                print("TV step ended after ", out_local.nfev, "f evals.")
 
             # Switch method and update counter for local search
             method = 0
@@ -928,12 +941,13 @@ def cptv(
                 fevaltime=np.array([0]),
             )
 
-            print("Local step ended after ", out_local.nfev, "f evals.")
+            if disp:
+                print("Local step ended after ", out_local.nfev, "f evals.")
 
             # Switch method
             method = 1
 
-        print("Surrogate model samples: ", surrogateModel.nsamples())
+        # print("Surrogate model samples: ", surrogateModel.nsamples())
 
         # Update knew
         knew = out_local.samples.shape[0]
@@ -963,7 +977,7 @@ def cptv(
 
 def cptvi(
     fun,
-    bounds: tuple,
+    bounds: tuple | list,
     maxeval: int,
     *,
     surrogateModel=RbfModel(),
@@ -988,7 +1002,7 @@ def cptvi(
 
 # def multistart_cptv(
 #     fun,
-#     bounds: tuple,
+#     bounds: tuple | list,
 #     maxeval: int,
 #     *,
 #     surrogateModel=RbfModel(),
@@ -1003,7 +1017,7 @@ def cptvi(
 #     ----------
 #     fun : callable
 #         The objective function to be minimized.
-#     bounds : tuple
+#     bounds : tuple | list
 #         Bounds for variables. Each element of the tuple must be a tuple with two
 #         elements, corresponding to the lower and upper bound for the variable.
 #     maxeval : int

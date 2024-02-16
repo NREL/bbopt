@@ -155,7 +155,11 @@ class AcquisitionFunction:
         pass
 
     def acquire(
-        self, surrogateModel, bounds: tuple, fbounds: tuple, n: int = 1
+        self,
+        surrogateModel,
+        bounds: tuple | list,
+        fbounds: tuple | list,
+        n: int = 1,
     ) -> np.ndarray:
         """Acquire n points.
 
@@ -163,9 +167,9 @@ class AcquisitionFunction:
         ----------
         surrogateModel : Surrogate model
             Surrogate model.
-        bounds : tuple
+        bounds : tuple | list
             Bounds of the search space.
-        fbounds : tuple
+        fbounds : tuple | list
             Bounds of the objective function so far.
         n : int, optional
             Number of points to be acquired. The default is 1.
@@ -221,8 +225,8 @@ class CoordinatePerturbation(AcquisitionFunction):
     def acquire(
         self,
         surrogateModel,
-        bounds: tuple,
-        fbounds: tuple,
+        bounds: tuple | list,
+        fbounds: tuple | list,
         n: int = 1,
         *,
         xbest: np.ndarray = np.array([0]),
@@ -234,9 +238,9 @@ class CoordinatePerturbation(AcquisitionFunction):
         ----------
         surrogateModel : Surrogate model
             Surrogate model.
-        bounds : tuple
+        bounds : tuple | list
             Bounds of the search space.
-        fbounds : tuple
+        fbounds : tuple | list
             Bounds of the objective function so far.
         n : int, optional
             Number of points to be acquired. The default is 1.
@@ -323,7 +327,11 @@ class UniformAcquisition(AcquisitionFunction):
         self.tol = tol
 
     def acquire(
-        self, surrogateModel, bounds: tuple, fbounds: tuple, n: int = 1
+        self,
+        surrogateModel,
+        bounds: tuple | list,
+        fbounds: tuple | list,
+        n: int = 1,
     ) -> np.ndarray:
         """Acquire n points.
 
@@ -331,9 +339,9 @@ class UniformAcquisition(AcquisitionFunction):
         ----------
         surrogateModel : Surrogate model
             Surrogate model.
-        bounds : tuple
+        bounds : tuple | list
             Bounds of the search space.
-        fbounds : tuple
+        fbounds : tuple | list
             Bounds of the objective function so far.
         n : int, optional
             Number of points to be acquired. The default is 1.
@@ -376,7 +384,11 @@ class TargetValueAcquisition(AcquisitionFunction):
         self.tol = tol
 
     def acquire(
-        self, surrogateModel, bounds: tuple, fbounds: tuple, n: int = 1
+        self,
+        surrogateModel,
+        bounds: tuple | list,
+        fbounds: tuple | list,
+        n: int = 1,
     ) -> np.ndarray:
         """Acquire n points.
 
@@ -384,9 +396,9 @@ class TargetValueAcquisition(AcquisitionFunction):
         ----------
         surrogateModel : Surrogate model
             Surrogate model.
-        bounds : tuple
+        bounds : tuple | list
             Bounds of the search space.
-        fbounds : tuple
+        fbounds : tuple | list
             Bounds of the objective function so far.
         n : int, optional
             Number of points to be acquired. The default is 1.
@@ -498,7 +510,11 @@ class MinimizeSurrogate(AcquisitionFunction):
         self.tol = tol
 
     def acquire(
-        self, surrogateModel, bounds: tuple, fbounds: tuple, n: int = 0
+        self,
+        surrogateModel,
+        bounds: tuple | list,
+        fbounds: tuple | list,
+        n: int = 0,
     ) -> np.ndarray:
         """Acquire n points.
 
@@ -506,9 +522,9 @@ class MinimizeSurrogate(AcquisitionFunction):
         ----------
         surrogateModel : Surrogate model
             Surrogate model.
-        bounds : tuple
+        bounds : tuple | list
             Bounds of the search space.
-        fbounds : tuple
+        fbounds : tuple | list
             Bounds of the objective function so far.
         n : int, optional
             Max number of points to be acquired. The default is 1.
@@ -550,7 +566,6 @@ class MinimizeSurrogate(AcquisitionFunction):
             # Critical distance for the i-th iteration
             critdistiter = critdist * (log(iEnd) / iEnd) ** (1 / dim)
             self.initialPopulationSampler.sigma = critdistiter
-            print("Critical distance: ", critdistiter)
 
             # Consider only the best points to start local minimization
             counterLocalStart = iEnd // maxiter
@@ -637,7 +652,7 @@ class MinimizeSurrogate(AcquisitionFunction):
         if k > 0:
             return selected[0:k, :]
         else:
-            print("No new points found by the differential evolution method")
+            # No new points found by the differential evolution method
             xlow = np.array([bounds[i][0] for i in range(dim)])
             xup = np.array([bounds[i][1] for i in range(dim)])
             selected = xlow + np.random.rand(1, dim) * (xup - xlow)

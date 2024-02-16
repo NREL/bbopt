@@ -29,6 +29,7 @@ import numpy as np
 import pytest
 from rpy2 import robjects
 import tests.ssurjano_benchmark as ssbmk
+from blackboxopt import rbf, optimize, sampling, acquisition
 
 
 @pytest.mark.parametrize("func", list(ssbmk.rfuncs.keys()))
@@ -78,3 +79,88 @@ def test_API(func: str):
     # Check if the function returned a valid value
     if np.any(np.isnan(y)):
         raise ValueError(f"Function {func} returned NaN.")
+
+
+@pytest.mark.parametrize("func", list(ssbmk.optRfuncs))
+def test_cptv(func: str):
+    rfunc = getattr(ssbmk.r, func)
+    nArgs = ssbmk.rfuncs[func]
+
+    # If the function takes a variable number of arguments, use the lower bound
+    if not isinstance(nArgs, int):
+        nArgs = nArgs[0]
+
+    # Get the function domain
+    bounds = ssbmk.get_function_domain(func, nArgs)
+    if not isinstance(bounds[0], list) and nArgs == 1:
+        bounds = [bounds]
+    assert None not in bounds
+
+    # Define the objective function
+    def objf(x: np.ndarray) -> float:
+        return np.array(rfunc(robjects.FloatVector(x)))[0]
+
+    # integrality constraints
+    iindex = tuple(
+        i
+        for i in range(nArgs)
+        if isinstance(bounds[i][0], int) and isinstance(bounds[i][1], int)
+    )
+
+    # Minimum value
+    minval = ssbmk.get_min_function(func, nArgs)
+    # if minval is None:
+    #     integrality = [True if i in iindex else False for i in range(nArgs)]
+    #     optRes = differential_evolution(
+    #         objf,
+    #         bounds,
+    #         integrality=integrality,
+    #         maxiter=10000,
+    #         tol=1e-15,
+    #         disp=False,
+    #     )
+    #     if optRes.success:
+    #         minval = optRes.fun
+    #         print(f"Minimum value of {func} = {minval}")
+    #     else:
+    #         raise ValueError(
+    #             f"differential_evolution failed to find the minimum of {func}."
+    #         )
+
+    # Surrogate model
+    rbfModel = rbf.RbfModel(rbf.RbfType.CUBIC, iindex, filter=rbf.RbfFilter())
+
+    # Acquisition function
+    maxeval = 100
+    minrange = np.min([b[1] - b[0] for b in bounds])
+    acquisitionFunc = acquisition.CoordinatePerturbation(
+        maxeval,
+        sampling.NormalSampler(
+            1000,
+            sigma=0.2 * minrange,
+            sigma_min=0.2 * minrange * 0.5**6,
+            sigma_max=0.2 * minrange,
+            strategy=sampling.SamplingStrategy.DDS,
+        ),
+        [0.3, 0.5, 0.8, 0.95],
+    )
+
+    # Find the minimum
+    optres = optimize.cptv(
+        objf,
+        bounds=bounds,
+        maxeval=maxeval,
+        surrogateModel=rbfModel,
+        acquisitionFunc=acquisitionFunc,
+    )
+
+    # Check if the function returned a valid value
+    print("x = ", optres.x)
+    print("fx = ", optres.fx)
+    print("nfev = ", optres.nfev)
+    print("niter = ", optres.nit)
+
+    if minval < 1e-15:
+        assert optres.fx <= 1e-3
+    else:
+        assert (optres.fx - minval) / minval <= 1e-3

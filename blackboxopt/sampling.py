@@ -63,13 +63,13 @@ class Sampler:
         assert self.n > 0
 
     def get_uniform_sample(
-        self, bounds: tuple, *, iindex: tuple = ()
+        self, bounds: tuple | list, *, iindex: tuple = ()
     ) -> np.ndarray:
         """Generate a sample from a uniform distribution inside the bounds.
 
         Parameters
         ----------
-        bounds : tuple
+        bounds : tuple | list
             Bounds for variables. Each element of the tuple must be a tuple with two elements,
             corresponding to the lower and upper bound for the variable.
         iindex : tuple, optional
@@ -134,7 +134,7 @@ class NormalSampler(Sampler):
 
     def get_normal_sample(
         self,
-        bounds: tuple,
+        bounds: tuple | list,
         *,
         iindex: tuple = (),
         mu: np.ndarray = np.array([0]),
@@ -144,7 +144,7 @@ class NormalSampler(Sampler):
 
         Parameters
         ----------
-        bounds : tuple
+        bounds : tuple | list
             Bounds for variables. Each element of the tuple must be a tuple with two elements,
             corresponding to the lower and upper bound for the variable.
         iindex : tuple, optional
@@ -184,7 +184,7 @@ class NormalSampler(Sampler):
 
     def get_dds_sample(
         self,
-        bounds: tuple,
+        bounds: tuple | list,
         probability: float,
         *,
         iindex: tuple = (),
@@ -195,7 +195,7 @@ class NormalSampler(Sampler):
 
         Parameters
         ----------
-        bounds : tuple
+        bounds : tuple | list
             Bounds for variables. Each element of the tuple must be a tuple with two elements,
             corresponding to the lower and upper bound for the variable.
         probability : float
@@ -262,7 +262,7 @@ class NormalSampler(Sampler):
 
     def get_sample(
         self,
-        bounds: tuple,
+        bounds: tuple | list,
         *,
         iindex: tuple = (),
         mu: np.ndarray = np.array([0]),
@@ -273,7 +273,7 @@ class NormalSampler(Sampler):
 
         Parameters
         ----------
-        bounds : tuple
+        bounds : tuple | list
             Bounds for variables. Each element of the tuple must be a tuple with two elements,
             corresponding to the lower and upper bound for the variable.
         iindex : tuple, optional

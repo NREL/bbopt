@@ -30,6 +30,7 @@ __credits__ = [
 __version__ = "0.1.0"
 __deprecated__ = False
 
+import warnings
 import numpy as np
 from numpy.linalg import cond
 from enum import Enum
@@ -495,8 +496,8 @@ class RbfModel:
             ]
         )
 
-        condA = cond(A)
-        print(f"Condition number of A: {condA}")
+        # condA = cond(A)
+        # print(f"Condition number of A: {condA}")
 
         # condPHIP = cond(np.block([[self._PHI[0:m, 0:m], self.get_matrixP()]]))
         # print(f"Condition number of [PHI,P]: {condPHIP}")
@@ -506,11 +507,13 @@ class RbfModel:
         # print(f"Condition number of PHI: {condPHI}")
 
         # TODO: See if there is a solver specific for saddle-point systems
-        self._coef = solve(
-            A,
-            np.concatenate((filter(self.get_fsamples()), np.zeros(pdim))),
-            assume_a="sym",
-        )
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            self._coef = solve(
+                A,
+                np.concatenate((filter(self.get_fsamples()), np.zeros(pdim))),
+                assume_a="sym",
+            )
         self._valid_coefficients = True
 
     def update_samples(
@@ -565,7 +568,7 @@ class RbfModel:
         self._valid_coefficients = False
 
     def create_initial_design(
-        self, dim: int, bounds: tuple, m: int = 0
+        self, dim: int, bounds: tuple | list, m: int = 0
     ) -> None:
         """Creates an initial set of samples for the RBF model.
 
@@ -575,7 +578,7 @@ class RbfModel:
         ----------
         dim : int
             Dimension of the domain space.
-        bounds : tuple
+        bounds : tuple | list
             Tuple of lower and upper bounds for each dimension of the domain
             space.
         m : int, optional
@@ -736,7 +739,10 @@ class RbfModel:
         rhs[self._m] = 1
 
         # solve linear system and get mu
-        coeff = solve(A_aug, rhs, assume_a="sym")
+        # TODO: See if there is a solver specific for saddle-point systems
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            coeff = solve(A_aug, rhs, assume_a="sym")
         mu = float(coeff[self._m].item())
 
         # Order of the polynomial tail

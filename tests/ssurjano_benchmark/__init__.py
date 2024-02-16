@@ -11,6 +11,7 @@ rfuncs = {
     "limetal02non": 2,
     "hump": 2,
     "grlee08": 2,
+    "grlee12": 1,
     # "curretal88explc": 2,
     "zhouetal11": 2,
     "curretal91": 2,
@@ -127,6 +128,7 @@ rfuncs = {
     "shekel": 4,
     "linketal06nosig": 10,
     "levy13": 2,
+    "sumpow": (1, -1),
 }
 
 
@@ -329,7 +331,7 @@ def get_function_domain(func: str, d: int = 2) -> list[list] | list:
     if func == "franke2d":
         return [[0.0, 1.0] for i in range(2)]
     if func == "powersum":
-        return [[0.0, d * 1.0] for i in range(d)]
+        return [[0.0, 4.0] for i in range(4)]
     if func == "gaussian":
         return [[0.0, 1.0] for i in range(d)]
     if func == "ackley":
@@ -484,6 +486,181 @@ def get_function_domain(func: str, d: int = 2) -> list[list] | list:
         return [0.0, 5.0]
     else:
         return [None] * d
+
+
+# The following tuple contains the names of the R functions that are used in the
+# tests. The functions are divided into groups based on the number of arguments
+optRfuncs = (
+    # Many local minima
+    "ackley",
+    "bukin6",
+    "crossit",
+    "drop",
+    "egg",
+    "grlee12",
+    "griewank",
+    "holder",
+    "langer",
+    "levy",
+    "levy13",
+    "rastr",
+    "schaffer2",
+    "schaffer4",
+    "schwef",
+    "shubert",
+    # Bowl-Shaped
+    "boha1",
+    "boha2",
+    "boha3",
+    "perm0db",
+    "rothyp",
+    "spheref",
+    "spherefmod",
+    "sumpow",
+    "sumsqu",
+    "trid",
+    # Plate-Shaped
+    "booth",
+    "matya",
+    "mccorm",
+    "powersum",
+    "zakharov",
+    # Valley-Shaped
+    "camel3",
+    "camel6",
+    "dixonpr",
+    "rosen",
+    "rosensc",
+    # Steep Ridges/Drops
+    "dejong5",
+    "easom",
+    "michal",
+    # Other
+    "beale",
+    "branin",
+    "braninsc",
+    "braninmodif",
+    "colville",
+    "forretal08",
+    "goldpr",
+    "goldprsc",
+    "hart3",
+    "hart4",
+    "hart6",
+    "hart6sc",
+    "permdb",
+    "powell",
+    "shekel",
+    "stybtang",
+)
+
+
+def get_min_function(func: str, d: int = 2) -> float:
+    # Many local minima
+    if func == "ackley":
+        return 0.0
+    if func == "bukin6":
+        return 0.0
+    if func == "crossit":
+        return -2.06261
+    if func == "drop":
+        return -1.0
+    if func == "egg":
+        return -959.6407
+    if func == "griewank":
+        return 0.0
+    if func == "holder":
+        return -19.2085
+    if func == "levy":
+        return 0.0
+    if func == "levy13":
+        return 0.0
+    if func == "rastr":
+        return 0.0
+    if func == "schaffer2":
+        return 0.0
+    if func == "schwef":
+        return 0.0
+    if func == "shubert":
+        return -186.7309
+    # Bowl-Shaped
+    if func == "boha1" or func == "boha2" or func == "boha3":
+        return 0.0
+    if func == "perm0db":
+        return 0.0
+    if func == "rothyp":
+        return 0.0
+    if func == "spheref" or func == "spherefmod":
+        return 0.0
+    if func == "sumpow":
+        return 0.0
+    if func == "sumsqu":
+        return 0.0
+    if func == "trid":
+        return (-d * (d + 4) * (d - 1)) / 6
+    # Plate-Shaped
+    if func == "booth":
+        return 0.0
+    if func == "matya":
+        return 0.0
+    if func == "mccorm":
+        return -1.9133
+    if func == "zakharov":
+        return 0.0
+    # Valley-Shaped
+    if func == "camel3":
+        return 0.0
+    if func == "camel6":
+        return -1.0316
+    if func == "dixonpr":
+        return 0
+    if func == "rosen" or func == "rosensc":
+        return 0.0
+    # Steep Ridges/Drops
+    if func == "easom":
+        return -1.0
+    # Other
+    if func == "beale":
+        return 0.0
+    if func == "branin" or func == "braninsc" or func == "braninmodif":
+        return 0.397887
+    if func == "colville":
+        return 0.0
+    if func == "goldpr" or func == "goldprsc":
+        return 3.0
+    if func == "hart3":
+        return -3.86278
+    if func == "hart6" or func == "hart6sc":
+        return -3.32237
+    if func == "permdb":
+        return 0.0
+    if func == "powell":
+        return 0.0
+    if func == "stybtang":
+        return -39.16599 * d
+
+    # Obtained using scipy differential_evolution with
+    # maxiter=10000 and tol=1e-15
+    if func == "grlee12":
+        return -0.8690111349894997
+    if func == "langer":
+        return -4.100861111320395
+    if func == "schaffer4":
+        return 0.29257863203598045
+    if func == "powersum":
+        return 1.2937318845624594e-28
+    if func == "dejong5":
+        return 0.99800383779445
+    if func == "michal":
+        return -1.8013034100985532
+    if func == "forretal08":
+        return -6.020740055767083
+    if func == "hart4":
+        return -3.1344941412223988
+    if func == "shekel":
+        return -10.53644315348353
+
+    raise ValueError(f"Minimum value of {func} is unknown.")
 
 
 # Load the R functions

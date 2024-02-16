@@ -33,7 +33,7 @@ __deprecated__ = False
 import numpy as np
 
 
-def SLHDstandard(d: int, m: int, bounds: tuple = ()) -> np.ndarray:
+def SLHDstandard(d: int, m: int, bounds: tuple | list = ()) -> np.ndarray:
     """Creates a Symmetric Latin Hypercube Design.
 
     Parameters
@@ -42,7 +42,7 @@ def SLHDstandard(d: int, m: int, bounds: tuple = ()) -> np.ndarray:
         Dimension of the input.
     m : int
         Number of initial points to be selected.
-    bounds : tuple, optional
+    bounds : tuple | list, optional
         Bounds of the input space. The default is (), which means unit hypercube.
 
     Returns
