@@ -648,7 +648,7 @@ def get_min_function(func: str, d: int = 2) -> float:
     if func == "schaffer4":
         return 0.29257863203598045
     if func == "powersum":
-        return 1.2937318845624594e-28
+        return 0.0  # Solution at (1,2,2,4)
     if func == "dejong5":
         return 0.99800383779445
     if func == "michal":

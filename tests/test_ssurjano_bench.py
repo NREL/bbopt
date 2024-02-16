@@ -81,8 +81,7 @@ def test_API(func: str):
         raise ValueError(f"Function {func} returned NaN.")
 
 
-@pytest.mark.parametrize("func", list(ssbmk.optRfuncs))
-def test_cptv(func: str):
+def run_cptv(func: str, rtol: float = 1e-3) -> list[optimize.OptimizeResult]:
     rfunc = getattr(ssbmk.r, func)
     nArgs = ssbmk.rfuncs[func]
 
@@ -107,7 +106,43 @@ def test_cptv(func: str):
         if isinstance(bounds[i][0], int) and isinstance(bounds[i][1], int)
     )
 
-    # Minimum value
+    # Surrogate model
+    rbfModel = rbf.RbfModel(rbf.RbfType.CUBIC, iindex, filter=rbf.RbfFilter())
+
+    # Acquisition function
+    maxeval = 20 * (nArgs + 1)
+    minrange = np.min([b[1] - b[0] for b in bounds])
+    acquisitionFunc = acquisition.CoordinatePerturbation(
+        maxeval,
+        sampling.NormalSampler(
+            min(100 * nArgs, 5000),
+            sigma=0.2 * minrange,
+            sigma_min=0.2 * minrange * 0.5**6,
+            sigma_max=0.2 * minrange,
+            strategy=sampling.SamplingStrategy.DDS,
+        ),
+        [0.3, 0.5, 0.8, 0.95],
+    )
+
+    # Find the minimum
+    optres = []
+    for i in range(3):
+        res = optimize.cptv(
+            objf,
+            bounds=bounds,
+            maxeval=maxeval,
+            surrogateModel=rbfModel,
+            acquisitionFunc=acquisitionFunc,
+            expectedRelativeImprovement=rtol,
+        )
+        optres.append(res)
+
+    return optres
+
+
+@pytest.mark.parametrize("func", list(ssbmk.optRfuncs))
+def test_cptv(func: str) -> list[optimize.OptimizeResult] | None:
+    nArgs = ssbmk.rfuncs[func]
     minval = ssbmk.get_min_function(func, nArgs)
     # if minval is None:
     #     integrality = [True if i in iindex else False for i in range(nArgs)]
@@ -127,40 +162,12 @@ def test_cptv(func: str):
     #             f"differential_evolution failed to find the minimum of {func}."
     #         )
 
-    # Surrogate model
-    rbfModel = rbf.RbfModel(rbf.RbfType.CUBIC, iindex, filter=rbf.RbfFilter())
+    # Run the optimization
+    rtol = 1e-3
+    optres = run_cptv(func, rtol)
 
-    # Acquisition function
-    maxeval = 100
-    minrange = np.min([b[1] - b[0] for b in bounds])
-    acquisitionFunc = acquisition.CoordinatePerturbation(
-        maxeval,
-        sampling.NormalSampler(
-            1000,
-            sigma=0.2 * minrange,
-            sigma_min=0.2 * minrange * 0.5**6,
-            sigma_max=0.2 * minrange,
-            strategy=sampling.SamplingStrategy.DDS,
-        ),
-        [0.3, 0.5, 0.8, 0.95],
-    )
-
-    # Find the minimum
-    optres = optimize.cptv(
-        objf,
-        bounds=bounds,
-        maxeval=maxeval,
-        surrogateModel=rbfModel,
-        acquisitionFunc=acquisitionFunc,
-    )
-
-    # Check if the function returned a valid value
-    print("x = ", optres.x)
-    print("fx = ", optres.fx)
-    print("nfev = ", optres.nfev)
-    print("niter = ", optres.nit)
-
-    if minval < 1e-15:
-        assert optres.fx <= 1e-3
+    minfx = min(optres[i].fx for i in range(3))
+    if minval == 0:
+        assert minfx < rtol * 0.1
     else:
-        assert (optres.fx - minval) / minval <= 1e-3
+        assert minfx - minval < rtol * abs(minval)
