@@ -93,7 +93,6 @@ if __name__ == "__main__":
 
     rbfModel = RbfModel(phifunction, filter=MedianLpfFilter())
 
-    minxrange = np.min(data.xup - data.xlow)
     optres = stochastic_response_surface(
         data.objfunction,
         bounds=(
@@ -108,9 +107,9 @@ if __name__ == "__main__":
             maxeval - numevals,
             NormalSampler(
                 nCand,
-                sigma=0.2 * minxrange,
-                sigma_min=0.2 * minxrange * 0.5**5,
-                sigma_max=0.2 * minxrange,
+                sigma=0.2,
+                sigma_min=0.2 * 0.5**5,
+                sigma_max=0.2,
                 strategy=SamplingStrategy.NORMAL,
             ),
             weightpattern=[0.3, 0.5],

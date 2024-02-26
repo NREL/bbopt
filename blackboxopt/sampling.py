@@ -101,11 +101,14 @@ class NormalSampler(Sampler):
     Attributes
     ----------
     sigma : float
-        Standard deviation of the normal distribution.
+        Standard deviation of the normal distribution, relative to the minimum
+        range of the input space.
     sigma_min : float
-        Minimum standard deviation of the normal distribution.
+        Minimum standard deviation of the normal distribution, relative to the
+        minimum range of the input space.
     sigma_max : float
-        Maximum standard deviation of the normal distribution.
+        Maximum standard deviation of the normal distribution, relative to the
+        minimum range of the input space.
     """
 
     def __init__(
@@ -164,6 +167,9 @@ class NormalSampler(Sampler):
         xlow = np.array([bounds[i][0] for i in range(dim)])
         xup = np.array([bounds[i][1] for i in range(dim)])
 
+        mixrange = (xup - xlow).min()
+        sigma = self.sigma * mixrange
+
         # Check if mu is valid
         xnew = np.tile(mu, (self.n, 1))
         if xnew.shape != (self.n, dim):
@@ -174,7 +180,7 @@ class NormalSampler(Sampler):
         # Generate n samples
         if len(coord) == 0:
             coord = tuple(range(dim))
-        xnew[:, coord] += self.sigma * np.random.randn(self.n, len(coord))
+        xnew[:, coord] += sigma * np.random.randn(self.n, len(coord))
         xnew[:, coord] = np.maximum(xlow, np.minimum(xnew[:, coord], xup))
 
         # Round integer variables
@@ -217,6 +223,9 @@ class NormalSampler(Sampler):
         xlow = np.array([bounds[i][0] for i in range(dim)])
         xup = np.array([bounds[i][1] for i in range(dim)])
 
+        mixrange = (xup - xlow).min()
+        sigma = self.sigma * mixrange
+
         # Check if mu is valid
         xnew = np.tile(mu, (self.n, 1))
         if xnew.shape != (self.n, dim):
@@ -240,7 +249,7 @@ class NormalSampler(Sampler):
                 ar[r[0]] = True
             for jj in range(cdim):
                 if ar[jj]:
-                    s_std = self.sigma * np.random.randn(1).item()
+                    s_std = sigma * np.random.randn(1).item()
                     j = coord[jj]
                     if j in iindex:
                         # integer perturbation has to be at least 1 unit

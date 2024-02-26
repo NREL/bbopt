@@ -17,6 +17,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+import warnings
 import random
 import numpy as np
 from math import log
@@ -24,6 +25,7 @@ from scipy.spatial.distance import cdist
 from scipy.spatial import KDTree
 from scipy.special import gamma
 from scipy.optimize import NonlinearConstraint, differential_evolution
+from scipy.linalg import lu
 from .sampling import NormalSampler, Sampler
 
 
@@ -257,6 +259,8 @@ class CoordinatePerturbation(AcquisitionFunction):
         numpy.ndarray
         """
         dim = len(bounds)  # Dimension of the problem
+        mixrange = np.min([b[1] - b[0] for b in bounds])
+        sigma = self.sampler.sigma * mixrange
 
         # Probability
         if self.maxeval > 1:
@@ -277,7 +281,7 @@ class CoordinatePerturbation(AcquisitionFunction):
             CandPoint,
             n,
             surrogateModel,
-            tol=self.reltol * self.sampler.sigma * np.sqrt(dim),
+            tol=self.reltol * sigma * np.sqrt(dim),
             weightpattern=self.weightpattern,
         )
         assert n == xselected.shape[0]
@@ -412,6 +416,11 @@ class TargetValueAcquisition(AcquisitionFunction):
             raise NotImplementedError
         dim = len(bounds)  # Dimension of the problem
 
+        def objfunc(x):
+            return surrogateModel.eval(x)[0]
+
+        nWorkers = 1  # Number of workers for parallel computing
+
         # Too expensive
         # constraints = NonlinearConstraint(
         #     lambda x: [np.dot(x - y, x - y) for y in surrogateModel.samples()],
@@ -426,6 +435,15 @@ class TargetValueAcquisition(AcquisitionFunction):
             lambda x: tree.query(x)[0],
             self.tol,
             np.inf,
+            # jac=lambda x: (x - tree.query(x)[1]) / tree.query(x)[0],
+            # hess=lambda x, v: (v[0] / tree.query(x)[0])
+            # * (
+            #     np.eye(dim)
+            #     - np.outer(
+            #         tree.query(x)[1] / tree.query(x)[0],
+            #         tree.query(x)[1] / tree.query(x)[0],
+            #     )
+            # ),
         )
 
         # Convert iindex to boolean array
@@ -437,19 +455,25 @@ class TargetValueAcquisition(AcquisitionFunction):
         # expensive black-box global optimization", JOGO
         sample_stage = random.sample(range(0, self.cycleLength + 2), 1)[0]
         if sample_stage == 0:  # InfStep - minimize Mu_n
+            PLU = lu(surrogateModel.get_RBFmatrix(), p_indices=True)
             res = differential_evolution(
                 surrogateModel.mu_measure,
                 bounds,
+                args=(np.array([]), PLU),
                 integrality=intArgs,
                 constraints=constraints,
+                workers=nWorkers,
+                polish=False,
             )
             xselected = res.x
         elif 1 <= sample_stage <= self.cycleLength:  # cycle step global search
             # find min of surrogate model
             res = differential_evolution(
-                lambda x: surrogateModel.eval(x)[0],
+                objfunc,
                 bounds,
                 integrality=intArgs,
+                workers=nWorkers,
+                polish=False,
             )
             f_rbf = res.fun
             wk = (
@@ -460,12 +484,15 @@ class TargetValueAcquisition(AcquisitionFunction):
             )  # target for objective function value
 
             # use GA method to minimize bumpiness measure
+            PLU = lu(surrogateModel.get_RBFmatrix(), p_indices=True)
             res_bump = differential_evolution(
                 surrogateModel.bumpiness_measure,
                 bounds,
-                args=(f_target,),
+                args=(f_target, PLU),
                 integrality=intArgs,
                 constraints=constraints,
+                workers=nWorkers,
+                polish=False,
             )
             xselected = (
                 res_bump.x
@@ -473,9 +500,11 @@ class TargetValueAcquisition(AcquisitionFunction):
         else:  # cycle step local search
             # find the minimum of RBF surface
             res = differential_evolution(
-                lambda x: surrogateModel.eval(x)[0],
+                objfunc,
                 bounds,
                 integrality=intArgs,
+                workers=nWorkers,
+                polish=False,
             )
             f_rbf = res.fun
             if f_rbf < (fbounds[0] - 1e-6 * abs(fbounds[0])):
@@ -491,12 +520,15 @@ class TargetValueAcquisition(AcquisitionFunction):
             else:  # otherwise, do target value strategy
                 f_target = fbounds[0] - 1e-2 * abs(fbounds[0])  # target value
                 # use GA method to minimize bumpiness measure
+                PLU = lu(surrogateModel.get_RBFmatrix(), p_indices=True)
                 res_bump = differential_evolution(
                     surrogateModel.bumpiness_measure,
                     bounds,
-                    args=(f_target,),
+                    args=(f_target, PLU),
                     integrality=intArgs,
                     constraints=constraints,
+                    workers=nWorkers,
+                    polish=False,
                 )
                 xselected = res_bump.x
 

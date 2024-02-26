@@ -640,6 +640,7 @@ def get_min_function(func: str, d: int = 2) -> float:
         return -39.16599 * d
 
     # Obtained using scipy differential_evolution with
+    # TODO: Run multiple times to check this is accurate
     # maxiter=10000 and tol=1e-15
     if func == "grlee12":
         return -0.8690111349894997

@@ -129,6 +129,7 @@ def read_and_run(
                 surrogateModel=rbfModel,
                 acquisitionFunc=acquisitionFunc,
                 newSamplesPerIteration=NumberNewSamples,
+                disp=True,
             )
         elif optim_func == optimize.target_value_optimization:
             opt = optim_func(
@@ -140,6 +141,7 @@ def read_and_run(
                 acquisitionFunc=acquisitionFunc,
                 newSamplesPerIteration=NumberNewSamples,
                 surrogateModel=rbfModel,
+                disp=True,
             )
         elif optim_func == optimize.cptv or optim_func == optimize.cptvi:
             opt = optim_func(
@@ -150,6 +152,7 @@ def read_and_run(
                 maxeval=maxeval,
                 surrogateModel=rbfModel,
                 acquisitionFunc=acquisitionFunc,
+                disp=True,
             )
         else:
             raise ValueError("Invalid optimization function.")
@@ -313,16 +316,15 @@ if __name__ == "__main__":
 
     # args.config = 8
     if args.config == 1:
-        mixrange = 15
         optres = read_and_run(
             data_file="datainput_Branin",
             acquisitionFunc=CoordinatePerturbation(
                 200,
                 sampling.NormalSampler(
                     1000,
-                    sigma=0.2 * mixrange,
-                    sigma_min=0.2 * mixrange * 0.5**5,
-                    sigma_max=0.2 * mixrange,
+                    sigma=0.2,
+                    sigma_min=0.2 * 0.5**5,
+                    sigma_max=0.2,
                     strategy=sampling.SamplingStrategy.NORMAL,
                 ),
                 [
@@ -356,16 +358,15 @@ if __name__ == "__main__":
             PlotResult=True,
         )
     elif args.config == 3:
-        mixrange = 15
         optres = read_and_run(
             data_file="datainput_BraninWithInteger",
             acquisitionFunc=CoordinatePerturbation(
                 100,
                 sampling.NormalSampler(
                     200,
-                    sigma=0.2 * mixrange,
-                    sigma_min=0.2 * mixrange * 0.5**5,
-                    sigma_max=0.2 * mixrange,
+                    sigma=0.2,
+                    sigma_min=0.2 * 0.5**5,
+                    sigma_max=0.2,
                     strategy=sampling.SamplingStrategy.DDS,
                 ),
                 [0.3, 0.5, 0.8, 0.95],
@@ -378,16 +379,15 @@ if __name__ == "__main__":
             PlotResult=True,
         )
     elif args.config == 4:
-        mixrange = 15
         optres = read_and_run(
             data_file="datainput_BraninWithInteger",
             acquisitionFunc=CoordinatePerturbation(
                 100,
                 sampling.NormalSampler(
                     200,
-                    sigma=0.2 * mixrange,
-                    sigma_min=0.2 * mixrange * 0.5**5,
-                    sigma_max=0.2 * mixrange,
+                    sigma=0.2,
+                    sigma_min=0.2 * 0.5**5,
+                    sigma_max=0.2,
                     strategy=sampling.SamplingStrategy.DDS_UNIFORM,
                 ),
                 [0.3, 0.5, 0.8, 0.95],
@@ -414,16 +414,15 @@ if __name__ == "__main__":
             optim_func=optimize.target_value_optimization,
         )
     elif args.config == 6:
-        mixrange = 15
         optres = read_and_run(
             data_file="datainput_BraninWithInteger",
             acquisitionFunc=CoordinatePerturbation(
                 100,
                 sampling.NormalSampler(
                     1000,
-                    sigma=0.2 * mixrange,
-                    sigma_min=0.2 * mixrange * 0.5**6,
-                    sigma_max=0.2 * mixrange,
+                    sigma=0.2,
+                    sigma_min=0.2 * 0.5**6,
+                    sigma_max=0.2,
                     strategy=sampling.SamplingStrategy.DDS,
                 ),
                 [0.3, 0.5, 0.8, 0.95],
@@ -437,16 +436,15 @@ if __name__ == "__main__":
             optim_func=optimize.cptv,
         )
     elif args.config == 7:
-        mixrange = 15
         optres = read_and_run(
             data_file="datainput_BraninWithInteger",
             acquisitionFunc=CoordinatePerturbation(
                 100,
                 sampling.NormalSampler(
                     1000,
-                    sigma=0.2 * mixrange,
-                    sigma_min=0.2 * mixrange * 0.5**6,
-                    sigma_max=0.2 * mixrange,
+                    sigma=0.2,
+                    sigma_min=0.2 * 0.5**6,
+                    sigma_max=0.2,
                     strategy=sampling.SamplingStrategy.DDS,
                 ),
                 [0.3, 0.5, 0.8, 0.95],
@@ -460,7 +458,6 @@ if __name__ == "__main__":
             optim_func=optimize.cptvi,
         )
     elif args.config == 8:
-        mixrange = 15
         optres = read_and_run(
             data_file="datainput_BraninWithInteger",
             acquisitionFunc=MinimizeSurrogate(100, 0.005 * mixrange * sqrt(2)),

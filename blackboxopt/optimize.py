@@ -112,6 +112,7 @@ def stochastic_response_surface(
     expectedRelativeImprovement: float = 1e-3,
     failtolerance: int = 5,
     performContinuousSearch: bool = True,
+    disp: bool = False,
 ) -> OptimizeResult:
     """Minimize a scalar function of one or more variables using a response
     surface model approach based on a surrogate model.
@@ -152,6 +153,9 @@ def stochastic_response_surface(
     performContinuousSearch : bool, optional
         If True, the algorithm will perform a continuous search when a
         significant improvement is found. The default is True.
+    disp : bool, optional
+        If True, print information about the optimization process. The default
+        is False.
 
     Returns
     -------
@@ -278,9 +282,10 @@ def stochastic_response_surface(
     xselected = np.empty((0, dim))
     ySelected = out.fsamples[0:m]
     while m < maxeval:
-        # print("\n Iteration: %d \n" % out.nit)
-        # print("\n fEvals: %d \n" % m)
-        # print("\n Best value: %f \n" % out.fx)
+        if disp:
+            print("\n Iteration: %d \n" % out.nit)
+            print("\n fEvals: %d \n" % m)
+            print("\n Best value: %f \n" % out.fx)
 
         # number of new samples in an iteration
         NumberNewSamples = min(newSamplesPerIteration, maxeval - m)
@@ -407,6 +412,7 @@ def multistart_stochastic_response_surface(
     acquisitionFunc: CoordinatePerturbation = CoordinatePerturbation(0),
     newSamplesPerIteration: int = 1,
     performContinuousSearch: bool = True,
+    disp: bool = False,
 ) -> OptimizeResult:
     """Minimize a scalar function of one or more variables using a surrogate
     model.
@@ -430,6 +436,9 @@ def multistart_stochastic_response_surface(
         If True, the algorithm will perform a continuous search when a
         significant improvement is found among the integer coordinates. The
         default is True.
+    disp : bool, optional
+        If True, print information about the optimization process. The default
+        is False.
 
     Returns
     -------
@@ -502,6 +511,7 @@ def target_value_optimization(
     newSamplesPerIteration: int = 1,
     expectedRelativeImprovement: float = 1e-3,
     failtolerance: int = -1,
+    disp: bool = False,
 ) -> OptimizeResult:
     """Minimize a scalar function of one or more variables using the target
     value strategy from [#]_.
@@ -538,6 +548,9 @@ def target_value_optimization(
         Number of consecutive insignificant improvements before the algorithm
         modifies the sampler. The default is -1, which means this parameter is
         not used.
+    disp : bool, optional
+        If True, print information about the optimization process. The default
+        is False.
 
     Returns
     -------
@@ -664,9 +677,10 @@ def target_value_optimization(
     xselected = np.empty((0, dim))
     ySelected = np.copy(out.fsamples[0:m])
     while m < maxeval:
-        # print("\n Iteration: %d \n" % out.nit)
-        # print("\n fEvals: %d \n" % m)
-        # print("\n Best value: %f \n" % out.fx)
+        if disp:
+            print("\n Iteration: %d \n" % out.nit)
+            print("\n fEvals: %d \n" % m)
+            print("\n Best value: %f \n" % out.fx)
 
         # number of new samples in an iteration
         NumberNewSamples = min(newSamplesPerIteration, maxeval - m)
@@ -985,6 +999,7 @@ def cptvi(
     expectedRelativeImprovement: float = 1e-3,
     failtolerance: int = 5,
     consecutiveQuickFailuresTol: int = 0,
+    disp: bool = False,
 ) -> OptimizeResult:
     """See cptv."""
     return cptv(
@@ -997,6 +1012,7 @@ def cptvi(
         failtolerance=failtolerance,
         consecutiveQuickFailuresTol=consecutiveQuickFailuresTol,
         useLocalSearch=True,
+        disp=disp,
     )
 
 

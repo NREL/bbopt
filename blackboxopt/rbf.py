@@ -35,7 +35,7 @@ import numpy as np
 from numpy.linalg import cond
 from enum import Enum
 from scipy.spatial.distance import cdist
-from scipy.linalg import solve
+from scipy.linalg import solve, solve_triangular, lu
 
 from .utility import SLHDstandard
 
@@ -237,11 +237,17 @@ class RbfModel:
         elif self.type == RbfType.CUBIC:
             return np.power(r, 3)
         elif self.type == RbfType.THINPLATE:
-            return np.where(
-                r > 0,
-                np.multiply(np.power(r, 2), np.log(r)),
-                0,
-            )
+            if np.isscalar(r):
+                if r > 0:
+                    return r**2 * np.log(r)
+                else:
+                    return 0
+            else:
+                ret = np.zeros(r.shape)
+                ret[r > 0] = np.multiply(
+                    np.power(r[r > 0], 2), np.log(r[r > 0])
+                )
+                return ret
         else:
             raise ValueError("Unknown RBF type")
 
@@ -486,15 +492,9 @@ class RbfModel:
         if filter is None:
             filter = self.filter
 
-        m = self._m
         pdim = self.pdim()
 
-        A = np.block(
-            [
-                [self._PHI[0:m, 0:m], self.get_matrixP()],
-                [self.get_matrixP().T, np.zeros((pdim, pdim))],
-            ]
-        )
+        A = self.get_RBFmatrix()
 
         # condA = cond(A)
         # print(f"Condition number of A: {condA}")
@@ -601,7 +601,7 @@ class RbfModel:
             self._x[0:m, :] = SLHDstandard(dim, m, bounds=bounds)
             self._x[0:m, self.iindex] = np.round(self._x[0:m, self.iindex])
             self._P[0:m, :] = self.pbasis(self._x[0:m, :])
-            if np.linalg.matrix_rank(self._P[0:m, :]) == pdim or m < pdim:
+            if np.linalg.matrix_rank(self._P[0:m, :]) == pdim or m < 2 * pdim:
                 break
             count += 1
             if count > 100:
@@ -666,6 +666,22 @@ class RbfModel:
         """
         return self._P[0 : self._m, :]
 
+    def get_RBFmatrix(self) -> np.ndarray:
+        """Get the matrix used to compute the RBF weights.
+
+        Returns
+        -------
+        out: np.ndarray
+            (m+pdim)-by-(m+pdim) matrix used to compute the RBF weights.
+        """
+        pdim = self.pdim()
+        return np.block(
+            [
+                [self._PHI[0 : self._m, 0 : self._m], self.get_matrixP()],
+                [self.get_matrixP().T, np.zeros((pdim, pdim))],
+            ]
+        )
+
     def sample(self, i: int) -> np.ndarray:
         """Get the i-th sampled point.
 
@@ -682,7 +698,10 @@ class RbfModel:
         return self.samples()[i, :]
 
     def mu_measure(
-        self, x: np.ndarray, xdist: np.ndarray = np.array([])
+        self,
+        x: np.ndarray,
+        xdist: np.ndarray = np.array([]),
+        PLU: list | tuple = tuple(),
     ) -> float:
         """Compute the value of abs(mu) in the inf step of the target value
         sampling strategy. See [#]_ for more details.
@@ -694,6 +713,10 @@ class RbfModel:
         xdist : np.ndarray, optional
             Distances between x and the sampled points. If not provided, the
             distances are computed.
+        PLU : list | tuple [P,L,U], optional
+            PLU factorization of the matrix A. If not provided, the
+            factorization is computed. Considers the permutation information as
+            row indices.
 
         Returns
         -------
@@ -713,37 +736,99 @@ class RbfModel:
         new_phi = self.phi(xdist).reshape(-1, 1)
         new_Prow = self.pbasis(x)
 
-        # set up matrices for solving the linear system
-        A_aug = np.block(
-            [
-                [
-                    self._PHI[0 : self._m, 0 : self._m],
-                    new_phi,
-                    self.get_matrixP(),
-                ],
-                [
-                    new_phi.T,
-                    self.phi(0),
-                    new_Prow,
-                ],
-                [
-                    self.get_matrixP().T,
-                    new_Prow.T,
-                    np.zeros((pdim, pdim)),
-                ],
-            ]
-        )
+        if PLU:
+            pt, L, U = PLU
+            a = new_phi
+            b = new_Prow.T
+            B = self.get_matrixP()
 
-        # set up right hand side
-        rhs = np.zeros(A_aug.shape[0])
-        rhs[self._m] = 1
+            # 0. Permute the indices to have PA=LU
+            p0 = np.zeros(self._m, dtype=int)
+            p1 = np.zeros(pdim, dtype=int)
+            for i in range(self._m + pdim):
+                if pt[i] < self._m:
+                    p0[pt[i]] = i
+                else:
+                    p1[pt[i] - self._m] = i
 
-        # solve linear system and get mu
-        # TODO: See if there is a solver specific for saddle-point systems
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            coeff = solve(A_aug, rhs, assume_a="sym")
-        mu = float(coeff[self._m].item())
+            # 0. Get the blocks
+            L00 = L[0 : self._m, 0 : self._m]
+            L10 = L[self._m : self._m + pdim, 0 : self._m]
+            U00 = U[0 : self._m, 0 : self._m]
+            U01 = U[0 : self._m, self._m : self._m + pdim]
+
+            # 1. Solve $U_{00}^T l_0 = a$ for $l_0$.
+            l0 = solve_triangular(
+                U00,
+                a,
+                trans="T",
+                lower=False,
+                unit_diagonal=False,
+                # check_finite=False,
+            )
+
+            # 2. Solve $L_{00} u_0 = P_{00}a + P_{01}b$ for $u_0$.
+            aux0 = [a[i] if i < self._m else b[i - self._m] for i in p0]
+            u0 = solve_triangular(
+                L00,
+                aux0,
+                trans="N",
+                lower=True,
+                unit_diagonal=True,
+                # check_finite=False,
+            )
+
+            # 3. Compute the LU decomposition of the remainder of the matrix
+            # to find $P$, $l_2$, $L_{22}$ $u$, $u_1$ and $U_{22}$.
+            aux0 = [a[i] if i < self._m else b[i - self._m] for i in p1]
+            aux1 = [B[i, :] if i < self._m else np.zeros(pdim) for i in p1]
+            X = np.block(
+                [
+                    [0.0 - l0.T @ u0, (b - U01.T @ l0).T],
+                    [aux0 - L10 @ u0, aux1 - L10 @ U01],
+                ]
+            )
+            Pt, L11, U11 = lu(X, p_indices=True)
+
+            # 4. Solve linear system and get mu
+            rhs = np.zeros(pdim + 1)
+            rhs[Pt[0]] = 1
+            y1 = solve_triangular(L11, rhs, lower=True, unit_diagonal=True)
+            x1 = solve_triangular(U11, y1, lower=False)
+            mu = float(x1[0].item())
+
+        else:
+            # set up matrices for solving the linear system
+            A_aug = np.block(
+                [
+                    [
+                        self._PHI[0 : self._m, 0 : self._m],
+                        new_phi,
+                        self.get_matrixP(),
+                    ],
+                    [
+                        new_phi.T,
+                        self.phi(0),
+                        new_Prow,
+                    ],
+                    [
+                        self.get_matrixP().T,
+                        new_Prow.T,
+                        np.zeros((pdim, pdim)),
+                    ],
+                ]
+            )
+
+            # set up right hand side
+            rhs = np.zeros(A_aug.shape[0])
+            rhs[self._m] = 1
+
+            # solve linear system and get mu
+            # TODO: See if there is a solver specific for saddle-point systems
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                coeff = solve(A_aug, rhs, assume_a="sym")
+            mu = float(coeff[self._m].item())
 
         # Order of the polynomial tail
         if self.type == RbfType.LINEAR:
@@ -759,7 +844,12 @@ class RbfModel:
 
         return mu
 
-    def bumpiness_measure(self, x: np.ndarray, target) -> float:
+    def bumpiness_measure(
+        self,
+        x: np.ndarray,
+        target,
+        PLU: list | tuple = tuple(),
+    ) -> float:
         """Compute the bumpiness of the surrogate model for a potential sample
         point x as defined in [#]_.
 
@@ -769,6 +859,10 @@ class RbfModel:
             Possible point to be added to the surrogate model.
         target : a number
             Target value.
+        PLU : list | tuple [P,L,U], optional
+            PLU factorization of the matrix A. If not provided, the
+            factorization is computed. Considers the permutation information as
+            row indices.
 
         Returns
         -------
@@ -781,7 +875,7 @@ class RbfModel:
             Optimization. Journal of Global Optimization 19, 201–227 (2001).
             https://doi.org/10.1023/A:1011255519438
         """
-        absmu = self.mu_measure(x)
+        absmu = self.mu_measure(x, PLU=PLU)
         assert (
             absmu > 0
         )  # if absmu == 0, the linear system in the surrogate model singular
