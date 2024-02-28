@@ -30,6 +30,7 @@ __version__ = "0.1.0"
 __deprecated__ = False
 
 
+from copy import deepcopy
 import importlib
 from math import sqrt
 import numpy as np
@@ -98,6 +99,7 @@ def read_and_run(
     for j in range(Ntrials):
         # Create empty RBF model
         rbfModel = rbf.RbfModel(rbf_type, data.iindex, filter=filter)
+        acquisitionFuncIter = deepcopy(acquisitionFunc)
 
         # # Uncomment to compare with Surrogates.jl
         # rbfModel.update_samples(
@@ -127,7 +129,7 @@ def read_and_run(
                 ),
                 maxeval=maxeval,
                 surrogateModel=rbfModel,
-                acquisitionFunc=acquisitionFunc,
+                acquisitionFunc=acquisitionFuncIter,
                 newSamplesPerIteration=NumberNewSamples,
                 disp=True,
             )
@@ -138,7 +140,7 @@ def read_and_run(
                     (data.xlow[i], data.xup[i]) for i in range(data.dim)
                 ),
                 maxeval=maxeval,
-                acquisitionFunc=acquisitionFunc,
+                acquisitionFunc=acquisitionFuncIter,
                 newSamplesPerIteration=NumberNewSamples,
                 surrogateModel=rbfModel,
                 disp=True,
@@ -151,7 +153,7 @@ def read_and_run(
                 ),
                 maxeval=maxeval,
                 surrogateModel=rbfModel,
-                acquisitionFunc=acquisitionFunc,
+                acquisitionFunc=acquisitionFuncIter,
                 disp=True,
             )
         else:
@@ -314,7 +316,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    # args.config = 8
+    args.config = 5
     if args.config == 1:
         optres = read_and_run(
             data_file="datainput_Branin",

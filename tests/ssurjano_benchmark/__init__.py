@@ -694,3 +694,21 @@ if __name__ == "__main__":
         except Exception as _:
             print(func, "(" + str(rfuncs[func]) + " arguments)")
     print("")
+
+    from rpy2 import robjects
+    import numpy as np
+
+    hart6 = getattr(r, "hart6")
+    x = np.array((0.20169, 0.150011, 0.476874, 0.275332, 0.311652, 0.6573))
+    y = np.array(
+        (
+            0.40464078,
+            0.88244549,
+            0.84609725,
+            0.57397974,
+            0.13891472,
+            0.03850067,
+        )
+    )
+    print(np.array(hart6(robjects.FloatVector(x.reshape(-1, 1))))[0])
+    print(np.array(hart6(robjects.FloatVector(y.reshape(-1, 1))))[0])

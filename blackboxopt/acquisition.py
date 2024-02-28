@@ -27,6 +27,14 @@ from scipy.optimize import NonlinearConstraint, differential_evolution
 from scipy.linalg import lu
 from .sampling import NormalSampler, Sampler
 
+from pymoo.core.problem import ElementwiseProblem
+from pymoo.core.variable import Real, Integer
+from pymoo.core.mixed import MixedVariableGA
+from pymoo.optimize import minimize
+from pymoo.config import Config
+
+Config.warnings["not_compiled"] = False
+
 
 def find_best(
     x: np.ndarray,
@@ -370,6 +378,64 @@ class UniformAcquisition(AcquisitionFunction):
         return xselected
 
 
+class ProblemWithConstraint(ElementwiseProblem):
+    def __init__(self, objfunc, gfunc, bounds, intArgs):
+        self.objfunc = objfunc
+        self.gfunc = gfunc
+
+        dim = len(bounds)  # Dimension of the problem
+        xlow = np.array([bounds[i][0] for i in range(dim)])
+        xup = np.array([bounds[i][1] for i in range(dim)])
+
+        vars = {}
+        for i in range(dim):
+            if intArgs[i]:
+                vars[i] = Integer(bounds=bounds[i])
+            else:
+                vars[i] = Real(bounds=bounds[i])
+
+        super().__init__(
+            vars=vars,
+            n_var=dim,
+            n_obj=1,
+            n_ieq_constr=1,
+            xl=xlow,
+            xu=xup,
+        )
+
+    def _evaluate(self, xdict, out, *args, **kwargs):
+        x = np.array([xdict[i] for i in range(self.n_var)])
+        out["F"] = self.objfunc(x)
+        out["G"] = self.gfunc(x)
+
+
+class ProblemNoConstraint(ElementwiseProblem):
+    def __init__(self, objfunc, bounds, intArgs):
+        self.objfunc = objfunc
+
+        dim = len(bounds)  # Dimension of the problem
+        xlow = np.array([bounds[i][0] for i in range(dim)])
+        xup = np.array([bounds[i][1] for i in range(dim)])
+
+        vars = {}
+        for i in range(dim):
+            if intArgs[i]:
+                vars[i] = Integer(bounds=bounds[i])
+            else:
+                vars[i] = Real(bounds=bounds[i])
+
+        super().__init__(
+            vars=vars,
+            n_obj=1,
+            xl=xlow,
+            xu=xup,
+        )
+
+    def _evaluate(self, xdict, out, *args, **kwargs):
+        x = np.array([xdict[i] for i in range(self.n_var)])
+        out["F"] = self.objfunc(x)
+
+
 class TargetValueAcquisition(AcquisitionFunction):
     """Target value acquisition function.
 
@@ -430,19 +496,25 @@ class TargetValueAcquisition(AcquisitionFunction):
         # )
 
         tree = KDTree(surrogateModel.samples())
+
+        # def grad_constraint(x, tree_query):
+        #     return (x - surrogateModel.samples(tree_query[1])) / tree_query[0]
+
+        # def hess_constraint(v, tree_query):
+        #     return (v[0] / tree_query[0]) * (
+        #         np.eye(dim)
+        #         - np.outer(
+        #             surrogateModel.samples(tree_query[1]) / tree_query[0],
+        #             surrogateModel.samples(tree_query[1]) / tree_query[0],
+        #         )
+        #     )
+
         constraints = NonlinearConstraint(
             lambda x: tree.query(x)[0],
             self.tol,
             np.inf,
-            jac=lambda x: (x - tree.query(x)[1]) / tree.query(x)[0],
-            hess=lambda x, v: (v[0] / tree.query(x)[0])
-            * (
-                np.eye(dim)
-                - np.outer(
-                    tree.query(x)[1] / tree.query(x)[0],
-                    tree.query(x)[1] / tree.query(x)[0],
-                )
-            ),
+            # jac=lambda x: grad_constraint(x, tree.query(x)),
+            # hess=lambda x, v: hess_constraint(v, tree.query(x)),
         )
 
         # Convert iindex to boolean array
@@ -455,26 +527,49 @@ class TargetValueAcquisition(AcquisitionFunction):
         sample_stage = random.sample(range(0, self.cycleLength + 2), 1)[0]
         if sample_stage == 0:  # InfStep - minimize Mu_n
             PLU = lu(surrogateModel.get_RBFmatrix(), p_indices=True)
-            res = differential_evolution(
-                surrogateModel.mu_measure,
+            # res = differential_evolution(
+            #     surrogateModel.mu_measure,
+            #     bounds,
+            #     args=(np.array([]), PLU),
+            #     integrality=intArgs,
+            #     constraints=constraints,
+            #     workers=nWorkers,
+            #     polish=False,
+            # )
+            # xselected = res.x
+            problem = ProblemWithConstraint(
+                lambda xdict: surrogateModel.mu_measure(
+                    np.asarray([xdict[i] for i in range(dim)]),
+                    np.array([]),
+                    PLU,
+                ),
+                lambda xdict: self.tol
+                - tree.query(np.asarray([xdict[i] for i in range(dim)]))[0],
                 bounds,
-                args=(np.array([]), PLU),
-                integrality=intArgs,
-                constraints=constraints,
-                workers=nWorkers,
-                polish=False,
+                intArgs,
             )
-            xselected = res.x
+            res = minimize(problem, MixedVariableGA(), verbose=False)
+            xselected = np.asarray([res.X[i] for i in range(dim)])
+
         elif 1 <= sample_stage <= self.cycleLength:  # cycle step global search
             # find min of surrogate model
-            res = differential_evolution(
-                objfunc,
+            # res = differential_evolution(
+            #     objfunc,
+            #     bounds,
+            #     integrality=intArgs,
+            #     workers=nWorkers,
+            #     polish=False,
+            # )
+            # f_rbf = res.fun
+            problem = ProblemNoConstraint(
+                lambda xdict: surrogateModel.eval(
+                    np.asarray([xdict[i] for i in range(dim)])
+                )[0].item(),
                 bounds,
-                integrality=intArgs,
-                workers=nWorkers,
-                polish=False,
+                intArgs,
             )
-            f_rbf = res.fun
+            res = minimize(problem, MixedVariableGA(), verbose=False)
+            f_rbf = res.F[0]
             wk = (
                 1 - sample_stage / self.cycleLength
             ) ** 2  # select weight for computing target value
@@ -484,31 +579,53 @@ class TargetValueAcquisition(AcquisitionFunction):
 
             # use GA method to minimize bumpiness measure
             PLU = lu(surrogateModel.get_RBFmatrix(), p_indices=True)
-            res_bump = differential_evolution(
-                surrogateModel.bumpiness_measure,
+            # res_bump = differential_evolution(
+            #     surrogateModel.bumpiness_measure,
+            #     bounds,
+            #     args=(f_target, PLU),
+            #     integrality=intArgs,
+            #     constraints=constraints,
+            #     workers=nWorkers,
+            #     polish=False,
+            # )
+            # xselected = (
+            #     res_bump.x
+            # )  # new point is the one that minimizes the bumpiness measure
+            problem = ProblemWithConstraint(
+                lambda xdict: surrogateModel.bumpiness_measure(
+                    np.asarray([xdict[i] for i in range(dim)]),
+                    f_target,
+                    PLU,
+                ),
+                lambda xdict: self.tol
+                - tree.query(np.asarray([xdict[i] for i in range(dim)]))[0],
                 bounds,
-                args=(f_target, PLU),
-                integrality=intArgs,
-                constraints=constraints,
-                workers=nWorkers,
-                polish=False,
+                intArgs,
             )
-            xselected = (
-                res_bump.x
-            )  # new point is the one that minimizes the bumpiness measure
+            res = minimize(problem, MixedVariableGA(), verbose=False)
+            xselected = np.asarray([res.X[i] for i in range(dim)])
         else:  # cycle step local search
             # find the minimum of RBF surface
-            res = differential_evolution(
-                objfunc,
+            # res = differential_evolution(
+            #     objfunc,
+            #     bounds,
+            #     integrality=intArgs,
+            #     workers=nWorkers,
+            #     polish=False,
+            # )
+            # f_rbf = res.fun
+            problem = ProblemNoConstraint(
+                lambda xdict: surrogateModel.eval(
+                    np.asarray([xdict[i] for i in range(dim)])
+                )[0].item(),
                 bounds,
-                integrality=intArgs,
-                workers=nWorkers,
-                polish=False,
+                intArgs,
             )
-            f_rbf = res.fun
+            res = minimize(problem, MixedVariableGA(), verbose=False)
+            f_rbf = res.F[0]
             if f_rbf < (fbounds[0] - 1e-6 * abs(fbounds[0])):
                 # select minimum point as new sample point if sufficient improvements
-                xselected = res.x
+                xselected = np.asarray([res.X[i] for i in range(dim)])
                 while np.any(tree.query(xselected)[0] < self.tol):
                     # the selected point is too close to already evaluated point
                     # randomly select point from variable domain
@@ -520,16 +637,31 @@ class TargetValueAcquisition(AcquisitionFunction):
                 f_target = fbounds[0] - 1e-2 * abs(fbounds[0])  # target value
                 # use GA method to minimize bumpiness measure
                 PLU = lu(surrogateModel.get_RBFmatrix(), p_indices=True)
-                res_bump = differential_evolution(
-                    surrogateModel.bumpiness_measure,
+                # res_bump = differential_evolution(
+                #     surrogateModel.bumpiness_measure,
+                #     bounds,
+                #     args=(f_target, PLU),
+                #     integrality=intArgs,
+                #     constraints=constraints,
+                #     workers=nWorkers,
+                #     polish=False,
+                # )
+                # xselected = res_bump.x
+                problem = ProblemWithConstraint(
+                    lambda xdict: surrogateModel.bumpiness_measure(
+                        np.asarray([xdict[i] for i in range(dim)]),
+                        f_target,
+                        PLU,
+                    ),
+                    lambda xdict: self.tol
+                    - tree.query(np.asarray([xdict[i] for i in range(dim)]))[
+                        0
+                    ],
                     bounds,
-                    args=(f_target, PLU),
-                    integrality=intArgs,
-                    constraints=constraints,
-                    workers=nWorkers,
-                    polish=False,
+                    intArgs,
                 )
-                xselected = res_bump.x
+                res = minimize(problem, MixedVariableGA(), verbose=False)
+                xselected = np.asarray([res.X[i] for i in range(dim)])
 
         return xselected.reshape(1, -1)
 

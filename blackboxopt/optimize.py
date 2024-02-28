@@ -485,6 +485,7 @@ def multistart_stochastic_response_surface(
             acquisitionFunc=acquisitionFunc0,
             newSamplesPerIteration=newSamplesPerIteration,
             performContinuousSearch=performContinuousSearch,
+            disp=disp,
         )
 
         # Update output
