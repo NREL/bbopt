@@ -17,7 +17,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-import warnings
 import random
 import numpy as np
 from math import log
@@ -435,15 +434,15 @@ class TargetValueAcquisition(AcquisitionFunction):
             lambda x: tree.query(x)[0],
             self.tol,
             np.inf,
-            # jac=lambda x: (x - tree.query(x)[1]) / tree.query(x)[0],
-            # hess=lambda x, v: (v[0] / tree.query(x)[0])
-            # * (
-            #     np.eye(dim)
-            #     - np.outer(
-            #         tree.query(x)[1] / tree.query(x)[0],
-            #         tree.query(x)[1] / tree.query(x)[0],
-            #     )
-            # ),
+            jac=lambda x: (x - tree.query(x)[1]) / tree.query(x)[0],
+            hess=lambda x, v: (v[0] / tree.query(x)[0])
+            * (
+                np.eye(dim)
+                - np.outer(
+                    tree.query(x)[1] / tree.query(x)[0],
+                    tree.query(x)[1] / tree.query(x)[0],
+                )
+            ),
         )
 
         # Convert iindex to boolean array

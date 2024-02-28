@@ -784,7 +784,7 @@ class RbfModel:
             aux1 = [B[i, :] if i < self._m else np.zeros(pdim) for i in p1]
             X = np.block(
                 [
-                    [0.0 - l0.T @ u0, (b - U01.T @ l0).T],
+                    [self.phi(0.0) - l0.T @ u0, (b - U01.T @ l0).T],
                     [aux0 - L10 @ u0, aux1 - L10 @ U01],
                 ]
             )

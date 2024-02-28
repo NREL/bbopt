@@ -40,7 +40,7 @@ def datainput_hartman3():
 
 
 def myfun(x):
-    print(x)
+    # print(x)
     c = np.array([1, 1.2, 3, 3.2])
     A = np.array([[3, 10, 30], [0.1, 10, 35], [3, 10, 30], [0.1, 10, 35]])
     P = np.array(

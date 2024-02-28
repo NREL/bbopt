@@ -459,7 +459,7 @@ def get_function_domain(func: str, d: int = 2) -> list[list] | list:
     if func == "limetal02pol":
         return [[0.0, 1.0] for i in range(2)]
     if func == "powell":
-        return [[-4.0, 5.0] for i in range(4)]
+        return [[-4.0, 5.0] for i in range(d)]
     if func == "trid":
         return [[-(1.0 * d**2), 1.0 * d**2] for i in range(d)]
     if func == "fried":
@@ -630,7 +630,9 @@ def get_min_function(func: str, d: int = 2) -> float:
         return 3.0
     if func == "hart3":
         return -3.86278
-    if func == "hart6" or func == "hart6sc":
+    if func == "hart6":
+        return -3.04245876289
+    if func == "hart6sc":
         return -3.32237
     if func == "permdb":
         return 0.0

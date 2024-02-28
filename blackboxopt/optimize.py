@@ -283,18 +283,23 @@ def stochastic_response_surface(
     ySelected = out.fsamples[0:m]
     while m < maxeval:
         if disp:
-            print("\n Iteration: %d \n" % out.nit)
-            print("\n fEvals: %d \n" % m)
-            print("\n Best value: %f \n" % out.fx)
+            print("Iteration: %d" % out.nit)
+            print("fEvals: %d" % m)
+            print("Best value: %f" % out.fx)
 
         # number of new samples in an iteration
         NumberNewSamples = min(newSamplesPerIteration, maxeval - m)
 
         # Update surrogate model
+        t0 = time.time()
         surrogateModel.update_samples(xselected)
         surrogateModel.update_coefficients(ySelected)
+        tf = time.time()
+        if disp:
+            print("Time to update surrogate model: %f s" % (tf - t0))
 
         # Acquire new samples
+        t0 = time.time()
         if countinuousSearch > 0:
             coord = [i for i in range(dim) if i not in surrogateModel.iindex]
         else:
@@ -307,6 +312,9 @@ def stochastic_response_surface(
             xbest=out.x,
             coord=coord,
         )
+        tf = time.time()
+        if disp:
+            print("Time to acquire new samples: %f s" % (tf - t0))
 
         # Compute f(xselected)
         NumberNewSamples = xselected.shape[0]
@@ -386,6 +394,9 @@ def stochastic_response_surface(
                     < acquisitionFunc.sampler.sigma_min
                 ):
                     # Algorithm is probably in a local minimum!
+                    acquisitionFunc.sampler.sigma = (
+                        acquisitionFunc.sampler.sigma_min
+                    )
                     break
             elif succctr >= succtolerance:
                 acquisitionFunc.sampler.sigma = min(
@@ -678,21 +689,29 @@ def target_value_optimization(
     ySelected = np.copy(out.fsamples[0:m])
     while m < maxeval:
         if disp:
-            print("\n Iteration: %d \n" % out.nit)
-            print("\n fEvals: %d \n" % m)
-            print("\n Best value: %f \n" % out.fx)
+            print("Iteration: %d" % out.nit)
+            print("fEvals: %d" % m)
+            print("Best value: %f" % out.fx)
 
         # number of new samples in an iteration
         NumberNewSamples = min(newSamplesPerIteration, maxeval - m)
 
         # Update surrogate model
+        t0 = time.time()
         surrogateModel.update_samples(xselected)
         surrogateModel.update_coefficients(ySelected)
+        tf = time.time()
+        if disp:
+            print("Time to update surrogate model: %f s" % (tf - t0))
 
         # Acquire new samples
+        t0 = time.time()
         xselected = acquisitionFunc.acquire(
             surrogateModel, bounds, (out.fx, maxf), NumberNewSamples
         )
+        tf = time.time()
+        if disp:
+            print("Time to acquire new samples: %f s" % (tf - t0))
 
         # Compute f(xselected)
         NumberNewSamples = xselected.shape[0]
@@ -814,6 +833,9 @@ def cptv(
     dim = len(bounds)  # Dimension of the problem
     assert dim > 0
 
+    # tolerance parameters
+    failtolerance = max(failtolerance, dim)  # must be at least dim
+
     # Get index and bounds of the continuous variables
     cindex = [i for i in range(dim) if i not in surrogateModel.iindex]
     cbounds = [bounds[i] for i in cindex]
@@ -857,6 +879,7 @@ def cptv(
                 expectedRelativeImprovement=expectedRelativeImprovement,
                 failtolerance=failtolerance,
                 performContinuousSearch=False,
+                disp=disp,
             )
 
             surrogateModel.update_samples(
@@ -900,6 +923,7 @@ def cptv(
                 acquisitionFunc=TargetValueAcquisition(tol),
                 expectedRelativeImprovement=expectedRelativeImprovement,
                 failtolerance=failtolerance,
+                disp=disp,
             )
 
             surrogateModel.update_samples(
@@ -943,6 +967,7 @@ def cptv(
                 bounds=cbounds,
                 options={"maxfev": maxeval - out.nfev, "disp": False},
             )
+
             xbest = out.x
             xbest[cindex] = out_local_.x
             out_local = OptimizeResult(
@@ -950,9 +975,13 @@ def cptv(
                 fx=out_local_.fun,
                 nit=out_local_.nit,
                 nfev=out_local_.nfev,
-                samples=xbest.reshape(1, -1),
-                fsamples=np.array([out_local_.fun]),
-                fevaltime=np.array([0]),
+                samples=np.array(
+                    [xbest.flatten() for i in range(out_local_.nfev)]
+                ),
+                fsamples=np.array(
+                    [out_local_.fun for i in range(out_local_.nfev)]
+                ),
+                fevaltime=np.array([np.nan for i in range(out_local_.nfev)]),
             )
 
             if disp:

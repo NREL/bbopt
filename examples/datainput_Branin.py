@@ -46,8 +46,8 @@ def datainput_Branin():
 def myfun(x):
     assert x.size == 2
     xflat = x.flatten()
-    print(xflat[0])
-    print(xflat[1])
+    # print(xflat[0])
+    # print(xflat[1])
     y = (
         pow(
             xflat[1]

@@ -24,6 +24,7 @@ __credits__ = ["Weslley S. Pereira"]
 __version__ = "0.1.0"
 __deprecated__ = False
 
+from copy import deepcopy
 from random import randint
 import numpy as np
 import pytest
@@ -81,13 +82,11 @@ def test_API(func: str):
         raise ValueError(f"Function {func} returned NaN.")
 
 
-def run_cptv(func: str, rtol: float = 1e-3) -> list[optimize.OptimizeResult]:
+def run_optimizer(
+    func: str, nArgs: int, maxEval: int, algo, nRuns: int, disp: bool = False
+) -> list[optimize.OptimizeResult]:
     rfunc = getattr(ssbmk.r, func)
-    nArgs = ssbmk.rfuncs[func]
-
-    # If the function takes a variable number of arguments, use the lower bound
-    if not isinstance(nArgs, int):
-        nArgs = nArgs[0]
+    minval = ssbmk.get_min_function(func, nArgs)
 
     # Get the function domain
     bounds = ssbmk.get_function_domain(func, nArgs)
@@ -95,9 +94,13 @@ def run_cptv(func: str, rtol: float = 1e-3) -> list[optimize.OptimizeResult]:
         bounds = [bounds]
     assert None not in bounds
 
-    # Define the objective function
+    # Define the objective function, guarantee minvalue at 1
     def objf(x: np.ndarray) -> float:
-        return np.array(rfunc(robjects.FloatVector(x)))[0]
+        return (
+            np.array(rfunc(robjects.FloatVector(x.reshape(-1, 1))))[0]
+            - minval
+            + 1
+        )
 
     # integrality constraints
     iindex = tuple(
@@ -106,34 +109,30 @@ def run_cptv(func: str, rtol: float = 1e-3) -> list[optimize.OptimizeResult]:
         if isinstance(bounds[i][0], int) and isinstance(bounds[i][1], int)
     )
 
-    # Surrogate model
-    rbfModel = rbf.RbfModel(rbf.RbfType.CUBIC, iindex, filter=rbf.RbfFilter())
-
-    # Acquisition function
-    maxeval = 20 * (nArgs + 1)
-    minrange = np.min([b[1] - b[0] for b in bounds])
-    acquisitionFunc = acquisition.CoordinatePerturbation(
-        maxeval,
-        sampling.NormalSampler(
-            min(100 * nArgs, 5000),
-            sigma=0.2 * minrange,
-            sigma_min=0.2 * minrange * 0.5**6,
-            sigma_max=0.2 * minrange,
-            strategy=sampling.SamplingStrategy.DDS,
-        ),
-        [0.3, 0.5, 0.8, 0.95],
+    # Surrogate model with median low-pass filter
+    rbfModel = rbf.RbfModel(
+        rbf.RbfType.CUBIC, iindex, filter=rbf.MedianLpfFilter()
     )
 
+    # Update acquisition strategy, using maxEval and nArgs for the problem
+    acquisitionFunc = deepcopy(algo["acquisition"])
+    acquisitionFunc.maxeval = maxEval
+    if hasattr(acquisitionFunc, "sampler"):
+        acquisitionFunc.sampler.n = min(100 * nArgs, 5000)
+
     # Find the minimum
+    optimizer = algo["optimizer"]
     optres = []
-    for i in range(3):
-        res = optimize.cptv(
+    for i in range(nRuns):
+        rbfModelIter = deepcopy(rbfModel)
+        acquisitionFuncIter = deepcopy(acquisitionFunc)
+        res = optimizer(
             objf,
             bounds=bounds,
-            maxeval=maxeval,
-            surrogateModel=rbfModel,
-            acquisitionFunc=acquisitionFunc,
-            expectedRelativeImprovement=rtol,
+            maxeval=maxEval,
+            surrogateModel=rbfModelIter,
+            acquisitionFunc=acquisitionFuncIter,
+            disp=disp,
         )
         optres.append(res)
 
@@ -141,7 +140,7 @@ def run_cptv(func: str, rtol: float = 1e-3) -> list[optimize.OptimizeResult]:
 
 
 @pytest.mark.parametrize("func", list(ssbmk.optRfuncs))
-def test_cptv(func: str) -> list[optimize.OptimizeResult] | None:
+def test_cptv(func: str) -> None:
     nArgs = ssbmk.rfuncs[func]
     minval = ssbmk.get_min_function(func, nArgs)
     # if minval is None:
@@ -164,10 +163,45 @@ def test_cptv(func: str) -> list[optimize.OptimizeResult] | None:
 
     # Run the optimization
     rtol = 1e-3
-    optres = run_cptv(func, rtol)
+    optres = run_optimizer(func, 20, 3)
 
     minfx = min(optres[i].fx for i in range(3))
     if minval == 0:
         assert minfx < rtol * 0.1
     else:
         assert minfx - minval < rtol * abs(minval)
+
+
+if __name__ == "__main__":
+    nRuns = 1
+    func = "hart6"
+    nArgs = 6
+    np.random.seed(1)
+
+    res = run_optimizer(
+        func,
+        nArgs,
+        100 * (nArgs + 1),
+        {
+            "optimizer": optimize.cptvi,
+            "acquisition": acquisition.CoordinatePerturbation(
+                0,
+                sampling.NormalSampler(
+                    1,
+                    sigma=0.2,
+                    sigma_min=0.2 * 0.5**5,
+                    sigma_max=0.2,
+                    strategy=sampling.SamplingStrategy.DDS,
+                ),
+                [0.3, 0.5, 0.8, 0.95],
+            ),
+        },
+        nRuns,
+        True,
+    )
+
+    for i in range(nRuns):
+        print(res[i].x)
+        print(res[i].fx)
+        print(res[i].nfev)
+        print(res[i].nit)
