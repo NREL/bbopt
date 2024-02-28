@@ -316,7 +316,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    args.config = 5
+    # args.config = 5
     if args.config == 1:
         optres = read_and_run(
             data_file="datainput_Branin",

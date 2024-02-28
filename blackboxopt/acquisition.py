@@ -448,9 +448,10 @@ class TargetValueAcquisition(AcquisitionFunction):
         Default is 1e-3.
     """
 
-    def __init__(self, tol=1e-3) -> None:
+    def __init__(self, tol=1e-3, popsize=10) -> None:
         self.cycleLength = 10
         self.tol = tol
+        self.GA = MixedVariableGA(pop_size=popsize)
 
     def acquire(
         self,
@@ -481,10 +482,10 @@ class TargetValueAcquisition(AcquisitionFunction):
             raise NotImplementedError
         dim = len(bounds)  # Dimension of the problem
 
-        def objfunc(x):
-            return surrogateModel.eval(x)[0]
+        # def objfunc(x):
+        #     return surrogateModel.eval(x)[0]
 
-        nWorkers = 1  # Number of workers for parallel computing
+        # nWorkers = 1  # Number of workers for parallel computing
 
         # Too expensive
         # constraints = NonlinearConstraint(
@@ -509,13 +510,13 @@ class TargetValueAcquisition(AcquisitionFunction):
         #         )
         #     )
 
-        constraints = NonlinearConstraint(
-            lambda x: tree.query(x)[0],
-            self.tol,
-            np.inf,
-            # jac=lambda x: grad_constraint(x, tree.query(x)),
-            # hess=lambda x, v: hess_constraint(v, tree.query(x)),
-        )
+        # constraints = NonlinearConstraint(
+        #     lambda x: tree.query(x)[0],
+        #     self.tol,
+        #     np.inf,
+        #     # jac=lambda x: grad_constraint(x, tree.query(x)),
+        #     # hess=lambda x, v: hess_constraint(v, tree.query(x)),
+        # )
 
         # Convert iindex to boolean array
         intArgs = [False] * dim
@@ -548,7 +549,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                 bounds,
                 intArgs,
             )
-            res = minimize(problem, MixedVariableGA(), verbose=False)
+            res = minimize(problem, self.GA, verbose=False)
             xselected = np.asarray([res.X[i] for i in range(dim)])
 
         elif 1 <= sample_stage <= self.cycleLength:  # cycle step global search
@@ -568,7 +569,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                 bounds,
                 intArgs,
             )
-            res = minimize(problem, MixedVariableGA(), verbose=False)
+            res = minimize(problem, self.GA, verbose=False)
             f_rbf = res.F[0]
             wk = (
                 1 - sample_stage / self.cycleLength
@@ -602,7 +603,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                 bounds,
                 intArgs,
             )
-            res = minimize(problem, MixedVariableGA(), verbose=False)
+            res = minimize(problem, self.GA, verbose=False)
             xselected = np.asarray([res.X[i] for i in range(dim)])
         else:  # cycle step local search
             # find the minimum of RBF surface
@@ -621,7 +622,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                 bounds,
                 intArgs,
             )
-            res = minimize(problem, MixedVariableGA(), verbose=False)
+            res = minimize(problem, self.GA, verbose=False)
             f_rbf = res.F[0]
             if f_rbf < (fbounds[0] - 1e-6 * abs(fbounds[0])):
                 # select minimum point as new sample point if sufficient improvements
@@ -660,7 +661,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                     bounds,
                     intArgs,
                 )
-                res = minimize(problem, MixedVariableGA(), verbose=False)
+                res = minimize(problem, self.GA, verbose=False)
                 xselected = np.asarray([res.X[i] for i in range(dim)])
 
         return xselected.reshape(1, -1)

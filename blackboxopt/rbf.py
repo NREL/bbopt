@@ -840,9 +840,11 @@ class RbfModel:
 
         # Get the absolute value of mu
         mu *= (-1) ** (m0 + 1)
-        assert mu >= 0
-
-        return mu
+        if mu < 0:
+            # Return huge value
+            return np.inf
+        else:
+            return mu
 
     def bumpiness_measure(
         self,
@@ -879,6 +881,8 @@ class RbfModel:
         assert (
             absmu > 0
         )  # if absmu == 0, the linear system in the surrogate model singular
+        if absmu == np.inf:
+            return np.inf
 
         # predict RBF value of x
         yhat, _ = self.eval(x)
