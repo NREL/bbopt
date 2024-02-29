@@ -81,7 +81,21 @@ class MedianLpfFilter(RbfFilter):
 
 
 class RbfModel:
-    """Radial Basis Function model.
+    r"""Radial Basis Function model.
+
+    .. math::
+
+        f(x)    = \sum_{i=1}^{m} \beta_i \phi(\|x - x_i\|)
+                + \sum_{i=1}^{n} \beta_{m+i} p_i(x),
+
+    where:
+
+    - :math:`m` is the number of sampled points.
+    - :math:`x_i` are the sampled points.
+    - :math:`\beta_i` are the coefficients of the RBF model.
+    - :math:`\phi` is the function that defines the RBF model.
+    - :math:`p_i` are the basis functions of the polynomial tail.
+    - :math:`n` is the dimension of the polynomial tail.
 
     Attributes
     ----------
@@ -269,11 +283,48 @@ class RbfModel:
         elif self.type == RbfType.CUBIC:
             return 3 * np.power(r, 2)
         elif self.type == RbfType.THINPLATE:
-            return np.where(
-                r > 0,
-                2 * np.multiply(r, np.log(r)) + r,
-                0,
-            )
+            if np.isscalar(r):
+                if r > 0:
+                    return 2 * r * np.log(r) + r
+                else:
+                    return 0
+            else:
+                ret = np.zeros(r.shape)
+                ret[r > 0] = (
+                    2 * np.multiply(r[r > 0], np.log(r[r > 0])) + r[r > 0]
+                )
+                return ret
+        else:
+            raise ValueError("Unknown RBF type")
+
+    def dphiOverR(self, r):
+        """Derivative of the function phi divided by r at the distance(s) r.
+
+        Parameters
+        ----------
+        r : array_like
+            Distance(s) between points.
+
+        Returns
+        -------
+        out: array_like
+            Derivative of the phi-value of the distances provided on input
+            divided by the distance.
+        """
+        if self.type == RbfType.LINEAR:
+            return np.ones(r.shape) / r
+        elif self.type == RbfType.CUBIC:
+            return 3 * r
+        elif self.type == RbfType.THINPLATE:
+            if np.isscalar(r):
+                if r > 0:
+                    return 2 * np.log(r) + 1
+                else:
+                    return 0
+            else:
+                ret = np.zeros(r.shape)
+                ret[r > 0] = 2 * np.log(r[r > 0]) + 1
+                return ret
         else:
             raise ValueError("Unknown RBF type")
 
@@ -295,11 +346,15 @@ class RbfModel:
         elif self.type == RbfType.CUBIC:
             return 6 * r
         elif self.type == RbfType.THINPLATE:
-            return np.where(
-                r > 0,
-                2 * np.log(r) + 3,
-                0,
-            )
+            if np.isscalar(r):
+                if r > 0:
+                    return 2 * np.log(r) + 3
+                else:
+                    return 0
+            else:
+                ret = np.zeros(r.shape)
+                ret[r > 0] = 2 * np.log(r[r > 0]) + 3
+                return ret
         else:
             raise ValueError("Unknown RBF type")
 
@@ -407,7 +462,12 @@ class RbfModel:
         return y, D
 
     def jac(self, x: np.ndarray) -> np.ndarray:
-        """Evaluates the derivative of the model at one point.
+        r"""Evaluates the derivative of the model at one point.
+
+        .. math::
+
+            \nabla f(x) = \sum_{i=1}^{m} \beta_i \frac{\phi'(\|x - x_i\|)}{\|x - x_i\|} x
+                        + \sum_{i=1}^{n} \beta_{m+i} \nabla p_i(x).
 
         Parameters
         ----------
@@ -427,7 +487,7 @@ class RbfModel:
         # compute pairwise distances between candidates and sampled points
         d = cdist(x.reshape(-1, dim), self.samples()).flatten()
 
-        A = np.array([self.dphi(d[i]) * x / d[i] for i in range(d.size)])
+        A = np.array([self.dphiOverR(d[i]) * x for i in range(d.size)])
         B = self.dpbasis(x)
 
         y = np.matmul(A.T, self._coef[0 : self._m]) + np.matmul(
@@ -437,7 +497,16 @@ class RbfModel:
         return y.flatten()
 
     def hessp(self, x: np.ndarray, p: np.ndarray) -> np.ndarray:
-        """Evaluates the Hessian of the model at x in the direction of p.
+        r"""Evaluates the Hessian of the model at x in the direction of p.
+
+        .. math::
+
+            H(f)(x) v   = \sum_{i=1}^{m} \beta_i \left(
+                            \phi''(\|x - x_i\|)\frac{(x^Tv)x}{\|x - x_i\|^2} +
+                            \frac{\phi'(\|x - x_i\|)}{\|x - x_i\|}
+                            \left(v - \frac{(x^Tv)x}{\|x - x_i\|^2}\right)
+                        \right)
+                        + \sum_{i=1}^{n} \beta_{m+i} H(p_i)(x) v.
 
         Parameters
         ----------
@@ -463,7 +532,7 @@ class RbfModel:
         A = np.array(
             [
                 self.ddphi(d[i]) * (xxTp / (d[i] * d[i]))
-                + (self.dphi(d[i]) / d[i]) * (p - (xxTp / (d[i] * d[i])))
+                + self.dphiOverR(d[i]) * (p - (xxTp / (d[i] * d[i])))
                 for i in range(d.size)
             ]
         )
@@ -841,7 +910,7 @@ class RbfModel:
         # Get the absolute value of mu
         mu *= (-1) ** (m0 + 1)
         if mu < 0:
-            # Return huge value
+            # Return huge value, only occurs if the matrix is ill-conditioned
             return np.inf
         else:
             return mu
@@ -882,6 +951,7 @@ class RbfModel:
             absmu > 0
         )  # if absmu == 0, the linear system in the surrogate model singular
         if absmu == np.inf:
+            # Return huge value, only occurs if the matrix is ill-conditioned
             return np.inf
 
         # predict RBF value of x

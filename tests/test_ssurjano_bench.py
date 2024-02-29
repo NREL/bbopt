@@ -116,9 +116,12 @@ def run_optimizer(
 
     # Update acquisition strategy, using maxEval and nArgs for the problem
     acquisitionFunc = deepcopy(algo["acquisition"])
-    acquisitionFunc.maxeval = maxEval
+    if hasattr(acquisitionFunc, "maxeval"):
+        acquisitionFunc.maxeval = maxEval
     if hasattr(acquisitionFunc, "sampler"):
         acquisitionFunc.sampler.n = min(100 * nArgs, 5000)
+    if hasattr(acquisitionFunc, "tol"):
+        acquisitionFunc.tol *= np.min([b[1] - b[0] for b in bounds])
 
     # Find the minimum
     optimizer = algo["optimizer"]

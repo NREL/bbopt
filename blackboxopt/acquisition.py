@@ -23,14 +23,14 @@ from math import log
 from scipy.spatial.distance import cdist
 from scipy.spatial import KDTree
 from scipy.special import gamma
-from scipy.optimize import NonlinearConstraint, differential_evolution
 from scipy.linalg import lu
+from scipy.optimize import minimize
 from .sampling import NormalSampler, Sampler
 
 from pymoo.core.problem import ElementwiseProblem
 from pymoo.core.variable import Real, Integer
 from pymoo.core.mixed import MixedVariableGA
-from pymoo.optimize import minimize
+from pymoo.optimize import minimize as pymoo_minimize
 from pymoo.config import Config
 
 Config.warnings["not_compiled"] = False
@@ -266,8 +266,8 @@ class CoordinatePerturbation(AcquisitionFunction):
         numpy.ndarray
         """
         dim = len(bounds)  # Dimension of the problem
-        mixrange = np.min([b[1] - b[0] for b in bounds])
-        sigma = self.sampler.sigma * mixrange
+        minxrange = np.min([b[1] - b[0] for b in bounds])
+        sigma = self.sampler.sigma * minxrange
 
         # Probability
         if self.maxeval > 1:
@@ -549,7 +549,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                 bounds,
                 intArgs,
             )
-            res = minimize(problem, self.GA, verbose=False)
+            res = pymoo_minimize(problem, self.GA, verbose=False)
             xselected = np.asarray([res.X[i] for i in range(dim)])
 
         elif 1 <= sample_stage <= self.cycleLength:  # cycle step global search
@@ -569,7 +569,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                 bounds,
                 intArgs,
             )
-            res = minimize(problem, self.GA, verbose=False)
+            res = pymoo_minimize(problem, self.GA, verbose=False)
             f_rbf = res.F[0]
             wk = (
                 1 - sample_stage / self.cycleLength
@@ -603,7 +603,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                 bounds,
                 intArgs,
             )
-            res = minimize(problem, self.GA, verbose=False)
+            res = pymoo_minimize(problem, self.GA, verbose=False)
             xselected = np.asarray([res.X[i] for i in range(dim)])
         else:  # cycle step local search
             # find the minimum of RBF surface
@@ -622,7 +622,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                 bounds,
                 intArgs,
             )
-            res = minimize(problem, self.GA, verbose=False)
+            res = pymoo_minimize(problem, self.GA, verbose=False)
             f_rbf = res.F[0]
             if f_rbf < (fbounds[0] - 1e-6 * abs(fbounds[0])):
                 # select minimum point as new sample point if sufficient improvements
@@ -661,7 +661,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                     bounds,
                     intArgs,
                 )
-                res = minimize(problem, self.GA, verbose=False)
+                res = pymoo_minimize(problem, self.GA, verbose=False)
                 xselected = np.asarray([res.X[i] for i in range(dim)])
 
         return xselected.reshape(1, -1)
@@ -670,7 +670,6 @@ class TargetValueAcquisition(AcquisitionFunction):
 class MinimizeSurrogate(AcquisitionFunction):
     def __init__(self, nCand: int, tol=1e-3) -> None:
         self.sampler = Sampler(nCand)
-        self.initialPopulationSampler = NormalSampler(20, 1)
         self.tol = tol
 
     def acquire(
@@ -701,10 +700,9 @@ class MinimizeSurrogate(AcquisitionFunction):
         dim = len(bounds)
         volumeBounds = np.prod([b[1] - b[0] for b in bounds])
 
-        # Convert iindex to boolean array
-        intArgs = [False] * dim
-        for i in surrogateModel.iindex:
-            intArgs[i] = True
+        # Get index and bounds of the continuous variables
+        cindex = [i for i in range(dim) if i not in surrogateModel.iindex]
+        cbounds = [bounds[i] for i in cindex]
 
         maxiter = 10
         sigma = 4.0  # default value for computing crit distance
@@ -729,7 +727,6 @@ class MinimizeSurrogate(AcquisitionFunction):
 
             # Critical distance for the i-th iteration
             critdistiter = critdist * (log(iEnd) / iEnd) ** (1 / dim)
-            self.initialPopulationSampler.sigma = critdistiter
 
             # Consider only the best points to start local minimization
             counterLocalStart = iEnd // maxiter
@@ -767,25 +764,43 @@ class MinimizeSurrogate(AcquisitionFunction):
                             select = False
                             break
                     if select:
-                        nSelected += 1
                         chosenIds[nSelected] = ids[i]
+                        nSelected += 1
                         startpID[ids[i]] = True
 
+            # Evolve the best points to find the local minima
             for i in range(nSelected):
-                initPopulation = self.initialPopulationSampler.get_sample(
-                    bounds,
-                    iindex=surrogateModel.iindex,
-                    mu=candidates[chosenIds[i], :],
-                )
-                res = differential_evolution(
-                    lambda x: surrogateModel.eval(x)[0],
-                    bounds,
-                    integrality=intArgs,
-                    init=initPopulation,
-                )
+                xi = candidates[chosenIds[i], :]
 
-                if tree.n == 0 or tree.query(res.x)[0] > self.tol:
-                    selected[k, :] = res.x
+                def func_continuous_search(x):
+                    x_ = xi
+                    x_[cindex] = x
+                    return surrogateModel.eval(x_)[0]
+
+                def dfunc_continuous_search(x):
+                    x_ = xi
+                    x_[cindex] = x
+                    return surrogateModel.jac(x_)[cindex]
+
+                # def hessp_continuous_search(x, p):
+                #     x_ = xi
+                #     x_[cindex] = x
+                #     p_ = np.zeros(dim)
+                #     p_[cindex] = p
+                #     return surrogateModel.hessp(x_, p_)[cindex]
+
+                res = minimize(
+                    func_continuous_search,
+                    xi[cindex],
+                    jac=dfunc_continuous_search,
+                    # hessp=hessp_continuous_search,
+                    bounds=cbounds,
+                    options={"disp": False},
+                )
+                xi[cindex] = res.x
+
+                if tree.n == 0 or tree.query(xi)[0] > self.tol:
+                    selected[k, :] = xi
                     k += 1
                     if k == n:
                         break
@@ -817,9 +832,12 @@ class MinimizeSurrogate(AcquisitionFunction):
             return selected[0:k, :]
         else:
             # No new points found by the differential evolution method
-            xlow = np.array([bounds[i][0] for i in range(dim)])
-            xup = np.array([bounds[i][1] for i in range(dim)])
-            selected = xlow + np.random.rand(1, dim) * (xup - xlow)
+            singleCandSampler = Sampler(1)
+            selected = singleCandSampler.get_uniform_sample(
+                bounds, iindex=surrogateModel.iindex
+            )
             while tree.query(selected)[0] > self.tol:
-                selected = xlow + np.random.rand(1, dim) * (xup - xlow)
+                selected = singleCandSampler.get_uniform_sample(
+                    bounds, iindex=surrogateModel.iindex
+                )
             return selected.reshape(1, -1)

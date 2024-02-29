@@ -25,6 +25,7 @@ __version__ = "0.1.0"
 __deprecated__ = False
 
 
+from copy import deepcopy
 import importlib
 from math import sqrt
 import numpy as np
@@ -89,6 +90,7 @@ def read_and_run(
     for j in range(Ntrials):
         # Create empty RBF model
         rbfModel = rbf.RbfModel(rbf_type, data.iindex, filter=filter)
+        acquisitionFuncIter = deepcopy(acquisitionFunc)
 
         # # Uncomment to compare with Surrogates.jl
         # rbfModel.update_samples(
@@ -118,8 +120,9 @@ def read_and_run(
                 ),
                 maxeval=maxeval,
                 surrogateModel=rbfModel,
-                acquisitionFunc=acquisitionFunc,
+                acquisitionFunc=acquisitionFuncIter,
                 newSamplesPerIteration=NumberNewSamples,
+                disp=True,
             )
         elif optim_func == optimize.target_value_optimization:
             opt = optim_func(
@@ -128,9 +131,10 @@ def read_and_run(
                     (data.xlow[i], data.xup[i]) for i in range(data.dim)
                 ),
                 maxeval=maxeval,
-                acquisitionFunc=acquisitionFunc,
+                acquisitionFunc=acquisitionFuncIter,
                 newSamplesPerIteration=NumberNewSamples,
                 surrogateModel=rbfModel,
+                disp=True,
             )
         elif optim_func == optimize.cptv or optim_func == optimize.cptvi:
             opt = optim_func(
@@ -140,7 +144,8 @@ def read_and_run(
                 ),
                 maxeval=maxeval,
                 surrogateModel=rbfModel,
-                acquisitionFunc=acquisitionFunc,
+                acquisitionFunc=acquisitionFuncIter,
+                disp=True,
             )
         else:
             raise ValueError("Invalid optimization function.")
@@ -272,16 +277,15 @@ if __name__ == "__main__":
     strategyName = []
 
     if 1 in comparisonList:
-        mixrange = 15
         optresList[1] = read_and_run(
             data_file="datainput_Branin",
             acquisitionFunc=CoordinatePerturbation(
                 200,
                 sampling.NormalSampler(
                     1000,
-                    sigma=0.2 * mixrange,
-                    sigma_min=0.2 * mixrange * 0.5**5,
-                    sigma_max=0.2 * mixrange,
+                    sigma=0.2,
+                    sigma_min=0.2 * 0.5**5,
+                    sigma_max=0.2,
                     strategy=sampling.SamplingStrategy.NORMAL,
                 ),
                 [
@@ -314,16 +318,15 @@ if __name__ == "__main__":
         )
     if 3 in comparisonList:
         strategyName.append("DYCORS with multistart")
-        mixrange = 15
         optresList[3] = read_and_run(
             data_file="datainput_BraninWithInteger",
             acquisitionFunc=CoordinatePerturbation(
                 100,
                 sampling.NormalSampler(
                     1000,
-                    sigma=0.2 * mixrange,
-                    sigma_min=0.2 * mixrange * 0.5**6,
-                    sigma_max=0.2 * mixrange,
+                    sigma=0.2,
+                    sigma_min=0.2 * 0.5**6,
+                    sigma_max=0.2,
                     strategy=sampling.SamplingStrategy.DDS,
                 ),
                 [0.3, 0.5, 0.8, 0.95],
@@ -335,16 +338,15 @@ if __name__ == "__main__":
             rbf_type=rbf.RbfType.THINPLATE,
         )
     if 4 in comparisonList:
-        mixrange = 15
         optresList[4] = read_and_run(
             data_file="datainput_BraninWithInteger",
             acquisitionFunc=CoordinatePerturbation(
                 100,
                 sampling.NormalSampler(
                     200,
-                    sigma=0.2 * mixrange,
-                    sigma_min=0.2 * mixrange * 0.5**5,
-                    sigma_max=0.2 * mixrange,
+                    sigma=0.2,
+                    sigma_min=0.2 * 0.5**5,
+                    sigma_max=0.2,
                     strategy=sampling.SamplingStrategy.DDS_UNIFORM,
                 ),
                 [0.3, 0.5, 0.8, 0.95],
@@ -357,10 +359,10 @@ if __name__ == "__main__":
             optim_func=optimize.stochastic_response_surface,
         )
     if 5 in comparisonList:
-        mixrange = 15
+        minxrange = 15
         optresList[5] = read_and_run(
             data_file="datainput_BraninWithInteger",
-            acquisitionFunc=TargetValueAcquisition(0.001 * mixrange),
+            acquisitionFunc=TargetValueAcquisition(0.001 * minxrange),
             filter=rbf.RbfFilter(),
             maxeval=100,
             Ntrials=3,
@@ -370,16 +372,15 @@ if __name__ == "__main__":
         )
     if 6 in comparisonList:
         strategyName.append("CPTV")
-        mixrange = 15
         optresList[6] = read_and_run(
             data_file="datainput_BraninWithInteger",
             acquisitionFunc=CoordinatePerturbation(
                 100,
                 sampling.NormalSampler(
                     1000,
-                    sigma=0.2 * mixrange,
-                    sigma_min=0.2 * mixrange * 0.5**6,
-                    sigma_max=0.2 * mixrange,
+                    sigma=0.2,
+                    sigma_min=0.2 * 0.5**6,
+                    sigma_max=0.2,
                     strategy=sampling.SamplingStrategy.DDS,
                 ),
                 [0.3, 0.5, 0.8, 0.95],
@@ -393,16 +394,15 @@ if __name__ == "__main__":
         )
     if 7 in comparisonList:
         strategyName.append("CPTVI")
-        mixrange = 15
         optresList[7] = read_and_run(
             data_file="datainput_BraninWithInteger",
             acquisitionFunc=CoordinatePerturbation(
                 100,
                 sampling.NormalSampler(
                     1000,
-                    sigma=0.2 * mixrange,
-                    sigma_min=0.2 * mixrange * 0.5**6,
-                    sigma_max=0.2 * mixrange,
+                    sigma=0.2,
+                    sigma_min=0.2 * 0.5**6,
+                    sigma_max=0.2,
                     strategy=sampling.SamplingStrategy.DDS,
                 ),
                 [0.3, 0.5, 0.8, 0.95],
@@ -415,10 +415,12 @@ if __name__ == "__main__":
             optim_func=optimize.cptvi,
         )
     if 8 in comparisonList:
-        mixrange = 15
+        minxrange = 15
         optresList[8] = read_and_run(
             data_file="datainput_BraninWithInteger",
-            acquisitionFunc=MinimizeSurrogate(100, 0.005 * mixrange * sqrt(2)),
+            acquisitionFunc=MinimizeSurrogate(
+                100, 0.005 * minxrange * sqrt(2)
+            ),
             filter=rbf.RbfFilter(),
             maxeval=100,
             Ntrials=3,

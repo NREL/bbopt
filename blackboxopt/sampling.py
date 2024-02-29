@@ -167,8 +167,8 @@ class NormalSampler(Sampler):
         xlow = np.array([bounds[i][0] for i in range(dim)])
         xup = np.array([bounds[i][1] for i in range(dim)])
 
-        mixrange = (xup - xlow).min()
-        sigma = self.sigma * mixrange
+        minxrange = (xup - xlow).min()
+        sigma = self.sigma * minxrange
 
         # Check if mu is valid
         xnew = np.tile(mu, (self.n, 1))
@@ -223,8 +223,8 @@ class NormalSampler(Sampler):
         xlow = np.array([bounds[i][0] for i in range(dim)])
         xup = np.array([bounds[i][1] for i in range(dim)])
 
-        mixrange = (xup - xlow).min()
-        sigma = self.sigma * mixrange
+        minxrange = (xup - xlow).min()
+        sigma = self.sigma * minxrange
 
         # Check if mu is valid
         xnew = np.tile(mu, (self.n, 1))

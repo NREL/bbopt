@@ -936,7 +936,7 @@ def cptv(
 
             if out_local.nfev == failtolerance:
                 consecutiveQuickFailures += 1
-                tol /= 2
+                # tol /= 2
             else:
                 consecutiveQuickFailures = 0
 

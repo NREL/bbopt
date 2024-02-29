@@ -316,7 +316,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    # args.config = 5
+    # args.config = 8
     if args.config == 1:
         optres = read_and_run(
             data_file="datainput_Branin",
@@ -403,10 +403,10 @@ if __name__ == "__main__":
             optim_func=optimize.stochastic_response_surface,
         )
     elif args.config == 5:
-        mixrange = 15
+        minxrange = 15
         optres = read_and_run(
             data_file="datainput_BraninWithInteger",
-            acquisitionFunc=TargetValueAcquisition(0.001 * mixrange),
+            acquisitionFunc=TargetValueAcquisition(0.001 * minxrange),
             filter=rbf.RbfFilter(),
             maxeval=100,
             Ntrials=3,
@@ -460,9 +460,12 @@ if __name__ == "__main__":
             optim_func=optimize.cptvi,
         )
     elif args.config == 8:
+        minxrange = 15
         optres = read_and_run(
             data_file="datainput_BraninWithInteger",
-            acquisitionFunc=MinimizeSurrogate(100, 0.005 * mixrange * sqrt(2)),
+            acquisitionFunc=MinimizeSurrogate(
+                100, 0.005 * minxrange * sqrt(2)
+            ),
             filter=rbf.RbfFilter(),
             maxeval=100,
             Ntrials=3,
