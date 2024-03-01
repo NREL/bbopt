@@ -704,6 +704,7 @@ class MinimizeSurrogate(AcquisitionFunction):
         cindex = [i for i in range(dim) if i not in surrogateModel.iindex]
         cbounds = [bounds[i] for i in cindex]
 
+        remevals = 1000 * dim  # maximum number of RBF evaluations
         maxiter = 10
         sigma = 4.0  # default value for computing crit distance
         critdist = (
@@ -721,9 +722,13 @@ class MinimizeSurrogate(AcquisitionFunction):
 
         iter = 0
         k = 0
-        while iter < maxiter and k < n:
+        while iter < maxiter and k < n and remevals > 0:
             iStart = iter * self.sampler.n
             iEnd = (iter + 1) * self.sampler.n
+
+            # if computational budget is exhausted, then return
+            if remevals <= iEnd - iStart:
+                break
 
             # Critical distance for the i-th iteration
             critdistiter = critdist * (log(iEnd) / iEnd) ** (1 / dim)
@@ -752,6 +757,7 @@ class MinimizeSurrogate(AcquisitionFunction):
                 candidates[iStart:iEnd, :]
             )
             ids = np.argsort(fcand[0:iEnd])
+            remevals -= iEnd - iStart
 
             # Select the best points that are not too close to each other
             chosenIds = np.zeros((counterLocalStart,), dtype=int)
@@ -792,11 +798,17 @@ class MinimizeSurrogate(AcquisitionFunction):
                 res = minimize(
                     func_continuous_search,
                     xi[cindex],
+                    method="L-BFGS-B",
                     jac=dfunc_continuous_search,
                     # hessp=hessp_continuous_search,
                     bounds=cbounds,
-                    options={"disp": False},
+                    options={
+                        "maxfun": remevals,
+                        "maxiter": max(2, round(remevals / 20)),
+                        "disp": False,
+                    },
                 )
+                remevals -= res.nfev
                 xi[cindex] = res.x
 
                 if tree.n == 0 or tree.query(xi)[0] > self.tol:
@@ -812,8 +824,8 @@ class MinimizeSurrogate(AcquisitionFunction):
                             )
                         )
 
-            if k == n:
-                break
+                if remevals <= 0:
+                    break
 
             e_nlocmin = (
                 k * (counterLocalStart - 1) / (counterLocalStart - k - 2)

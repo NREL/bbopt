@@ -177,8 +177,8 @@ def test_cptv(func: str) -> None:
 
 if __name__ == "__main__":
     nRuns = 1
-    func = "hart6"
-    nArgs = 6
+    func = "ackley"
+    nArgs = 15
     np.random.seed(1)
 
     res = run_optimizer(
@@ -199,6 +199,12 @@ if __name__ == "__main__":
                 [0.3, 0.5, 0.8, 0.95],
             ),
         },
+        # {
+        #     "optimizer": optimize.target_value_optimization,
+        #     "acquisition": acquisition.MinimizeSurrogate(
+        #         1, 0.005 * np.sqrt(2.0)
+        #     ),
+        # },
         nRuns,
         True,
     )
