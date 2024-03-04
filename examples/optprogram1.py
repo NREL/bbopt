@@ -145,7 +145,7 @@ def read_and_run(
                 surrogateModel=rbfModel,
                 disp=True,
             )
-        elif optim_func == optimize.cptv or optim_func == optimize.cptvi:
+        elif optim_func == optimize.cptv or optim_func == optimize.cptvl:
             opt = optim_func(
                 data.objfunction,
                 bounds=tuple(
@@ -457,7 +457,7 @@ if __name__ == "__main__":
             NumberNewSamples=1,
             rbf_type=rbf.RbfType.THINPLATE,
             PlotResult=True,
-            optim_func=optimize.cptvi,
+            optim_func=optimize.cptvl,
         )
     elif args.config == 8:
         minxrange = 15

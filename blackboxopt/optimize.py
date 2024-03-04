@@ -1019,7 +1019,7 @@ def cptv(
     return out
 
 
-def cptvi(
+def cptvl(
     fun,
     bounds: tuple | list,
     maxeval: int,

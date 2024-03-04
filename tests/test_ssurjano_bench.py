@@ -186,7 +186,7 @@ if __name__ == "__main__":
         nArgs,
         100 * (nArgs + 1),
         {
-            "optimizer": optimize.cptvi,
+            "optimizer": optimize.cptvl,
             "acquisition": acquisition.CoordinatePerturbation(
                 0,
                 sampling.NormalSampler(

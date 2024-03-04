@@ -136,7 +136,7 @@ def read_and_run(
                 surrogateModel=rbfModel,
                 disp=True,
             )
-        elif optim_func == optimize.cptv or optim_func == optimize.cptvi:
+        elif optim_func == optimize.cptv or optim_func == optimize.cptvl:
             opt = optim_func(
                 data.objfunction,
                 bounds=tuple(
@@ -393,7 +393,7 @@ if __name__ == "__main__":
             optim_func=optimize.cptv,
         )
     if 7 in comparisonList:
-        strategyName.append("CPTVI")
+        strategyName.append("CPTVl")
         optresList[7] = read_and_run(
             data_file="datainput_BraninWithInteger",
             acquisitionFunc=CoordinatePerturbation(
@@ -412,7 +412,7 @@ if __name__ == "__main__":
             Ntrials=3,
             NumberNewSamples=1,
             rbf_type=rbf.RbfType.THINPLATE,
-            optim_func=optimize.cptvi,
+            optim_func=optimize.cptvl,
         )
     if 8 in comparisonList:
         minxrange = 15
