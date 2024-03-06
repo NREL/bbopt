@@ -7,17 +7,24 @@ license = "GPL v3"
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.12"
+python = "^3.9"
 numpy = "^1.26.2"
-matplotlib = "^3.8.2"
 scipy = "^1.11.4"
+pymoo = "^0.6.1.1"
+
+[tool.poetry.group.dev.dependencies]
 pytest = "^7.4.3"
 rpy2 = "3.5.1"
-pymoo = "^0.6.1.1"
+matplotlib = "^3.8.2"
+ruff = "^0.1.9"
+
+[tool.poetry.group.docs]
+optional = true
+
+[tool.poetry.group.docs.dependencies]
 sphinx = "^7.2.6"
 sphinx-rtd-theme = "^2.0.0"
 myst-parser = "^2.0.0"
-ruff = "^0.1.9"
 
 [tool.ruff]
 line-length = 79
