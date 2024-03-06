@@ -35,7 +35,7 @@ import numpy as np
 from numpy.linalg import cond
 from enum import Enum
 from scipy.spatial.distance import cdist
-from scipy.linalg import solve, solve_triangular, lu
+from scipy.linalg import solve, solve_triangular
 
 from .utility import SLHDstandard
 
@@ -210,10 +210,10 @@ class RbfModel:
         out: int
             Dimension of the domain space.
         """
-        if self._x.ndim == 1:
+        if self.samples().ndim == 1:
             return 1
-        elif self._x.ndim == 2:
-            return self._x.shape[1]
+        elif self.samples().ndim == 2:
+            return self.samples().shape[1]
         else:
             return 0
 
@@ -447,7 +447,9 @@ class RbfModel:
             and the j-th sampled point.
         """
         if self._valid_coefficients is False:
-            raise RuntimeError("Invalid coefficients")
+            raise RuntimeError(
+                "Invalid coefficients. Run update_coefficients() before evaluating the model."
+            )
 
         dim = self.dim()
 
@@ -480,7 +482,9 @@ class RbfModel:
             Value for the derivative of the RBF model on the input point.
         """
         if self._valid_coefficients is False:
-            raise RuntimeError("Invalid coefficients")
+            raise RuntimeError(
+                "Invalid coefficients. Run update_coefficients() before evaluating the model."
+            )
 
         dim = self.dim()
 
@@ -521,7 +525,9 @@ class RbfModel:
             Value for the Hessian of the RBF model at x in the direction of p.
         """
         if self._valid_coefficients is False:
-            raise RuntimeError("Invalid coefficients")
+            raise RuntimeError(
+                "Invalid coefficients. Run update_coefficients() before evaluating the model."
+            )
 
         dim = self.dim()
 
@@ -553,6 +559,10 @@ class RbfModel:
         ----------
         fx : np.ndarray
             Function values on the sampled points.
+        filter : RbfFilter, optional
+            Filter used with the function values. The default is None, which
+            means the filter used in the initialization of the RBF model is
+            used.
         """
         if fx.size <= self._m:
             self.get_fsamples()[self._m - fx.size : self._m] = fx
@@ -637,7 +647,7 @@ class RbfModel:
         self._valid_coefficients = False
 
     def create_initial_design(
-        self, dim: int, bounds: tuple | list, m: int = 0
+        self, dim: int, bounds: tuple | list, maxm: int = 0
     ) -> None:
         """Creates an initial set of samples for the RBF model.
 
@@ -650,17 +660,16 @@ class RbfModel:
         bounds : tuple | list
             Tuple of lower and upper bounds for each dimension of the domain
             space.
-        m : int, optional
-            Number of points to generate. If not provided, 2 * pdim() points are
-            generated.
+        maxm : int, optional
+            Maximum number of points to generate. If not provided, 2 * pdim()
+            points are generated.
         """
-        self.reserve(m, dim)
+        self.reserve(0, dim)
         pdim = self.pdim()
-        if m == 0:
-            m = 2 * pdim
-            self.reserve(m, dim)
+        m = min(maxm, 2 * pdim)
+        self.reserve(m, dim)
 
-        if dim <= 0:
+        if m == 0 or dim <= 0:
             return
 
         # Generate initial design and set matrix _P
@@ -770,7 +779,7 @@ class RbfModel:
         self,
         x: np.ndarray,
         xdist: np.ndarray = np.array([]),
-        PLU: list | tuple = tuple(),
+        LDLt: list | tuple = tuple(),
     ) -> float:
         """Compute the value of abs(mu) in the inf step of the target value
         sampling strategy. See [#]_ for more details.
@@ -782,10 +791,9 @@ class RbfModel:
         xdist : np.ndarray, optional
             Distances between x and the sampled points. If not provided, the
             distances are computed.
-        PLU : list | tuple [P,L,U], optional
-            PLU factorization of the matrix A. If not provided, the
-            factorization is computed. Considers the permutation information as
-            row indices.
+        LDLt : list | tuple [lu,d,perm], optional
+            LDLt factorization of the matrix A as returned by the function
+            scipy.linalg.ldl. If not provided, the factorization is computed.
 
         Returns
         -------
@@ -802,102 +810,67 @@ class RbfModel:
         pdim = self.pdim()
         if xdist.size == 0:
             xdist = cdist(x.reshape(1, -1), self.samples())
-        new_phi = self.phi(xdist).reshape(-1, 1)
-        new_Prow = self.pbasis(x)
+        newRow = np.concatenate(
+            (self.phi(xdist).flatten(), self.pbasis(x).flatten())
+        )
 
-        if PLU:
-            pt, L, U = PLU
-            a = new_phi
-            b = new_Prow.T
-            B = self.get_matrixP()
+        if LDLt:
+            p0tL0, d0, p0 = LDLt
+            L0 = p0tL0[p0, :]
 
-            # 0. Permute the indices to have PA=LU
-            p0 = np.zeros(self._m, dtype=int)
-            p1 = np.zeros(pdim, dtype=int)
-            for i in range(self._m + pdim):
-                if pt[i] < self._m:
-                    p0[pt[i]] = i
-                else:
-                    p1[pt[i] - self._m] = i
-
-            # 0. Get the blocks
-            L00 = L[0 : self._m, 0 : self._m]
-            L10 = L[self._m : self._m + pdim, 0 : self._m]
-            U00 = U[0 : self._m, 0 : self._m]
-            U01 = U[0 : self._m, self._m : self._m + pdim]
-
-            # 1. Solve $U_{00}^T l_0 = a$ for $l_0$.
-            l0 = solve_triangular(
-                U00,
-                a,
-                trans="T",
-                lower=False,
-                unit_diagonal=False,
-                # check_finite=False,
-            )
-
-            # 2. Solve $L_{00} u_0 = P_{00}a + P_{01}b$ for $u_0$.
-            aux0 = [a[i] if i < self._m else b[i - self._m] for i in p0]
-            u0 = solve_triangular(
-                L00,
-                aux0,
-                trans="N",
+            # 1. Solve P_0 [a;b] = L_0 (D_0 l_{01}) for (D_0 l_{01})
+            D0l01 = solve_triangular(
+                L0,
+                newRow[p0],
                 lower=True,
                 unit_diagonal=True,
                 # check_finite=False,
             )
 
-            # 3. Compute the LU decomposition of the remainder of the matrix
-            # to find $P$, $l_2$, $L_{22}$ $u$, $u_1$ and $U_{22}$.
-            aux0 = [a[i] if i < self._m else b[i - self._m] for i in p1]
-            aux1 = [B[i, :] if i < self._m else np.zeros(pdim) for i in p1]
-            X = np.block(
-                [
-                    [self.phi(0.0) - l0.T @ u0, (b - U01.T @ l0).T],
-                    [aux0 - L10 @ u0, aux1 - L10 @ U01],
-                ]
-            )
-            Pt, L11, U11 = lu(X, p_indices=True)
+            # 2. Invert D_0 to compute l_{01}
+            l01 = D0l01.copy()
+            i = 0
+            while i < l01.size - 1:
+                if d0[i + 1, i] == 0:
+                    # Invert block of size 1x1
+                    l01[i] /= d0[i, i]
+                    i += 1
+                else:
+                    # Invert block of size 2x2
+                    det = d0[i, i] * d0[i + 1, i + 1] - d0[i, i + 1] ** 2
+                    l01[i], l01[i + 1] = (
+                        (l01[i] * d0[i + 1, i + 1] - l01[i + 1] * d0[i, i + 1])
+                        / det,
+                        (l01[i + 1] * d0[i, i] - l01[i] * d0[i, i + 1]) / det,
+                    )
+                    i += 2
+            if i == l01.size - 1:
+                # Invert last block of size 1x1
+                l01[i] /= d0[i, i]
 
-            # 4. Solve linear system and get mu
-            rhs = np.zeros(pdim + 1)
-            rhs[Pt[0]] = 1
-            y1 = solve_triangular(L11, rhs, lower=True, unit_diagonal=True)
-            x1 = solve_triangular(U11, y1, lower=False)
-            mu = float(x1[0].item())
+            # 3. d = \phi(0) - l_{01}^T D_0 l_{01} and \mu = 1/d
+            d = self.phi(0) - np.dot(l01, D0l01)
+            mu = 1 / d
 
         else:
             # set up matrices for solving the linear system
             A_aug = np.block(
                 [
-                    [
-                        self._PHI[0 : self._m, 0 : self._m],
-                        new_phi,
-                        self.get_matrixP(),
-                    ],
-                    [
-                        new_phi.T,
-                        self.phi(0),
-                        new_Prow,
-                    ],
-                    [
-                        self.get_matrixP().T,
-                        new_Prow.T,
-                        np.zeros((pdim, pdim)),
-                    ],
+                    [self.get_RBFmatrix(), newRow.reshape(-1, 1)],
+                    [newRow, self.phi(0)],
                 ]
             )
 
             # set up right hand side
             rhs = np.zeros(A_aug.shape[0])
-            rhs[self._m] = 1
+            rhs[-1] = 1
 
             # solve linear system and get mu
             # TODO: See if there is a solver specific for saddle-point systems
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")
                 coeff = solve(A_aug, rhs, assume_a="sym")
-            mu = float(coeff[self._m].item())
+            mu = float(coeff[-1].item())
 
         # Order of the polynomial tail
         if self.type == RbfType.LINEAR:
@@ -946,7 +919,7 @@ class RbfModel:
             Optimization. Journal of Global Optimization 19, 201–227 (2001).
             https://doi.org/10.1023/A:1011255519438
         """
-        absmu = self.mu_measure(x, PLU=PLU)
+        absmu = self.mu_measure(x, LDLt=PLU)
         assert (
             absmu > 0
         )  # if absmu == 0, the linear system in the surrogate model singular

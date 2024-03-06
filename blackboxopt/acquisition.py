@@ -23,7 +23,7 @@ from math import log
 from scipy.spatial.distance import cdist
 from scipy.spatial import KDTree
 from scipy.special import gamma
-from scipy.linalg import lu
+from scipy.linalg import ldl
 from scipy.optimize import minimize
 from .sampling import NormalSampler, Sampler
 
@@ -482,41 +482,7 @@ class TargetValueAcquisition(AcquisitionFunction):
             raise NotImplementedError
         dim = len(bounds)  # Dimension of the problem
 
-        # def objfunc(x):
-        #     return surrogateModel.eval(x)[0]
-
-        # nWorkers = 1  # Number of workers for parallel computing
-
-        # Too expensive
-        # constraints = NonlinearConstraint(
-        #     lambda x: [np.dot(x - y, x - y) for y in surrogateModel.samples()],
-        #     tol * tol,
-        #     np.inf,
-        #     jac=lambda x: 2 * (x.reshape(1, -1) - surrogateModel.samples()),
-        #     hess=lambda x, v: 2 * np.sum(v) * np.eye(dim),
-        # )
-
         tree = KDTree(surrogateModel.samples())
-
-        # def grad_constraint(x, tree_query):
-        #     return (x - surrogateModel.samples(tree_query[1])) / tree_query[0]
-
-        # def hess_constraint(v, tree_query):
-        #     return (v[0] / tree_query[0]) * (
-        #         np.eye(dim)
-        #         - np.outer(
-        #             surrogateModel.samples(tree_query[1]) / tree_query[0],
-        #             surrogateModel.samples(tree_query[1]) / tree_query[0],
-        #         )
-        #     )
-
-        # constraints = NonlinearConstraint(
-        #     lambda x: tree.query(x)[0],
-        #     self.tol,
-        #     np.inf,
-        #     # jac=lambda x: grad_constraint(x, tree.query(x)),
-        #     # hess=lambda x, v: hess_constraint(v, tree.query(x)),
-        # )
 
         # Convert iindex to boolean array
         intArgs = [False] * dim
@@ -527,22 +493,12 @@ class TargetValueAcquisition(AcquisitionFunction):
         # expensive black-box global optimization", JOGO
         sample_stage = random.sample(range(0, self.cycleLength + 2), 1)[0]
         if sample_stage == 0:  # InfStep - minimize Mu_n
-            PLU = lu(surrogateModel.get_RBFmatrix(), p_indices=True)
-            # res = differential_evolution(
-            #     surrogateModel.mu_measure,
-            #     bounds,
-            #     args=(np.array([]), PLU),
-            #     integrality=intArgs,
-            #     constraints=constraints,
-            #     workers=nWorkers,
-            #     polish=False,
-            # )
-            # xselected = res.x
+            LDLt = ldl(surrogateModel.get_RBFmatrix())
             problem = ProblemWithConstraint(
                 lambda xdict: surrogateModel.mu_measure(
                     np.asarray([xdict[i] for i in range(dim)]),
                     np.array([]),
-                    PLU,
+                    LDLt,
                 ),
                 lambda xdict: self.tol
                 - tree.query(np.asarray([xdict[i] for i in range(dim)]))[0],
@@ -554,14 +510,6 @@ class TargetValueAcquisition(AcquisitionFunction):
 
         elif 1 <= sample_stage <= self.cycleLength:  # cycle step global search
             # find min of surrogate model
-            # res = differential_evolution(
-            #     objfunc,
-            #     bounds,
-            #     integrality=intArgs,
-            #     workers=nWorkers,
-            #     polish=False,
-            # )
-            # f_rbf = res.fun
             problem = ProblemNoConstraint(
                 lambda xdict: surrogateModel.eval(
                     np.asarray([xdict[i] for i in range(dim)])
@@ -579,24 +527,12 @@ class TargetValueAcquisition(AcquisitionFunction):
             )  # target for objective function value
 
             # use GA method to minimize bumpiness measure
-            PLU = lu(surrogateModel.get_RBFmatrix(), p_indices=True)
-            # res_bump = differential_evolution(
-            #     surrogateModel.bumpiness_measure,
-            #     bounds,
-            #     args=(f_target, PLU),
-            #     integrality=intArgs,
-            #     constraints=constraints,
-            #     workers=nWorkers,
-            #     polish=False,
-            # )
-            # xselected = (
-            #     res_bump.x
-            # )  # new point is the one that minimizes the bumpiness measure
+            LDLt = ldl(surrogateModel.get_RBFmatrix())
             problem = ProblemWithConstraint(
                 lambda xdict: surrogateModel.bumpiness_measure(
                     np.asarray([xdict[i] for i in range(dim)]),
                     f_target,
-                    PLU,
+                    LDLt,
                 ),
                 lambda xdict: self.tol
                 - tree.query(np.asarray([xdict[i] for i in range(dim)]))[0],
@@ -607,14 +543,6 @@ class TargetValueAcquisition(AcquisitionFunction):
             xselected = np.asarray([res.X[i] for i in range(dim)])
         else:  # cycle step local search
             # find the minimum of RBF surface
-            # res = differential_evolution(
-            #     objfunc,
-            #     bounds,
-            #     integrality=intArgs,
-            #     workers=nWorkers,
-            #     polish=False,
-            # )
-            # f_rbf = res.fun
             problem = ProblemNoConstraint(
                 lambda xdict: surrogateModel.eval(
                     np.asarray([xdict[i] for i in range(dim)])
@@ -637,22 +565,12 @@ class TargetValueAcquisition(AcquisitionFunction):
             else:  # otherwise, do target value strategy
                 f_target = fbounds[0] - 1e-2 * abs(fbounds[0])  # target value
                 # use GA method to minimize bumpiness measure
-                PLU = lu(surrogateModel.get_RBFmatrix(), p_indices=True)
-                # res_bump = differential_evolution(
-                #     surrogateModel.bumpiness_measure,
-                #     bounds,
-                #     args=(f_target, PLU),
-                #     integrality=intArgs,
-                #     constraints=constraints,
-                #     workers=nWorkers,
-                #     polish=False,
-                # )
-                # xselected = res_bump.x
+                LDLt = ldl(surrogateModel.get_RBFmatrix())
                 problem = ProblemWithConstraint(
                     lambda xdict: surrogateModel.bumpiness_measure(
                         np.asarray([xdict[i] for i in range(dim)]),
                         f_target,
-                        PLU,
+                        LDLt,
                     ),
                     lambda xdict: self.tol
                     - tree.query(np.asarray([xdict[i] for i in range(dim)]))[
