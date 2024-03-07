@@ -95,9 +95,11 @@ def run_optimizer(
     assert None not in bounds
 
     # Define the objective function, guarantee minvalue at 1
-    def objf(x: np.ndarray) -> float:
+    def objf(x: np.ndarray) -> np.ndarray:
         return (
-            np.array(rfunc(robjects.FloatVector(x.reshape(-1, 1))))[0]
+            np.array(
+                [rfunc(robjects.FloatVector(xi.reshape(-1, 1)))[0] for xi in x]
+            )
             - minval
             + 1
         )

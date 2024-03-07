@@ -43,11 +43,12 @@ def datainput_rastrigin():
 
 def myfun(x):
     n = 100
-    xflat = x.flatten()
-    y = 10 * n + sum(pow(xflat, 2) - 10 * np.cos(2 * np.pi * xflat))
+    y = 10 * n + np.sum(
+        np.power(x, 2) - 10 * np.cos(2 * np.pi * np.asarray(x)), axis=1
+    )
 
     return y
 
 
 if __name__ == "__main__":
-    print(myfun(np.array([[0.5, 0.9, 0.3]])))
+    print(myfun([[0.5, 0.9, 0.3]]))

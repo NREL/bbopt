@@ -481,8 +481,4 @@ if __name__ == "__main__":
     print("BestValues", [optres[i].fx for i in range(Ntrials)])
     print("BestPoints", [optres[i].x for i in range(Ntrials)])
     print("NumFuncEval", [optres[i].nfev for i in range(Ntrials)])
-    print(
-        "AvgFUncEvalTime",
-        [np.mean(optres[i].fevaltime) for i in range(Ntrials)],
-    )
     print("NumberOfIterations", [optres[i].nit for i in range(Ntrials)])

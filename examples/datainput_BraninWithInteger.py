@@ -45,23 +45,21 @@ def datainput_BraninWithInteger():
 
 
 def myfun(x):
-    assert x.size == 2
-    xflat = x.flatten()
-    y = (
+    y = [
         pow(
-            xflat[1]
-            - 5.1 * pow(xflat[0], 2) / (4 * pow(np.pi, 2))
-            + 5 * xflat[0] / np.pi
+            xi[1]
+            - 5.1 * pow(xi[0], 2) / (4 * pow(np.pi, 2))
+            + 5 * xi[0] / np.pi
             - 6,
             2,
         )
-        + 10 * (1 - 1 / (8 * np.pi)) * np.cos(xflat[0])
+        + 10 * (1 - 1 / (8 * np.pi)) * np.cos(xi[0])
         + 10
-    )
+        for xi in x
+    ]
     return y
 
 
 if __name__ == "__main__":
-    print(myfun(np.array([[3, 2.4013]])))
-    print(myfun(np.array([[3, 2.26325204]])))
-    print(myfun(np.array([[3, 2.38247443]])))
+    print(myfun([[3, 2.4013], [3, 2.26325204]]))
+    print(myfun([[3, 2.38247443]]))

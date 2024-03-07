@@ -60,7 +60,6 @@ if __name__ == "__main__":
         np.inf
     )  # best objective function value found so far in the current trial
     numevals = 0  # number of function evaluations done so far
-    Fevaltime_all = []  # collect all objective function evaluation times of the current trial here
 
     bounds = (
         (data.xlow[0], data.xup[0]),

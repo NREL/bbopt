@@ -40,7 +40,6 @@ def datainput_hartman3():
 
 
 def myfun(x):
-    # print(x)
     c = np.array([1, 1.2, 3, 3.2])
     A = np.array([[3, 10, 30], [0.1, 10, 35], [3, 10, 30], [0.1, 10, 35]])
     P = np.array(
@@ -51,9 +50,12 @@ def myfun(x):
             [0.0382, 0.5743, 0.8828],
         ]
     )
-    y = -sum(
-        c * np.exp(-np.sum(A * (matlib.repmat(x, 4, 1) - P) ** 2, axis=1))
-    )
+    y = [
+        -sum(
+            c * np.exp(-np.sum(A * (matlib.repmat(xi, 4, 1) - P) ** 2, axis=1))
+        )
+        for xi in x
+    ]
     return y
 
 

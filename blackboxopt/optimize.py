@@ -35,7 +35,6 @@ import numpy as np
 from scipy.optimize import minimize
 import time
 from dataclasses import dataclass
-import concurrent.futures
 import os
 
 from blackboxopt.acquisition import (
@@ -65,8 +64,6 @@ class OptimizeResult:
         All sampled points.
     fsamples : numpy.ndarray
         All objective function values on sampled points.
-    fevaltime : numpy.ndarray
-        All objective function evaluation times.
     """
 
     x: np.ndarray
@@ -75,7 +72,6 @@ class OptimizeResult:
     nfev: int
     samples: np.ndarray
     fsamples: np.ndarray
-    fevaltime: np.ndarray
 
 
 def initialize_optimization_output(
@@ -124,7 +120,6 @@ def initialize_optimization_output(
         nfev=0,
         samples=np.zeros((maxeval, dim)),
         fsamples=np.zeros(maxeval),
-        fevaltime=np.zeros(maxeval),
     )
 
     # Number of initial samples
@@ -175,14 +170,7 @@ def initialize_optimization_output(
         out.samples[0:m, :] = surrogateModel.samples()[m0:, :]
 
         # Compute f(samples)
-        with concurrent.futures.ThreadPoolExecutor(
-            max_workers=min(ncpu, m)
-        ) as executor:
-            # Prepare the arguments for parallel execution
-            arguments = [(fun, np.copy(out.samples[i, :])) for i in range(m)]
-            # Use the map function to parallelize the evaluations
-            results = list(executor.map(__eval_fun_and_timeit, arguments))
-        out.fsamples[0:m], out.fevaltime[0:m] = zip(*results)
+        out.fsamples[0:m] = fun(out.samples[0:m, :])
         out.nfev = m
 
         # Update output variables
@@ -203,27 +191,6 @@ def initialize_optimization_output(
         )
 
     return out
-
-
-def __eval_fun_and_timeit(args):
-    """Evaluate a function and time it.
-
-    Parameters
-    ----------
-    args : tuple
-        Tuple with the function and the input.
-
-    Returns
-    -------
-    tuple
-        Tuple with the function output and the time it took to evaluate the
-        function.
-    """
-    fun, x = args
-    t0 = time.time()
-    res = fun(x)
-    tf = time.time()
-    return res, tf - t0
 
 
 # def srs_step(
@@ -444,27 +411,7 @@ def stochastic_response_surface(
 
         # Compute f(xselected)
         NumberNewSamples = xselected.shape[0]
-        ySelected = np.zeros(NumberNewSamples)
-        if NumberNewSamples > 1:
-            with concurrent.futures.ThreadPoolExecutor(
-                max_workers=min(ncpu, NumberNewSamples)
-            ) as executor:
-                # Prepare the arguments for parallel execution
-                arguments = [
-                    (fun, xselected[i, :]) for i in range(NumberNewSamples)
-                ]
-                # Use the map function to parallelize the evaluations
-                results = list(executor.map(__eval_fun_and_timeit, arguments))
-            (
-                ySelected[0:NumberNewSamples],
-                out.fevaltime[m : m + NumberNewSamples],
-            ) = zip(*results)
-        else:
-            for i in range(NumberNewSamples):
-                (
-                    ySelected[i],
-                    out.fevaltime[m + i],
-                ) = __eval_fun_and_timeit((fun, xselected[i, :]))
+        ySelected = np.asarray(fun(xselected))
 
         # determine if significant improvement
         iSelectedBest = np.argmin(ySelected).item()
@@ -535,7 +482,6 @@ def stochastic_response_surface(
     out.nfev = m
     out.samples.resize(m, dim)
     out.fsamples.resize(m)
-    out.fevaltime.resize(m)
 
     return out
 
@@ -597,7 +543,6 @@ def multistart_stochastic_response_surface(
         nfev=0,
         samples=np.zeros((maxeval, dim)),
         fsamples=np.zeros(maxeval),
-        fevaltime=np.zeros(maxeval),
     )
 
     # do until max number of f-evals reached
@@ -622,9 +567,6 @@ def multistart_stochastic_response_surface(
             out.nfev : out.nfev + out_local.nfev, :
         ] = out_local.samples
         out.fsamples[out.nfev : out.nfev + out_local.nfev] = out_local.fsamples
-        out.fevaltime[
-            out.nfev : out.nfev + out_local.nfev
-        ] = out_local.fevaltime
         out.nfev = out.nfev + out_local.nfev
 
         # Update counters
@@ -770,27 +712,7 @@ def target_value_optimization(
 
         # Compute f(xselected)
         NumberNewSamples = xselected.shape[0]
-        ySelected = np.zeros(NumberNewSamples)
-        if NumberNewSamples > 1:
-            with concurrent.futures.ThreadPoolExecutor(
-                max_workers=min(ncpu, NumberNewSamples)
-            ) as executor:
-                # Prepare the arguments for parallel execution
-                arguments = [
-                    (fun, xselected[i, :]) for i in range(NumberNewSamples)
-                ]
-                # Use the map function to parallelize the evaluations
-                results = list(executor.map(__eval_fun_and_timeit, arguments))
-            (
-                ySelected[0:NumberNewSamples],
-                out.fevaltime[m : m + NumberNewSamples],
-            ) = zip(*results)
-        else:
-            for i in range(NumberNewSamples):
-                (
-                    ySelected[i],
-                    out.fevaltime[m + i],
-                ) = __eval_fun_and_timeit((fun, xselected[i, :]))
+        ySelected = np.asarray(fun(xselected))
 
         # Update maxf
         maxf = max(maxf, np.max(ySelected).item())
@@ -824,7 +746,6 @@ def target_value_optimization(
     out.nfev = m
     out.samples.resize(m, dim)
     out.fsamples.resize(m)
-    out.fevaltime.resize(m)
 
     return out
 
@@ -911,7 +832,6 @@ def cptv(
         nfev=0,
         samples=np.zeros((maxeval, dim)),
         fsamples=np.zeros(maxeval),
-        fevaltime=np.zeros(maxeval),
     )
 
     # do until max number of f-evals reached
@@ -1013,7 +933,7 @@ def cptv(
             def func_continuous_search(x):
                 x_ = out.x
                 x_[cindex] = x
-                return fun(x_)
+                return fun(x_)[0]
 
             out_local_ = minimize(
                 func_continuous_search,
@@ -1036,7 +956,6 @@ def cptv(
                 fsamples=np.array(
                     [out_local_.fun for i in range(out_local_.nfev)]
                 ),
-                fevaltime=np.array([np.nan for i in range(out_local_.nfev)]),
             )
 
             if disp:
@@ -1056,7 +975,6 @@ def cptv(
             out.fx = out_local.fx
         out.samples[k : k + knew, :] = out_local.samples
         out.fsamples[k : k + knew] = out_local.fsamples
-        out.fevaltime[k : k + knew] = out_local.fevaltime
         out.nfev = out.nfev + out_local.nfev
 
         # Update k
@@ -1068,7 +986,6 @@ def cptv(
     # Update output
     out.samples.resize(k, dim)
     out.fsamples.resize(k)
-    out.fevaltime.resize(k)
 
     return out
 
