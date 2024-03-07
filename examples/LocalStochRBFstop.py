@@ -33,8 +33,7 @@ __deprecated__ = False
 from examples.optprogram1 import read_check_data_file
 from blackboxopt.rbf import RbfType, RbfModel, MedianLpfFilter
 from blackboxopt.optimize import stochastic_response_surface
-from blackboxopt.utility import SLHDstandard
-from blackboxopt.sampling import NormalSampler, SamplingStrategy
+from blackboxopt.sampling import NormalSampler, Sampler, SamplingStrategy
 from blackboxopt.acquisition import CoordinatePerturbation
 import numpy as np
 
@@ -63,9 +62,15 @@ if __name__ == "__main__":
     numevals = 0  # number of function evaluations done so far
     Fevaltime_all = []  # collect all objective function evaluation times of the current trial here
 
+    bounds = (
+        (data.xlow[0], data.xup[0]),
+        (data.xlow[1], data.xup[1]),
+        (data.xlow[2], data.xup[2]),
+    )
+
     rank_P = 0
     while rank_P != data.dim + 1:
-        samples = SLHDstandard(data.dim, m)
+        samples = Sampler(m).get_slhd_sample(bounds)
         P = np.concatenate((np.ones((m, 1)), samples), axis=1)
         rank_P = np.linalg.matrix_rank(P)
     samples = np.array(
@@ -95,11 +100,7 @@ if __name__ == "__main__":
 
     optres = stochastic_response_surface(
         data.objfunction,
-        bounds=(
-            (data.xlow[0], data.xup[0]),
-            (data.xlow[1], data.xup[1]),
-            (data.xlow[2], data.xup[2]),
-        ),
+        bounds=bounds,
         maxeval=maxeval - numevals,
         surrogateModel=rbfModel,
         samples=samples,

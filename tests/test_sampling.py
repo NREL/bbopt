@@ -1,4 +1,4 @@
-"""Test the utility functions.
+"""Test the sampling functions.
 """
 
 # Copyright (C) 2024 National Renewable Energy Laboratory
@@ -26,18 +26,19 @@ __deprecated__ = False
 
 import numpy as np
 import pytest
-from blackboxopt.utility import SLHDstandard
+from blackboxopt.sampling import Sampler
 
 
 @pytest.mark.parametrize("dim", [1, 2, 3])
-def test_SLHDstandard(dim: int):
+def test_slhd_sampling(dim: int):
     m = 2 * (dim + 1)
+    bounds = [(0, 1)] * dim
 
     # Set seed to 5 for reproducibility
     np.random.seed(5)
 
     for i in range(3):
-        slhd = SLHDstandard(dim, m)
+        slhd = Sampler(m).get_slhd_sample(bounds)
 
         # Check if the shape is correct
         assert slhd.shape == (m, dim)

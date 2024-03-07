@@ -226,6 +226,81 @@ def __eval_fun_and_timeit(args):
     return res, tf - t0
 
 
+# def srs_step(
+#     x0,
+#     y0,
+#     bounds: tuple | list,
+#     surrogateModel,
+#     acquisitionFunc,
+#     NumberNewSamples,
+#     expectedRelativeImprovement,
+#     performContinuousSearch,
+#     disp,
+# ):
+#     dim = len(bounds)  # Dimension of the problem
+#     assert dim > 0
+
+#     # Best initial guess
+#     i0Best = np.argmin(y0).item()
+#     x0Best = x0[i0Best, :]
+#     y0Best = y0[i0Best]
+
+#     # Best sample in the surrogate model
+#     iBest = surrogateModel.argmin()
+#     xBest = surrogateModel.sample(iBest)
+#     yBest = surrogateModel.get_fsamples()[iBest].item()
+
+#     # Update best sample and value
+#     modifiedCoordinates = [False] * dim
+#     if y0Best < yBest:
+#         modifiedCoordinates = [x0Best[i] != xBest[i] for i in range(dim)]
+#         xBest = x0Best
+#         yBest = y0Best
+
+#     # Determine if significant improvement was found
+#     hasImproved = (yBest - y0Best) > expectedRelativeImprovement * abs(yBest)
+
+#     if not performContinuousSearch:
+#         # Activate continuous search if an integer variables have changed and
+#         # a significant improvement was found
+#         if hasImproved:
+#             intCoordHasChanged = False
+#             for i in surrogateModel.iindex:
+#                 if modifiedCoordinates[i]:
+#                     intCoordHasChanged = True
+#                     break
+#             if intCoordHasChanged:
+#                 performContinuousSearch = True
+
+#     # Update surrogate model
+#     t0 = time.time()
+#     surrogateModel.update_samples(x0)
+#     surrogateModel.update_coefficients(y0)
+#     tf = time.time()
+#     if disp:
+#         print("Time to update surrogate model: %f s" % (tf - t0))
+
+#     # Acquire new samples
+#     t0 = time.time()
+#     if performContinuousSearch:
+#         coord = [i for i in range(dim) if i not in surrogateModel.iindex]
+#     else:
+#         coord = [i for i in range(dim)]
+#     x = acquisitionFunc.acquire(
+#         surrogateModel,
+#         bounds,
+#         (yBest, np.Inf),
+#         NumberNewSamples,
+#         xbest=xBest,
+#         coord=coord,
+#     )
+#     tf = time.time()
+#     if disp:
+#         print("Time to acquire new samples: %f s" % (tf - t0))
+
+#     return x, hasImproved, performContinuousSearch
+
+
 def stochastic_response_surface(
     fun,
     bounds: tuple | list,

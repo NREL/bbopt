@@ -44,6 +44,7 @@ class SamplingStrategy(Enum):
     DDS = 2  # DDS. Used in the DYCORS algorithm
     UNIFORM = 3  # uniform distribution
     DDS_UNIFORM = 4  # sample twice, first DDS then uniform distribution if there is no fixed variable
+    SLHD = 5  # Symmetric Latin Hypercube Design
 
 
 class Sampler:
@@ -92,7 +93,58 @@ class Sampler:
 
         return xnew
 
-    get_sample = get_uniform_sample
+    def get_slhd_sample(
+        self, bounds: tuple | list, *, iindex: tuple = ()
+    ) -> np.ndarray:
+        d = len(bounds)
+        m = self.n
+
+        # Create the initial design
+        X = np.empty((m, d))
+        for j in range(d):
+            delta = (bounds[j][1] - bounds[j][0]) / m
+            X[:, j] = [
+                bounds[j][0] + ((2.0 * (i + 1) - 1) / 2.0) * delta
+                for i in range(m)
+            ]
+        X[:, iindex] = np.round(X[:, iindex])
+
+        if m > 1:
+            # Generate permutation matrix P
+            P = np.zeros((m, d), dtype=int)
+            P[:, 0] = np.arange(m)
+            if m % 2 == 0:
+                k = m // 2
+            else:
+                k = (m - 1) // 2
+                P[k, :] = (k + 1) * np.ones((1, d))
+            for j in range(1, d):
+                P[0:k, j] = np.random.permutation(np.arange(k))
+
+                for i in range(k):
+                    # Use numpy functions for better performance
+                    if np.random.random() < 0.5:
+                        P[m - 1 - i, j] = m - 1 - P[i, j]
+                    else:
+                        P[m - 1 - i, j] = P[i, j]
+                        P[i, j] = m - 1 - P[i, j]
+
+            # Permute the initial design
+            for j in range(d):
+                X[:, j] = X[P[:, j], j]
+
+        return X
+
+    # Alias for get_uniform_sample
+    def get_sample(
+        self, bounds: tuple | list, *, iindex: tuple = ()
+    ) -> np.ndarray:
+        if self.strategy == SamplingStrategy.UNIFORM:
+            return self.get_uniform_sample(bounds, iindex=iindex)
+        elif self.strategy == SamplingStrategy.SLHD:
+            return self.get_slhd_sample(bounds, iindex=iindex)
+        else:
+            raise ValueError("Invalid sampling strategy")
 
 
 class NormalSampler(Sampler):
@@ -300,10 +352,7 @@ class NormalSampler(Sampler):
         numpy.ndarray
             Matrix with the generated samples.
         """
-        if self.strategy == SamplingStrategy.UNIFORM:
-            assert coord == ()
-            return self.get_uniform_sample(bounds, iindex=iindex)
-        elif self.strategy == SamplingStrategy.NORMAL:
+        if self.strategy == SamplingStrategy.NORMAL:
             return self.get_normal_sample(
                 bounds, iindex=iindex, mu=mu, coord=coord
             )
@@ -330,4 +379,5 @@ class NormalSampler(Sampler):
                     axis=0,
                 )
         else:
-            raise ValueError("Invalid sampling strategy")
+            assert coord == ()
+            return super().get_sample(bounds, iindex=iindex)

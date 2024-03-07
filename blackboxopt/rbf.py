@@ -37,7 +37,7 @@ from enum import Enum
 from scipy.spatial.distance import cdist
 from scipy.linalg import solve, solve_triangular
 
-from .utility import SLHDstandard
+from blackboxopt.sampling import Sampler
 
 RbfType = Enum("RbfType", ["LINEAR", "CUBIC", "THINPLATE"])
 
@@ -676,8 +676,9 @@ class RbfModel:
         self._m = m
         count = 0
         while True:
-            self._x[0:m, :] = SLHDstandard(dim, m, bounds=bounds)
-            self._x[0:m, self.iindex] = np.round(self._x[0:m, self.iindex])
+            self._x[0:m, :] = Sampler(m).get_slhd_sample(
+                bounds=bounds, iindex=self.iindex
+            )
             self._P[0:m, :] = self.pbasis(self._x[0:m, :])
             if np.linalg.matrix_rank(self._P[0:m, :]) == pdim or m < 2 * pdim:
                 break

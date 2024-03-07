@@ -20,14 +20,6 @@ blackboxopt.rbf module
    :undoc-members:
    :show-inheritance:
 
-blackboxopt.utility module
---------------------------
-
-.. automodule:: blackboxopt.utility
-   :members:
-   :undoc-members:
-   :show-inheritance:
-
 Module contents
 ---------------
 
