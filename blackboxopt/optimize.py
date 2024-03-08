@@ -31,11 +31,16 @@ __version__ = "0.1.0"
 __deprecated__ = False
 
 from copy import deepcopy
+from random import random
 import numpy as np
 from scipy.optimize import minimize
+from scipy.spatial import KDTree
 import time
 from dataclasses import dataclass
-import os
+
+from pymoo.core.problem import Problem
+from pymoo.optimize import minimize as pymoo_minimize
+from pymoo.algorithms.moo.nsga2 import NSGA2
 
 from blackboxopt.acquisition import (
     CoordinatePerturbation,
@@ -43,7 +48,7 @@ from blackboxopt.acquisition import (
     AcquisitionFunction,
 )
 
-from .rbf import RbfModel
+from .rbf import RbfModel, RbfType
 
 
 @dataclass
@@ -54,7 +59,7 @@ class OptimizeResult:
     ----------
     x : numpy.ndarray
         The solution of the optimization.
-    fx : float
+    fx : float | numpy.ndarray
         The value of the objective function at the solution.
     nit : int
         Number of iterations performed.
@@ -67,14 +72,14 @@ class OptimizeResult:
     """
 
     x: np.ndarray
-    fx: float
+    fx: float | np.ndarray
     nit: int
     nfev: int
     samples: np.ndarray
     fsamples: np.ndarray
 
 
-def initialize_optimization_output(
+def initialize_surrogate(
     fun,
     bounds: tuple | list,
     maxeval: int,
@@ -83,7 +88,7 @@ def initialize_optimization_output(
     surrogateModel=RbfModel(),
     samples: np.ndarray = np.array([]),
 ):
-    """Initialize the optimization output.
+    """Initialize the surrogate model and the output of the optimization.
 
     Parameters
     ----------
@@ -108,7 +113,6 @@ def initialize_optimization_output(
     OptimizeResult
         The optimization result.
     """
-    ncpu = os.cpu_count() or 1  # Number of CPUs for parallel evaluations
     dim = len(bounds)  # Dimension of the problem
     assert dim > 0
 
@@ -189,6 +193,110 @@ def initialize_optimization_output(
         raise ValueError(
             "Provide feasible initial samples or an initial guess"
         )
+
+    return out
+
+
+def find_pareto_front(x, fx, iStart=0):
+    pareto = [True] * len(x)
+    for i in range(iStart, len(x)):
+        for j in range(i):
+            if pareto[j]:
+                if all(fx[i] <= fx[j]) and any(fx[i] < fx[j]):
+                    # x[i] dominates x[j]
+                    pareto[j] = False
+                elif all(fx[j] <= fx[i]) and any(fx[j] < fx[i]):
+                    # x[j] dominates x[i]
+                    # No need to continue checking, otherwise the previous
+                    # iteration was not a balid Pareto front
+                    pareto[i] = False
+                    break
+    return [i for i in range(len(x)) if pareto[i]]
+
+
+def initialize_moo_surrogate(
+    fun,
+    bounds: tuple | list,
+    maxeval: int,
+    *,
+    surrogateModels=(RbfModel(),),
+    samples: np.ndarray = np.array([]),
+):
+    dim = len(bounds)  # Dimension of the problem
+    objdim = len(surrogateModels)  # Dimension of the objective function
+    assert dim > 0 and objdim > 0
+
+    # Initialize output
+    out = OptimizeResult(
+        x=np.array([]),
+        fx=np.array([]),
+        nit=0,
+        nfev=0,
+        samples=np.zeros((maxeval, dim)),
+        fsamples=np.zeros((maxeval, objdim)),
+    )
+
+    # Number of initial samples
+    m0 = surrogateModels[0].nsamples()
+    m = min(samples.shape[0], maxeval)
+
+    # Add new samples to the surrogate model
+    if m == 0 and m0 == 0:
+        # Initialize surrogate model
+        # TODO: Improve me! The initial design must make sense for all
+        # surrogate models. This has to do with the type of the surrogate model.
+        surrogateModels[0].create_initial_design(dim, bounds, maxeval)
+        for i in range(1, objdim):
+            surrogateModels[i].update_samples(surrogateModels[0].samples())
+
+        # Update m
+        m = surrogateModels[0].nsamples()
+    else:
+        # Add samples to the surrogate model
+        if m > 0:
+            for i in range(objdim):
+                surrogateModels[i].update_samples(samples)
+
+        # Check if samples are integer values for integer variables
+        if surrogateModels[0].iindex:
+            if any(
+                surrogateModels[0].samples()[:, surrogateModels[0].iindex]
+                != np.round(
+                    surrogateModels[0].samples()[:, surrogateModels[0].iindex]
+                )
+            ):
+                raise ValueError(
+                    "Initial samples must be integer values for integer variables"
+                )
+
+        # Check if samples are sufficient to build the surrogate model
+        for i in range(objdim):
+            if (
+                np.linalg.matrix_rank(surrogateModels[i].get_matrixP())
+                != surrogateModels[i].pdim()
+            ):
+                raise ValueError(
+                    "Initial samples are not sufficient to build the surrogate model"
+                )
+
+    # Evaluate initial samples and update output
+    if m > 0:
+        # Add new samples to the output
+        out.samples[0:m, :] = surrogateModels[0].samples()[m0:, :]
+
+        # Compute f(samples)
+        out.fsamples[0:m] = fun(out.samples[0:m, :])
+        out.nfev = m
+
+    # Create the pareto front
+    iPareto = find_pareto_front(
+        surrogateModels[0].samples(),
+        np.transpose([surrogateModels[i].fsamples() for i in range(objdim)]),
+    )
+    out.x = surrogateModels[0].samples()[iPareto, :]
+    out.fx = np.transpose(
+        [surrogateModels[i].fsamples()[iPareto] for i in range(objdim)]
+    )
 
     return out
 
@@ -338,7 +446,6 @@ def stochastic_response_surface(
         function method for the global optimization of expensive functions.
         INFORMS Journal on Computing, 19(4):497–509, 2007.
     """
-    ncpu = os.cpu_count() or 1  # Number of CPUs for parallel evaluations
     dim = len(bounds)  # Dimension of the problem
     assert dim > 0
 
@@ -350,7 +457,7 @@ def stochastic_response_surface(
     surrogateModel.reserve(surrogateModel.nsamples() + maxeval, dim)
 
     # Initialize output
-    out = initialize_optimization_output(
+    out = initialize_surrogate(
         fun,
         bounds,
         maxeval,
@@ -644,7 +751,6 @@ def target_value_optimization(
         black-box global optimization. J Glob Optim 41, 447–464 (2008).
         https://doi.org/10.1007/s10898-007-9256-8
     """
-    ncpu = os.cpu_count() or 1  # Number of CPUs for parallel evaluations
     dim = len(bounds)  # Dimension of the problem
     assert dim > 0
 
@@ -652,7 +758,7 @@ def target_value_optimization(
     surrogateModel.reserve(surrogateModel.nsamples() + maxeval, dim)
 
     # Initialize output
-    out = initialize_optimization_output(
+    out = initialize_surrogate(
         fun,
         bounds,
         maxeval,
@@ -1017,39 +1123,146 @@ def cptvl(
     )
 
 
+class MultiobjTVProblem(Problem):
+    def __init__(self, surrogateModels, tau, bounds):
+        self.surrogateModels = surrogateModels
+        self.tau = tau
+
+        dim = len(bounds)  # Dimension of the problem
+        xlow = np.array([bounds[i][0] for i in range(dim)])
+        xup = np.array([bounds[i][1] for i in range(dim)])
+
+        super().__init__(
+            n_var=dim, n_obj=len(surrogateModels), xl=xlow, xu=xup
+        )
+
+    def _evaluate(self, x, out):
+        out["F"] = np.column_stack(
+            [
+                np.abs(self.surrogateModels[i].eval(x) - self.tau[i])
+                for i in range(len(self.surrogateModels))
+            ]
+        )
+
+
 def socemo(
     fun,
     bounds: tuple | list,
     maxeval: int,
-    x0y0: tuple = (),
     *,
     surrogateModels=(RbfModel(),),
     samples: np.ndarray = np.array([]),
     disp: bool = False,
 ):
-    ncpu = os.cpu_count() or 1  # Number of CPUs for parallel evaluations
     dim = len(bounds)  # Dimension of the problem
     objdim = len(surrogateModels)  # Number of objective functions
-    assert dim > 0
+    assert dim > 0 and objdim > 0
 
     # Reserve space for the surrogate model to avoid repeated allocations
     for s in surrogateModels:
         s.reserve(s.nsamples() + maxeval, dim)
 
     # Initialize output
-    out = initialize_moo_output(
+    out = initialize_moo_surrogate(
         fun,
         bounds,
         maxeval,
-        x0y0,
         surrogateModels=surrogateModels,
         samples=samples,
     )
     m = out.nfev
 
+    # do until max number of f-evals reached or local min found
+    xselected = np.empty((0, dim))
+    ySelected = out.fsamples[0:m, :]
     while m < maxeval:
         if disp:
             print("Iteration: %d" % out.nit)
             print("fEvals: %d" % m)
+
+        # Update surrogate models
+        t0 = time.time()
+        for i in range(len(surrogateModels)):
+            surrogateModels[i].update_samples(xselected)
+            surrogateModels[i].update_coefficients(ySelected[i])
+        tf = time.time()
+        if disp:
+            print("Time to update surrogate model: %f s" % (tf - t0))
+
+        #
+        # 1. Define target values to fill gaps in the Pareto front
+        #
+
+        # Create a surrogate model for the Pareto front in the objective space
+        paretoModel = RbfModel(RbfType.LINEAR)
+        k = random.randint(0, objdim - 1)
+        paretoModel.update_samples(
+            np.array([out.fx[:, i] for i in range(objdim) if i != k])
+        )
+        paretoModel.update_coefficients(out.fx[:, k])
+
+        # Bounds in the pareto samples
+        xParetoLow = np.min(paretoModel.samples(), axis=0)
+        xParetoHigh = np.max(paretoModel.samples(), axis=0)
+        boundsPareto = [(xParetoLow[i], xParetoHigh[i]) for i in range(dim)]
+
+        # Minimum of delta_f maximizes the distance inside the Pareto front
+        def delta_f(tau, tree):
+            tauk = paretoModel.eval(tau)
+            _tau = np.concatenate((tau[0:k], tauk, tau[k:]))
+            return -tree.query(_tau)[0]
+
+        # Minimize delta_f
+        outLocal0 = minimize(
+            delta_f,
+            xParetoLow + random.rand(dim) * (xParetoHigh - xParetoLow),
+            args=(KDTree(out.fx)),
+            bounds=boundsPareto,
+        )
+        tau = np.concatenate(
+            (outLocal0.x[0:k], paretoModel.eval(outLocal0.x), outLocal0.x[k:])
+        )
+
+        # Minimum x ideally should be close to the target value tau
+        # For discontinuous Pareto fronts, the minimum may not exist, or it may
+        # be too far from the target value.
+        multiobjTVProblem = MultiobjTVProblem(surrogateModels, tau, bounds)
+        outLocal1 = pymoo_minimize(
+            multiobjTVProblem,
+            NSGA2(pop_size=100),
+            ("n_gen", 100),
+            seed=1,
+            verbose=False,
+        )
+        xselected = np.asarray(outLocal1.X).reshape(-1, dim)
+
+        # 2. Random perturbation of the currently nondominated points
+        # 3. Minimum point sampling
+        # 4. Uniform random points and scoring
+        # 5. Solving the surrogate multiobjective problem
+
+        # Compute f(xselected)
+        NumberNewSamples = xselected.shape[0]
+        ySelected = np.asarray(fun(xselected))
+
+        # Update the Pareto front
+        out.x = np.concatenate((out.x, xselected), axis=0)
+        out.fx = np.concatenate((out.fx, ySelected), axis=0)
+        iPareto = find_pareto_front(out.x, out.fx)
+        out.x = out.x[iPareto, :]
+        out.fx = out.fx[iPareto, :]
+
+        # Update samples and fsamples in out
+        out.samples[m : m + NumberNewSamples, :] = xselected
+        out.fsamples[m : m + NumberNewSamples, :] = ySelected
+
+        # Update the counters
+        m = m + NumberNewSamples
+        out.nit = out.nit + 1
+
+    # Update output
+    out.nfev = m
+    out.samples.resize(m, dim)
+    out.fsamples.resize(m, objdim)
 
     return out
