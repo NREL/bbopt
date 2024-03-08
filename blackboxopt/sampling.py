@@ -43,7 +43,7 @@ class SamplingStrategy(Enum):
     NORMAL = 1  # normal distribution
     DDS = 2  # DDS. Used in the DYCORS algorithm
     UNIFORM = 3  # uniform distribution
-    DDS_UNIFORM = 4  # sample twice, first DDS then uniform distribution if there is no fixed variable
+    DDS_UNIFORM = 4  # sample half DDS, then half uniform distribution
     SLHD = 5  # Symmetric Latin Hypercube Design
 
 
@@ -58,8 +58,12 @@ class Sampler:
         Number of samples to be generated.
     """
 
-    def __init__(self, n: int) -> None:
-        self.strategy = SamplingStrategy.UNIFORM
+    def __init__(
+        self,
+        n: int,
+        strategy: SamplingStrategy = SamplingStrategy.UNIFORM,
+    ) -> None:
+        self.strategy = strategy
         self.n = n
         assert self.n > 0
 
@@ -172,19 +176,12 @@ class NormalSampler(Sampler):
         sigma_max: float = float("inf"),
         strategy: SamplingStrategy = SamplingStrategy.NORMAL,
     ) -> None:
-        super().__init__(n)
+        super().__init__(n, strategy=strategy)
         self.sigma = sigma
         self.sigma_min = sigma_min
         self.sigma_max = sigma_max
-        self.strategy = strategy
         assert (
             0 <= self.sigma_min <= self.sigma <= self.sigma_max <= float("inf")
-        )
-        assert self.strategy in (
-            SamplingStrategy.NORMAL,
-            SamplingStrategy.DDS,
-            SamplingStrategy.UNIFORM,
-            SamplingStrategy.DDS_UNIFORM,
         )
 
     def get_normal_sample(
@@ -361,23 +358,22 @@ class NormalSampler(Sampler):
                 bounds, probability, iindex=iindex, mu=mu, coord=coord
             )
         elif self.strategy == SamplingStrategy.DDS_UNIFORM:
-            if len(coord) > 0:
-                return self.get_dds_sample(
-                    bounds, probability, iindex=iindex, mu=mu, coord=coord
-                )
-            else:
-                return np.concatenate(
-                    (
-                        self.get_dds_sample(
-                            bounds,
-                            probability,
-                            iindex=iindex,
-                            mu=mu,
-                        ),
-                        self.get_uniform_sample(bounds, iindex=iindex),
-                    ),
-                    axis=0,
-                )
+            nTotal = self.n
+
+            self.n = self.n // 2
+            sample0 = self.get_dds_sample(
+                bounds,
+                probability,
+                iindex=iindex,
+                mu=mu,
+                coord=coord,
+            )
+
+            self.n = nTotal - self.n
+            sample1 = self.get_uniform_sample(bounds, iindex=iindex)
+
+            self.n = nTotal
+            return np.concatenate((sample0, sample1), axis=0)
         else:
             assert coord == ()
             return super().get_sample(bounds, iindex=iindex)
