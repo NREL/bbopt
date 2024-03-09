@@ -24,11 +24,12 @@ from scipy.spatial.distance import cdist
 from scipy.spatial import KDTree
 from scipy.special import gamma
 from scipy.linalg import ldl
-from scipy.optimize import minimize
-from .sampling import NormalSampler, Sampler
+from scipy.optimize import minimize, differential_evolution
 
-from pymoo.core.problem import ElementwiseProblem
-from pymoo.core.variable import Real, Integer
+from .sampling import NormalSampler, Sampler
+from .rbf import RbfModel, RbfType
+from .problem import ProblemWithConstraint, ProblemNoConstraint
+
 from pymoo.core.mixed import MixedVariableGA
 from pymoo.optimize import minimize as pymoo_minimize
 from pymoo.config import Config
@@ -38,8 +39,9 @@ Config.warnings["not_compiled"] = False
 
 def find_best(
     x: np.ndarray,
+    distx: np.ndarray,
+    fx: np.ndarray,
     n: int,
-    surrogateModel,
     tol: float = 1e-3,
     weightpattern=[0.3, 0.5, 0.8, 0.95],
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -62,10 +64,15 @@ def find_best(
     ----------
     x : numpy.ndarray
         Matrix with candidate points.
+    distx: numpy.ndarray
+        Matrix with the distances between the candidate points and the
+        sampled points. The number of rows of distx must be equal to the number
+        of rows of x.
+    fx : numpy.ndarray
+        Vector with the estimated values for the objective function on the
+        candidate points.
     n : int
         Number of points to be selected for the next costly evaluation.
-    surrogateModel : Surrogate model
-        Surrogate model.
     tol : float
         Tolerance value for excluding candidate points that are too close to already sampled points.
     weightpattern: list-like, optional
@@ -80,23 +87,32 @@ def find_best(
         the (n+m) sampled points (m is the number of points that have been
         sampled so far)
     """
-    fx, distx = surrogateModel.eval(x)
+    # Compute neighbor distances
     dist = np.min(distx, axis=1)
-    assert fx.ndim == 1
 
-    m = surrogateModel.nsamples()
-    dim = surrogateModel.dim()
+    m = distx.shape[1]
+    dim = x.shape[1]
 
     xselected = np.zeros((n, dim))
     distselected = np.zeros((n, m + n))
 
     # Scale function values to [0,1]
-    minval = np.amin(fx)
-    maxval = np.amax(fx)
-    if minval == maxval:
-        scaledvalue = np.ones(fx.size)
-    else:
-        scaledvalue = (fx - minval) / (maxval - minval)
+    if fx.ndim == 1:
+        minval = np.min(fx)
+        maxval = np.max(fx)
+        if minval == maxval:
+            scaledvalue = np.ones(fx.size)
+        else:
+            scaledvalue = (fx - minval) / (maxval - minval)
+    elif fx.ndim == 2:
+        minval = np.min(fx, axis=0)
+        maxval = np.max(fx, axis=0)
+        scaledvalue = np.average(
+            np.where(
+                maxval - minval > 0, (fx - minval) / (maxval - minval), 1
+            ),
+            axis=1,
+        )
 
     def argminscore(dist: np.ndarray, valueweight: float) -> np.intp:
         """Gets the index of the candidate point that minimizes the score.
@@ -115,8 +131,8 @@ def find_best(
             Index of the selected candidate.
         """
         # Scale distance values to [0,1]
-        maxdist = np.amax(dist)
-        mindist = np.amin(dist)
+        maxdist = np.max(dist)
+        mindist = np.min(dist)
         if maxdist == mindist:
             scaleddist = np.ones(dist.size)
         else:
@@ -128,10 +144,12 @@ def find_best(
         # Assign bad values to points that are too close to already
         # evaluated/chosen points
         score[dist < tol] = np.inf
-        assert np.min(score) != np.inf
 
         # Return index with the best (smallest) score
-        return np.argmin(score)
+        iBest = np.argmin(score)
+        assert score[iBest] != np.inf
+
+        return iBest
 
     selindex = argminscore(dist, weightpattern[0])
     xselected[0, :] = x[selindex, :]
@@ -269,6 +287,14 @@ class CoordinatePerturbation(AcquisitionFunction):
         minxrange = np.min([b[1] - b[0] for b in bounds])
         sigma = self.sampler.sigma * minxrange
 
+        # Check if surrogateModel is a list of models
+        listOfSurrogates = isinstance(surrogateModel, list)
+        iindex = (
+            surrogateModel[0].iindex
+            if listOfSurrogates
+            else surrogateModel.iindex
+        )
+
         # Probability
         if self.maxeval > 1:
             self._prob = min(20 / dim, 1) * (
@@ -277,17 +303,34 @@ class CoordinatePerturbation(AcquisitionFunction):
         else:
             self._prob = 1.0
 
-        CandPoint = self.sampler.get_sample(
+        # Generate candidates
+        x = self.sampler.get_sample(
             bounds,
-            iindex=surrogateModel.iindex,
+            iindex=iindex,
             mu=xbest,
             probability=self._prob,
             coord=coord,
         )
+        nCand = x.shape[0]
+
+        # Evaluate candidates
+        if not listOfSurrogates:
+            fx, distx = surrogateModel.eval(x)
+        else:
+            objdim = len(surrogateModel)
+            fx = np.empty((nCand, objdim))
+            distx = np.empty((nCand, nCand))
+            for i in range(objdim):
+                fx[:, i], dist = surrogateModel[i].eval(x)
+                if i == 0:
+                    distx = dist
+
+        # Select best candidates
         xselected, _ = find_best(
-            CandPoint,
+            x,
+            distx,
+            fx,
             n,
-            surrogateModel,
             tol=self.reltol * sigma * np.sqrt(dim),
             weightpattern=self.weightpattern,
         )
@@ -303,6 +346,12 @@ class CoordinatePerturbation(AcquisitionFunction):
         self.neval += n
 
         return xselected
+
+    def tol(self, bounds: tuple | list) -> float:
+        dim = len(bounds)
+        minxrange = np.min([b[1] - b[0] for b in bounds])
+        sigma = self.sampler.sigma * minxrange
+        return self.reltol * sigma * np.sqrt(dim)
 
 
 class UniformAcquisition(AcquisitionFunction):
@@ -362,78 +411,42 @@ class UniformAcquisition(AcquisitionFunction):
         numpy.ndarray
             n-by-dim matrix with the selected points.
         """
-
-        CandPoint = self.sampler.get_uniform_sample(
-            bounds, iindex=surrogateModel.iindex
+        # Check if surrogateModel is a list of models
+        listOfSurrogates = isinstance(surrogateModel, list)
+        iindex = (
+            surrogateModel[0].iindex
+            if listOfSurrogates
+            else surrogateModel.iindex
         )
+
+        # Generate candidates
+        x = self.sampler.get_uniform_sample(bounds, iindex=iindex)
+        nCand = x.shape[0]
+
+        # Evaluate candidates
+        if not listOfSurrogates:
+            fx, distx = surrogateModel.eval(x)
+        else:
+            objdim = len(surrogateModel)
+            fx = np.empty((nCand, objdim))
+            distx = np.empty((nCand, nCand))
+            for i in range(objdim):
+                fx[:, i], dist = surrogateModel[i].eval(x)
+                if i == 0:
+                    distx = dist
+
+        # Select best candidates
         xselected, _ = find_best(
-            CandPoint,
+            x,
+            distx,
+            fx,
             n,
-            surrogateModel,
             tol=self.tol,
             weightpattern=(self.weight,),
         )
         assert n == xselected.shape[0]
 
         return xselected
-
-
-class ProblemWithConstraint(ElementwiseProblem):
-    def __init__(self, objfunc, gfunc, bounds, intArgs):
-        self.objfunc = objfunc
-        self.gfunc = gfunc
-
-        dim = len(bounds)  # Dimension of the problem
-        xlow = np.array([bounds[i][0] for i in range(dim)])
-        xup = np.array([bounds[i][1] for i in range(dim)])
-
-        vars = {}
-        for i in range(dim):
-            if intArgs[i]:
-                vars[i] = Integer(bounds=bounds[i])
-            else:
-                vars[i] = Real(bounds=bounds[i])
-
-        super().__init__(
-            vars=vars,
-            n_var=dim,
-            n_obj=1,
-            n_ieq_constr=1,
-            xl=xlow,
-            xu=xup,
-        )
-
-    def _evaluate(self, xdict, out, *args, **kwargs):
-        x = np.array([xdict[i] for i in range(self.n_var)])
-        out["F"] = self.objfunc(x)
-        out["G"] = self.gfunc(x)
-
-
-class ProblemNoConstraint(ElementwiseProblem):
-    def __init__(self, objfunc, bounds, intArgs):
-        self.objfunc = objfunc
-
-        dim = len(bounds)  # Dimension of the problem
-        xlow = np.array([bounds[i][0] for i in range(dim)])
-        xup = np.array([bounds[i][1] for i in range(dim)])
-
-        vars = {}
-        for i in range(dim):
-            if intArgs[i]:
-                vars[i] = Integer(bounds=bounds[i])
-            else:
-                vars[i] = Real(bounds=bounds[i])
-
-        super().__init__(
-            vars=vars,
-            n_obj=1,
-            xl=xlow,
-            xu=xup,
-        )
-
-    def _evaluate(self, xdict, out, *args, **kwargs):
-        x = np.array([xdict[i] for i in range(self.n_var)])
-        out["F"] = self.objfunc(x)
 
 
 class TargetValueAcquisition(AcquisitionFunction):
@@ -771,3 +784,36 @@ class MinimizeSurrogate(AcquisitionFunction):
                     bounds, iindex=surrogateModel.iindex
                 )
             return selected.reshape(1, -1)
+
+
+def pareto_front_target(paretoFront):
+    objdim = paretoFront.shape[1]
+
+    # Create a surrogate model for the Pareto front in the objective space
+    paretoModel = RbfModel(RbfType.LINEAR)
+    k = random.randint(0, objdim - 1)
+    paretoModel.update_samples(
+        np.array([paretoFront[:, i] for i in range(objdim) if i != k]).T
+    )
+    paretoModel.update_coefficients(paretoFront[:, k])
+    dim = paretoModel.dim()
+
+    # Bounds in the pareto samples
+    xParetoLow = np.min(paretoModel.samples(), axis=0)
+    xParetoHigh = np.max(paretoModel.samples(), axis=0)
+    boundsPareto = [(xParetoLow[i], xParetoHigh[i]) for i in range(dim)]
+
+    # Minimum of delta_f maximizes the distance inside the Pareto front
+    tree = KDTree(paretoFront)
+
+    def delta_f(tau):
+        tauk, _ = paretoModel.eval(tau)
+        _tau = np.concatenate((tau[0:k], tauk, tau[k:]))
+        return -tree.query(_tau)[0]
+
+    # Minimize delta_f
+    res = differential_evolution(delta_f, boundsPareto)
+    tauk, _ = paretoModel.eval(res.x)
+    tau = np.concatenate((res.x[0:k], tauk, res.x[k:]))
+
+    return tau

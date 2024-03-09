@@ -37,7 +37,7 @@ from enum import Enum
 from scipy.spatial.distance import cdist
 from scipy.linalg import solve, solve_triangular
 
-from blackboxopt.sampling import Sampler
+from .sampling import Sampler
 
 RbfType = Enum("RbfType", ["LINEAR", "CUBIC", "THINPLATE"])
 
@@ -210,9 +210,8 @@ class RbfModel:
         out: int
             Dimension of the domain space.
         """
-        if self.samples().ndim == 1:
-            return 1
-        elif self.samples().ndim == 2:
+        assert self._x.size == 0 or self._x.ndim == 2
+        if self.samples().ndim == 2:
             return self.samples().shape[1]
         else:
             return 0

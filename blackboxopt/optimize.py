@@ -30,25 +30,32 @@ __credits__ = [
 __version__ = "0.1.0"
 __deprecated__ = False
 
+import random
 from copy import deepcopy
-from random import random
 import numpy as np
 from scipy.optimize import minimize
 from scipy.spatial import KDTree
+from scipy.spatial.distance import cdist
 import time
 from dataclasses import dataclass
 
-from pymoo.core.problem import Problem
 from pymoo.optimize import minimize as pymoo_minimize
 from pymoo.algorithms.moo.nsga2 import NSGA2
+from pymoo.core.mixed import MixedVariableGA
 
-from blackboxopt.acquisition import (
+from .acquisition import (
     CoordinatePerturbation,
     TargetValueAcquisition,
     AcquisitionFunction,
+    UniformAcquisition,
+    pareto_front_target,
 )
-
-from .rbf import RbfModel, RbfType
+from .problem import (
+    MultiobjTVProblem,
+    ProblemNoConstraint,
+    MultiobjSurrogateProblem,
+)
+from .rbf import RbfModel
 
 
 @dataclass
@@ -258,12 +265,10 @@ def initialize_moo_surrogate(
                 surrogateModels[i].update_samples(samples)
 
         # Check if samples are integer values for integer variables
-        if surrogateModels[0].iindex:
+        if iindex:
             if any(
-                surrogateModels[0].samples()[:, surrogateModels[0].iindex]
-                != np.round(
-                    surrogateModels[0].samples()[:, surrogateModels[0].iindex]
-                )
+                surrogateModels[0].samples()[:, iindex]
+                != np.round(surrogateModels[0].samples()[:, iindex])
             ):
                 raise ValueError(
                     "Initial samples must be integer values for integer variables"
@@ -1123,40 +1128,26 @@ def cptvl(
     )
 
 
-class MultiobjTVProblem(Problem):
-    def __init__(self, surrogateModels, tau, bounds):
-        self.surrogateModels = surrogateModels
-        self.tau = tau
-
-        dim = len(bounds)  # Dimension of the problem
-        xlow = np.array([bounds[i][0] for i in range(dim)])
-        xup = np.array([bounds[i][1] for i in range(dim)])
-
-        super().__init__(
-            n_var=dim, n_obj=len(surrogateModels), xl=xlow, xu=xup
-        )
-
-    def _evaluate(self, x, out):
-        out["F"] = np.column_stack(
-            [
-                np.abs(self.surrogateModels[i].eval(x) - self.tau[i])
-                for i in range(len(self.surrogateModels))
-            ]
-        )
-
-
 def socemo(
     fun,
     bounds: tuple | list,
     maxeval: int,
     *,
     surrogateModels=(RbfModel(),),
+    acquisitionFunc: CoordinatePerturbation = CoordinatePerturbation(0),
+    acquisitionFuncGlobal: UniformAcquisition = UniformAcquisition(0),
     samples: np.ndarray = np.array([]),
     disp: bool = False,
 ):
     dim = len(bounds)  # Dimension of the problem
     objdim = len(surrogateModels)  # Number of objective functions
     assert dim > 0 and objdim > 0
+
+    # Use a number of candidates that is greater than 1
+    if acquisitionFunc.sampler.n <= 1:
+        acquisitionFunc.sampler.n = min(500 * dim, 5000)
+    if acquisitionFuncGlobal.sampler.n <= 1:
+        acquisitionFuncGlobal.sampler.n = min(500 * dim, 5000)
 
     # Reserve space for the surrogate model to avoid repeated allocations
     for s in surrogateModels:
@@ -1172,6 +1163,12 @@ def socemo(
     )
     m = out.nfev
 
+    # Objects needed for the iterations
+    iindex = surrogateModels[0].iindex
+    intArgs = [True for j in range(dim) if j in iindex]
+    moooptimizer = NSGA2(pop_size=100)
+    gaoptimizer = MixedVariableGA(pop_size=100)
+
     # do until max number of f-evals reached or local min found
     xselected = np.empty((0, dim))
     ySelected = out.fsamples[0:m, :]
@@ -1182,7 +1179,7 @@ def socemo(
 
         # Update surrogate models
         t0 = time.time()
-        for i in range(len(surrogateModels)):
+        for i in range(objdim):
             surrogateModels[i].update_samples(xselected)
             surrogateModels[i].update_coefficients(ySelected[i])
         tf = time.time()
@@ -1192,40 +1189,14 @@ def socemo(
         #
         # 1. Define target values to fill gaps in the Pareto front
         #
+        t0 = time.time()
 
-        # Create a surrogate model for the Pareto front in the objective space
-        paretoModel = RbfModel(RbfType.LINEAR)
-        k = random.randint(0, objdim - 1)
-        paretoModel.update_samples(
-            np.array([out.fx[:, i] for i in range(objdim) if i != k])
-        )
-        paretoModel.update_coefficients(out.fx[:, k])
+        # Find a target value tau in the Pareto front
+        tau = pareto_front_target(out.fx)
 
-        # Bounds in the pareto samples
-        xParetoLow = np.min(paretoModel.samples(), axis=0)
-        xParetoHigh = np.max(paretoModel.samples(), axis=0)
-        boundsPareto = [(xParetoLow[i], xParetoHigh[i]) for i in range(dim)]
-
-        # Minimum of delta_f maximizes the distance inside the Pareto front
-        def delta_f(tau, tree):
-            tauk = paretoModel.eval(tau)
-            _tau = np.concatenate((tau[0:k], tauk, tau[k:]))
-            return -tree.query(_tau)[0]
-
-        # Minimize delta_f
-        outLocal0 = minimize(
-            delta_f,
-            xParetoLow + random.rand(dim) * (xParetoHigh - xParetoLow),
-            args=(KDTree(out.fx)),
-            bounds=boundsPareto,
-        )
-        tau = np.concatenate(
-            (outLocal0.x[0:k], paretoModel.eval(outLocal0.x), outLocal0.x[k:])
-        )
-
-        # Minimum x ideally should be close to the target value tau
-        # For discontinuous Pareto fronts, the minimum may not exist, or it may
-        # be too far from the target value.
+        # Find the Pareto-optimal solution set that minimizes dist(s(x),tau).
+        # For discontinuous Pareto fronts in the original problem, such set
+        # may not exist, or it may be too far from the target value.
         multiobjTVProblem = MultiobjTVProblem(surrogateModels, tau, bounds)
         outLocal1 = pymoo_minimize(
             multiobjTVProblem,
@@ -1234,15 +1205,197 @@ def socemo(
             seed=1,
             verbose=False,
         )
-        xselected = np.asarray(outLocal1.X).reshape(-1, dim)
 
+        # If the Pareto-optimal solution set exists, define the sample point
+        # that minimizes the L1 distance to the target value
+        if outLocal1.success:
+            idx = np.sum(np.abs(outLocal1.F - tau), axis=1).argmin()
+            xselected = np.concatenate(
+                (xselected, outLocal1.X[idx, :]), axis=0
+            )
+
+        # Record time
+        tf = time.time()
+        if disp:
+            print(
+                "Define target values to fill gaps in the Pareto front: %f s"
+                % (tf - t0)
+            )
+
+        #
         # 2. Random perturbation of the currently nondominated points
+        #
+        t0 = time.time()
+
+        # Find a collection of points that are close to the Pareto front
+        bestCandidates = np.empty((0, dim))
+        for i in range(out.x.shape[0]):
+            x = acquisitionFunc.acquire(
+                surrogateModels,
+                bounds,
+                (-np.Inf, np.Inf),
+                1,
+                xbest=out.x[i, :],
+            )
+            # Choose points that are not too close to previously selected points
+            if bestCandidates.size == 0:
+                bestCandidates = x.reshape(1, -1)
+            else:
+                distNeighborOfx = np.min(cdist(x, bestCandidates)).item()
+                if distNeighborOfx >= acquisitionFunc.tol(bounds):
+                    bestCandidates = np.concatenate(
+                        (bestCandidates, x), axis=0
+                    )
+
+        # Eliminate points predicted to be dominated
+        nondominatedAndBestCandidates = np.concatenate(
+            (out.x, bestCandidates), axis=0
+        )
+        fnondominatedAndBestCandidates = np.concatenate(
+            (
+                out.fx,
+                np.array(
+                    [s.evaluate(bestCandidates) for s in surrogateModels]
+                ).T,
+            ),
+            axis=0,
+        )
+        idxPredictedPareto = find_pareto_front(
+            nondominatedAndBestCandidates,
+            fnondominatedAndBestCandidates,
+            iStart=out.x.shape[0],
+        )
+        idxPredictedBest = [
+            i for i in idxPredictedPareto if i >= out.x.shape[0]
+        ]
+        bestCandidates = bestCandidates[idxPredictedBest, :]
+
+        # Add remaining best candidates to the selected points
+        xselected = np.concatenate((xselected, bestCandidates), axis=0)
+
+        # Record time
+        tf = time.time()
+        if disp:
+            print(
+                "Random perturbation of the currently nondominated points: %f s"
+                % (tf - t0)
+            )
+
+        #
         # 3. Minimum point sampling
+        #
+        t0 = time.time()
+
+        # Find endpoints of the Pareto front
+        bestCandidates = np.empty((objdim, dim))
+        for i in range(objdim):
+            minimumPointProblem = ProblemNoConstraint(
+                lambda x: surrogateModels[i].evaluate(x)[0], bounds, intArgs
+            )
+            res = pymoo_minimize(
+                minimumPointProblem, gaoptimizer, verbose=False
+            )
+            bestCandidates[i, :] = res.X
+
+        # Discard points that are too close to eachother and previously sampled
+        # points.
+        tree = KDTree(out.samples[0:m, :])
+        selectedIdx = []
+        for i in range(objdim):
+            distNeighbor = tree.query(bestCandidates[i, :])[0]
+            if selectedIdx:
+                distNeighbor = min(
+                    distNeighbor,
+                    np.min(
+                        cdist(
+                            bestCandidates[i, :],
+                            bestCandidates[selectedIdx, :],
+                        )
+                    ).item(),
+                )
+            if distNeighbor >= acquisitionFunc.tol(bounds):
+                selectedIdx.append(i)
+        bestCandidates = bestCandidates[selectedIdx, :]
+
+        if bestCandidates.size == 0:
+            minimumPointProblem = ProblemNoConstraint(
+                lambda x: -tree.query(x)[0], bounds, intArgs
+            )
+            res = pymoo_minimize(
+                minimumPointProblem, gaoptimizer, verbose=False
+            )
+            bestCandidates = np.asarray(res.X)
+
+        # Add remaining best candidates to the selected points
+        xselected = np.concatenate((xselected, bestCandidates), axis=0)
+
+        # Record time
+        tf = time.time()
+        if disp:
+            print("Minimum point sampling: %f s" % (tf - t0))
+
+        #
         # 4. Uniform random points and scoring
+        #
+        t0 = time.time()
+
+        # Add uniform random points to the selected points
+        np.concatenate(
+            (
+                xselected,
+                acquisitionFuncGlobal.acquire(
+                    surrogateModels, bounds, (-np.inf, np.inf), 1
+                ),
+            ),
+            axis=0,
+        )
+
+        # Record time
+        tf = time.time()
+        if disp:
+            print("Uniform random points and scoring: %f s" % (tf - t0))
+
+        #
         # 5. Solving the surrogate multiobjective problem
+        #
+        t0 = time.time()
+
+        # Solve the surrogate multiobjective problem
+        multiobjSurrogateProblem = MultiobjSurrogateProblem(
+            surrogateModels, bounds
+        )
+        outLocal2 = pymoo_minimize(
+            multiobjSurrogateProblem,
+            NSGA2(pop_size=100),
+            ("n_gen", 100),
+            seed=1,
+            verbose=False,
+        )
+
+        # If the Pareto-optimal solution set exists, randomly select 2*objdim
+        # points from the Pareto front
+        if outLocal2.success:
+            nMax = outLocal2.X.shape[0]
+            idx = random.sample(range(nMax - 1), min(2 * objdim, nMax))
+            xselected = np.concatenate(
+                (xselected, outLocal2.X[idx, :]), axis=0
+            )
+
+        # Record time
+        tf = time.time()
+        if disp:
+            print(
+                "Solving the surrogate multiobjective problem: %f s"
+                % (tf - t0)
+            )
+
+        #
+        # 6. Evaluate the objective function and update the Pareto front
+        #
+        NumberNewSamples = xselected.shape[0]
+        print("Number of new samples: ", NumberNewSamples)
 
         # Compute f(xselected)
-        NumberNewSamples = xselected.shape[0]
         ySelected = np.asarray(fun(xselected))
 
         # Update the Pareto front

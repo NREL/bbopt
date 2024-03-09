@@ -100,6 +100,21 @@ class Sampler:
     def get_slhd_sample(
         self, bounds: tuple | list, *, iindex: tuple = ()
     ) -> np.ndarray:
+        """Creates a Symmetric Latin Hypercube Design.
+
+        Parameters
+        ----------
+        bounds : tuple | list
+            Bounds for variables. Each element of the tuple must be a tuple with two elements,
+            corresponding to the lower and upper bound for the variable.
+        iindex : tuple, optional
+            Indices of the input space that are integer. The default is ().
+
+        Returns
+        -------
+        numpy.ndarray
+            Matrix with the generated samples.
+        """
         d = len(bounds)
         m = self.n
 
@@ -108,8 +123,7 @@ class Sampler:
         for j in range(d):
             delta = (bounds[j][1] - bounds[j][0]) / m
             X[:, j] = [
-                bounds[j][0] + ((2.0 * (i + 1) - 1) / 2.0) * delta
-                for i in range(m)
+                bounds[j][0] + ((2 * i + 1) / 2.0) * delta for i in range(m)
             ]
         X[:, iindex] = np.round(X[:, iindex])
 
@@ -139,10 +153,19 @@ class Sampler:
 
         return X
 
-    # Alias for get_uniform_sample
     def get_sample(
         self, bounds: tuple | list, *, iindex: tuple = ()
     ) -> np.ndarray:
+        """Generate a sample.
+
+        Parameters
+        ----------
+        bounds : tuple | list
+            Bounds for variables. Each element of the tuple must be a tuple with two elements,
+            corresponding to the lower and upper bound for the variable.
+        iindex : tuple, optional
+            Indices of the input space that are integer. The default is ().
+        """
         if self.strategy == SamplingStrategy.UNIFORM:
             return self.get_uniform_sample(bounds, iindex=iindex)
         elif self.strategy == SamplingStrategy.SLHD:
