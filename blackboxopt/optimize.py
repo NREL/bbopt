@@ -1220,11 +1220,11 @@ def socemo(
             # may not exist, or it may be too far from the target value.
             t0local = time.time()
             multiobjTVProblem = MultiobjTVProblem(surrogateModels, tau, bounds)
-            outLocal1 = pymoo_minimize(
+            res = pymoo_minimize(
                 multiobjTVProblem,
                 moooptimizer,
                 ("n_gen", 100),
-                seed=1,
+                seed=1 + m,
                 verbose=False,
             )
             tflocal = time.time()
@@ -1236,10 +1236,10 @@ def socemo(
 
             # If the Pareto-optimal solution set exists, define the sample point
             # that minimizes the L1 distance to the target value
-            if outLocal1.X is not None:
-                idx = np.sum(np.abs(outLocal1.F - tau), axis=1).argmin()
+            if res.X is not None:
+                idx = np.sum(np.abs(res.F - tau), axis=1).argmin()
                 xselected = np.concatenate(
-                    (xselected, outLocal1.X[idx, :].reshape(1, -1)), axis=0
+                    (xselected, res.X[idx, :].reshape(1, -1)), axis=0
                 )
                 NumberNewSamples = 1
             else:
@@ -1426,20 +1426,20 @@ def socemo(
             multiobjSurrogateProblem = MultiobjSurrogateProblem(
                 surrogateModels, bounds
             )
-            outLocal2 = pymoo_minimize(
+            res = pymoo_minimize(
                 multiobjSurrogateProblem,
                 moooptimizer,
                 ("n_gen", 100),
-                seed=1,
+                seed=1 + m,
                 verbose=False,
             )
 
             # If the Pareto-optimal solution set exists, randomly select 2*objdim
             # points from the Pareto front
-            if outLocal2.X is not None:
-                nMax = outLocal2.X.shape[0]
-                idx = random.sample(range(nMax - 1), min(2 * objdim, nMax - 1))
-                bestCandidates = outLocal2.X[idx, :]
+            if res.X is not None:
+                nMax = res.X.shape[0]
+                idx = random.sample(range(nMax), min(2 * objdim, nMax))
+                bestCandidates = res.X[idx, :]
 
             # Discard points that are too close to eachother and previously sampled
             # points.
