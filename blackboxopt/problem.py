@@ -87,7 +87,7 @@ class MultiobjTVProblem(ElementwiseProblem):
         x = np.array([xdict[i] for i in range(self.n_var)])
         out["F"] = np.array(
             [
-                abs(self.surrogateModels[i].eval(x) - self.tau[i])
+                abs(self.surrogateModels[i].eval(x)[0] - self.tau[i])
                 for i in range(self.n_obj)
             ]
         )
@@ -115,5 +115,5 @@ class MultiobjSurrogateProblem(ElementwiseProblem):
     def _evaluate(self, xdict, out):
         x = np.array([xdict[i] for i in range(self.n_var)])
         out["F"] = np.array(
-            [self.surrogateModels[i].eval(x) for i in range(self.n_obj)]
+            [self.surrogateModels[i].eval(x)[0] for i in range(self.n_obj)]
         )

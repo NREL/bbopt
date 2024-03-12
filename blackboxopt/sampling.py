@@ -65,7 +65,6 @@ class Sampler:
     ) -> None:
         self.strategy = strategy
         self.n = n
-        assert self.n > 0
 
     def get_uniform_sample(
         self, bounds: tuple | list, *, iindex: tuple = ()

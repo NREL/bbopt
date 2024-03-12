@@ -246,7 +246,7 @@ class CoordinatePerturbation(AcquisitionFunction):
         self.neval = 0
         self.maxeval = maxeval
         self.sampler = sampler
-        self.weightpattern = weightpattern
+        self.weightpattern = list(weightpattern)
         self.reltol = reltol
 
     def acquire(
@@ -786,7 +786,7 @@ class MinimizeSurrogate(AcquisitionFunction):
             return selected.reshape(1, -1)
 
 
-def pareto_front_target(paretoFront):
+def pareto_front_target(paretoFront, oldTV=np.array([])):
     objdim = paretoFront.shape[1]
 
     # Create a surrogate model for the Pareto front in the objective space
@@ -804,7 +804,7 @@ def pareto_front_target(paretoFront):
     boundsPareto = [(xParetoLow[i], xParetoHigh[i]) for i in range(dim)]
 
     # Minimum of delta_f maximizes the distance inside the Pareto front
-    tree = KDTree(paretoFront)
+    tree = KDTree(np.concatenate((paretoFront, oldTV), axis=0))
 
     def delta_f(tau):
         tauk, _ = paretoModel.eval(tau)
