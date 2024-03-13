@@ -28,13 +28,36 @@ from scipy.optimize import minimize, differential_evolution
 
 from .sampling import NormalSampler, Sampler
 from .rbf import RbfModel, RbfType
-from .problem import ProblemWithConstraint, ProblemNoConstraint
+from .problem import (
+    ProblemWithConstraint,
+    ProblemNoConstraint,
+    MultiobjTVProblem,
+    MultiobjSurrogateProblem,
+)
 
+from pymoo.algorithms.moo.nsga2 import RankAndCrowdingSurvival
 from pymoo.core.mixed import MixedVariableGA
 from pymoo.optimize import minimize as pymoo_minimize
 from pymoo.config import Config
 
 Config.warnings["not_compiled"] = False
+
+
+def find_pareto_front(x, fx, iStart=0):
+    pareto = [True] * len(x)
+    for i in range(iStart, len(x)):
+        for j in range(i):
+            if pareto[j]:
+                if all(fx[i] <= fx[j]) and any(fx[i] < fx[j]):
+                    # x[i] dominates x[j]
+                    pareto[j] = False
+                elif all(fx[j] <= fx[i]) and any(fx[j] < fx[i]):
+                    # x[j] dominates x[i]
+                    # No need to continue checking, otherwise the previous
+                    # iteration was not a balid Pareto front
+                    pareto[i] = False
+                    break
+    return [i for i in range(len(x)) if pareto[i]]
 
 
 def find_best(
@@ -185,7 +208,7 @@ class AcquisitionFunction:
         self,
         surrogateModel,
         bounds: tuple | list,
-        fbounds: tuple | list,
+        fbounds: tuple | list = (),
         n: int = 1,
     ) -> np.ndarray:
         """Acquire n points.
@@ -253,7 +276,7 @@ class CoordinatePerturbation(AcquisitionFunction):
         self,
         surrogateModel,
         bounds: tuple | list,
-        fbounds: tuple | list,
+        fbounds: tuple | list = (),
         n: int = 1,
         *,
         xbest: np.ndarray = np.array([0]),
@@ -390,7 +413,7 @@ class UniformAcquisition(AcquisitionFunction):
         self,
         surrogateModel,
         bounds: tuple | list,
-        fbounds: tuple | list,
+        fbounds: tuple | list = (),
         n: int = 1,
     ) -> np.ndarray:
         """Acquire n points.
@@ -470,7 +493,7 @@ class TargetValueAcquisition(AcquisitionFunction):
         self,
         surrogateModel,
         bounds: tuple | list,
-        fbounds: tuple | list,
+        fbounds: tuple | list = (),
         n: int = 1,
     ) -> np.ndarray:
         """Acquire n points.
@@ -494,6 +517,7 @@ class TargetValueAcquisition(AcquisitionFunction):
         if n != 1:
             raise NotImplementedError
         dim = len(bounds)  # Dimension of the problem
+        assert len(fbounds) == 2
 
         tree = KDTree(surrogateModel.samples())
 
@@ -599,8 +623,8 @@ class MinimizeSurrogate(AcquisitionFunction):
         self,
         surrogateModel,
         bounds: tuple | list,
-        fbounds: tuple | list,
-        n: int = 0,
+        fbounds: tuple | list = (),
+        n: int = 1,
     ) -> np.ndarray:
         """Acquire n points.
 
@@ -782,9 +806,6 @@ def pareto_front_target(paretoFront, oldTV=np.array([])):
     objdim = paretoFront.shape[1]
     assert objdim > 1
 
-    if oldTV.size == 0:
-        oldTV = np.empty((0, objdim))
-
     # Create a surrogate model for the Pareto front in the objective space
     paretoModel = RbfModel(RbfType.LINEAR)
     k = random.randint(0, objdim - 1)
@@ -800,7 +821,9 @@ def pareto_front_target(paretoFront, oldTV=np.array([])):
     boundsPareto = [(xParetoLow[i], xParetoHigh[i]) for i in range(dim)]
 
     # Minimum of delta_f maximizes the distance inside the Pareto front
-    tree = KDTree(np.concatenate((paretoFront, oldTV), axis=0))
+    tree = KDTree(
+        np.concatenate((paretoFront, oldTV.reshape(-1, objdim)), axis=0)
+    )
 
     def delta_f(tau):
         tauk, _ = paretoModel.eval(tau)
@@ -813,3 +836,262 @@ def pareto_front_target(paretoFront, oldTV=np.array([])):
     tau = np.concatenate((res.x[0:k], tauk, res.x[k:]))
 
     return tau
+
+
+class ParetoFront(AcquisitionFunction):
+    def __init__(
+        self,
+        paretoFront,
+        mooptimizer=MixedVariableGA(survival=RankAndCrowdingSurvival()),
+        nGens=100,
+        oldTV=np.array([]),
+    ) -> None:
+        self.paretoFront = paretoFront
+        self.mooptimizer = mooptimizer
+        self.nGens = nGens
+        self.oldTV = oldTV
+
+    def acquire(
+        self,
+        surrogateModels,
+        bounds: tuple | list,
+        fbounds: tuple | list = (),
+        n: int = 1,
+    ) -> np.ndarray:
+        dim = len(bounds)
+        objdim = len(surrogateModels)
+
+        # If the Pareto front has only one point or is empty, there is no
+        # way to find a target value. Use random sampling instead.
+        if len(self.paretoFront) <= 1:
+            return np.empty((0, dim))
+
+        # Find a target value tau in the Pareto front
+        tau = pareto_front_target(self.paretoFront, self.oldTV)
+
+        # Find the Pareto-optimal solution set that minimizes dist(s(x),tau).
+        # For discontinuous Pareto fronts in the original problem, such set
+        # may not exist, or it may be too far from the target value.
+        multiobjTVProblem = MultiobjTVProblem(surrogateModels, tau, bounds)
+        res = pymoo_minimize(
+            multiobjTVProblem,
+            self.mooptimizer,
+            ("n_gen", self.nGens),
+            seed=len(self.paretoFront),
+            verbose=False,
+        )
+
+        # If the Pareto-optimal solution set exists, define the sample point
+        # that minimizes the L1 distance to the target value
+        if res.X is not None:
+            idxs = np.sum(np.abs(res.F - tau), axis=1).argmin()
+            return np.array([[res.X[idxs][i] for i in range(dim)]])
+        else:
+            self.oldTV = np.concatenate(
+                (self.oldTV.reshape(-1, objdim), [tau]), axis=0
+            )
+            return np.empty((0, dim))
+
+
+class EndPointsParetoFront(AcquisitionFunction):
+    def __init__(self, optimizer=MixedVariableGA(), tol=1e-3) -> None:
+        self.optimizer = optimizer
+        self.tol = tol
+
+    def acquire(
+        self,
+        surrogateModels,
+        bounds: tuple | list,
+        fbounds: tuple | list = (),
+        n: int = 1,
+    ) -> np.ndarray:
+        dim = len(bounds)
+        objdim = len(surrogateModels)
+        iindex = surrogateModels[0].iindex
+
+        # Find endpoints of the Pareto front
+        endpoints = np.empty((objdim, dim))
+        for i in range(objdim):
+            minimumPointProblem = ProblemNoConstraint(
+                lambda x: surrogateModels[i].eval(x)[0], bounds, iindex
+            )
+            res = pymoo_minimize(
+                minimumPointProblem, self.optimizer, verbose=False
+            )
+            assert res.X is not None
+            for j in range(dim):
+                endpoints[i, j] = res.X[j]
+
+        # Discard points that are too close to eachother and previously samples.
+        tree = KDTree(surrogateModels[0].samples())
+        selectedIdx = []
+        for i in range(objdim):
+            distNeighbor = tree.query(endpoints[i, :])[0]
+            if selectedIdx:
+                distNeighbor = min(
+                    distNeighbor,
+                    np.min(
+                        cdist(
+                            endpoints[i, :].reshape(1, -1),
+                            endpoints[selectedIdx, :],
+                        )
+                    ).item(),
+                )
+            if distNeighbor >= self.tol:
+                selectedIdx.append(i)
+        endpoints = endpoints[selectedIdx, :]
+
+        # Should all points be discarded, which may happen if the minima of
+        # the surrogate surfaces do not change between iterations, we
+        # consider the whole variable domain and sample at the point that
+        # maximizes the minimum distance of samples
+        if endpoints.size == 0:
+            minimumPointProblem = ProblemNoConstraint(
+                lambda x: -tree.query(x)[0], bounds, iindex
+            )
+            res = pymoo_minimize(
+                minimumPointProblem, self.optimizer, verbose=False
+            )
+            assert res.X is not None
+            endpoints = np.empty((1, dim))
+            for j in range(dim):
+                endpoints[0, j] = res.X[j]
+
+        # Return a maximum of n points
+        return endpoints[:n, :]
+
+
+class MinimizeMOSurrogate(AcquisitionFunction):
+    def __init__(
+        self,
+        mooptimizer=MixedVariableGA(survival=RankAndCrowdingSurvival()),
+        nGens=100,
+        tol=1e-3,
+    ) -> None:
+        self.mooptimizer = mooptimizer
+        self.nGens = nGens
+        self.tol = tol
+
+    def acquire(
+        self,
+        surrogateModels,
+        bounds: tuple | list,
+        fbounds: tuple | list = (),
+        n: int = 1,
+    ) -> np.ndarray:
+        dim = len(bounds)
+        objdim = len(surrogateModels)
+
+        # Solve the surrogate multiobjective problem
+        multiobjSurrogateProblem = MultiobjSurrogateProblem(
+            surrogateModels, bounds
+        )
+        res = pymoo_minimize(
+            multiobjSurrogateProblem,
+            self.mooptimizer,
+            ("n_gen", self.nGens),
+            seed=surrogateModels[0].nsamples(),
+            verbose=False,
+        )
+
+        # If the Pareto-optimal solution set exists, randomly select 2*objdim
+        # points from the Pareto front
+        if res.X is not None:
+            nMax = len(res.X)
+            idxs = random.sample(range(nMax), min(n, nMax))
+            bestCandidates = np.array(
+                [[res.X[idx][i] for i in range(dim)] for idx in idxs]
+            )
+
+            # Discard points that are too close to eachother and previously
+            # sampled points.
+            tree = KDTree(surrogateModels[0].samples())
+            selectedIdx = []
+            for i in range(objdim):
+                distNeighbor = tree.query(bestCandidates[i, :])[0]
+                if selectedIdx:
+                    distNeighbor = min(
+                        distNeighbor,
+                        np.min(
+                            cdist(
+                                bestCandidates[i, :].reshape(1, -1),
+                                bestCandidates[selectedIdx, :],
+                            )
+                        ).item(),
+                    )
+                if distNeighbor >= self.tol:
+                    selectedIdx.append(i)
+            bestCandidates = bestCandidates[selectedIdx, :]
+
+            return bestCandidates
+        else:
+            return np.empty((0, dim))
+
+
+class CoordinatePerturbationOverNondominated(AcquisitionFunction):
+    def __init__(
+        self,
+        nondominated,
+        paretoFront,
+        acquisitionFunc: CoordinatePerturbation,
+    ) -> None:
+        self.nondominated = nondominated
+        self.paretoFront = paretoFront
+        self.acquisitionFunc = acquisitionFunc
+
+    def acquire(
+        self,
+        surrogateModels,
+        bounds: tuple | list,
+        fbounds: tuple | list = (),
+        n: int = 1,
+    ) -> np.ndarray:
+        dim = len(bounds)
+        tol = self.acquisitionFunc.tol(bounds)
+
+        # Find a collection of points that are close to the Pareto front
+        bestCandidates = np.empty((0, dim))
+        for ndpoint in self.nondominated:
+            x = self.acquisitionFunc.acquire(
+                surrogateModels,
+                bounds,
+                (-np.Inf, np.Inf),
+                1,
+                xbest=ndpoint,
+            )
+            # Choose points that are not too close to previously selected points
+            if bestCandidates.size == 0:
+                bestCandidates = x.reshape(1, -1)
+            else:
+                distNeighborOfx = np.min(cdist(x, bestCandidates)).item()
+                if distNeighborOfx >= tol:
+                    bestCandidates = np.concatenate(
+                        (bestCandidates, x), axis=0
+                    )
+
+        # Eliminate points predicted to be dominated
+        nondominatedAndBestCandidates = np.concatenate(
+            (self.nondominated, bestCandidates), axis=0
+        )
+        fnondominatedAndBestCandidates = np.concatenate(
+            (
+                self.paretoFront,
+                np.array(
+                    [s.eval(bestCandidates)[0] for s in surrogateModels]
+                ).T,
+            ),
+            axis=0,
+        )
+        idxPredictedPareto = find_pareto_front(
+            nondominatedAndBestCandidates,
+            fnondominatedAndBestCandidates,
+            iStart=len(self.nondominated),
+        )
+        idxPredictedBest = [
+            i - len(self.nondominated)
+            for i in idxPredictedPareto
+            if i >= len(self.nondominated)
+        ]
+        bestCandidates = bestCandidates[idxPredictedBest, :]
+
+        return bestCandidates[:n, :]
