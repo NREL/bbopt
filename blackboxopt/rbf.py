@@ -850,9 +850,9 @@ class RbfModel:
 
             # 3. d = \phi(0) - l_{01}^T D_0 l_{01} and \mu = 1/d
             d = self.phi(0) - np.dot(l01, D0l01)
-            mu = 1 / d
+            mu = 1 / d if d != 0 else np.inf
 
-        else:
+        if not LDLt or mu == np.inf:
             # set up matrices for solving the linear system
             A_aug = np.block(
                 [
@@ -866,11 +866,12 @@ class RbfModel:
             rhs[-1] = 1
 
             # solve linear system and get mu
-            # TODO: See if there is a solver specific for saddle-point systems
-            with warnings.catch_warnings():
-                warnings.simplefilter("ignore")
+            try:
                 coeff = solve(A_aug, rhs, assume_a="sym")
-            mu = float(coeff[-1].item())
+                mu = float(coeff[-1].item())
+            except np.linalg.LinAlgError:
+                # Return huge value, only occurs if the matrix is ill-conditioned
+                mu = np.inf
 
         # Order of the polynomial tail
         if self.type == RbfType.LINEAR:

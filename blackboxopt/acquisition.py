@@ -497,40 +497,33 @@ class TargetValueAcquisition(AcquisitionFunction):
 
         tree = KDTree(surrogateModel.samples())
 
-        # Convert iindex to boolean array
-        intArgs = [False] * dim
-        for i in surrogateModel.iindex:
-            intArgs[i] = True
-
         # see Holmstrom 2008 "An adaptive radial basis algorithm (ARBF) for
         # expensive black-box global optimization", JOGO
         sample_stage = random.sample(range(0, self.cycleLength + 2), 1)[0]
         if sample_stage == 0:  # InfStep - minimize Mu_n
             LDLt = ldl(surrogateModel.get_RBFmatrix())
             problem = ProblemWithConstraint(
-                lambda xdict: surrogateModel.mu_measure(
-                    np.asarray([xdict[i] for i in range(dim)]),
-                    np.array([]),
-                    LDLt,
-                ),
-                lambda xdict: self.tol
-                - tree.query(np.asarray([xdict[i] for i in range(dim)]))[0],
+                lambda x: surrogateModel.mu_measure(x, np.array([]), LDLt),
+                lambda x: self.tol - tree.query(x)[0],
                 bounds,
-                intArgs,
+                surrogateModel.iindex,
             )
-            res = pymoo_minimize(problem, self.GA, verbose=False)
+            problem.elementwise = True
+            res = pymoo_minimize(
+                problem, self.GA, seed=surrogateModel.nsamples(), verbose=False
+            )
             xselected = np.asarray([res.X[i] for i in range(dim)])
 
         elif 1 <= sample_stage <= self.cycleLength:  # cycle step global search
             # find min of surrogate model
             problem = ProblemNoConstraint(
-                lambda xdict: surrogateModel.eval(
-                    np.asarray([xdict[i] for i in range(dim)])
-                )[0].item(),
+                lambda x: surrogateModel.eval(x)[0],
                 bounds,
-                intArgs,
+                surrogateModel.iindex,
             )
-            res = pymoo_minimize(problem, self.GA, verbose=False)
+            res = pymoo_minimize(
+                problem, self.GA, seed=surrogateModel.nsamples(), verbose=False
+            )
             f_rbf = res.F[0]
             wk = (
                 1 - sample_stage / self.cycleLength
@@ -542,28 +535,26 @@ class TargetValueAcquisition(AcquisitionFunction):
             # use GA method to minimize bumpiness measure
             LDLt = ldl(surrogateModel.get_RBFmatrix())
             problem = ProblemWithConstraint(
-                lambda xdict: surrogateModel.bumpiness_measure(
-                    np.asarray([xdict[i] for i in range(dim)]),
-                    f_target,
-                    LDLt,
-                ),
-                lambda xdict: self.tol
-                - tree.query(np.asarray([xdict[i] for i in range(dim)]))[0],
+                lambda x: surrogateModel.bumpiness_measure(x, f_target, LDLt),
+                lambda x: self.tol - tree.query(x)[0],
                 bounds,
-                intArgs,
+                surrogateModel.iindex,
             )
-            res = pymoo_minimize(problem, self.GA, verbose=False)
+            problem.elementwise = True
+            res = pymoo_minimize(
+                problem, self.GA, seed=surrogateModel.nsamples(), verbose=False
+            )
             xselected = np.asarray([res.X[i] for i in range(dim)])
         else:  # cycle step local search
             # find the minimum of RBF surface
             problem = ProblemNoConstraint(
-                lambda xdict: surrogateModel.eval(
-                    np.asarray([xdict[i] for i in range(dim)])
-                )[0].item(),
+                lambda x: surrogateModel.eval(x)[0],
                 bounds,
-                intArgs,
+                surrogateModel.iindex,
             )
-            res = pymoo_minimize(problem, self.GA, verbose=False)
+            res = pymoo_minimize(
+                problem, self.GA, seed=surrogateModel.nsamples(), verbose=False
+            )
             f_rbf = res.F[0]
             if f_rbf < (fbounds[0] - 1e-6 * abs(fbounds[0])):
                 # select minimum point as new sample point if sufficient improvements
@@ -580,19 +571,20 @@ class TargetValueAcquisition(AcquisitionFunction):
                 # use GA method to minimize bumpiness measure
                 LDLt = ldl(surrogateModel.get_RBFmatrix())
                 problem = ProblemWithConstraint(
-                    lambda xdict: surrogateModel.bumpiness_measure(
-                        np.asarray([xdict[i] for i in range(dim)]),
-                        f_target,
-                        LDLt,
+                    lambda x: surrogateModel.bumpiness_measure(
+                        x, f_target, LDLt
                     ),
-                    lambda xdict: self.tol
-                    - tree.query(np.asarray([xdict[i] for i in range(dim)]))[
-                        0
-                    ],
+                    lambda x: self.tol - tree.query(x)[0],
                     bounds,
-                    intArgs,
+                    surrogateModel.iindex,
                 )
-                res = pymoo_minimize(problem, self.GA, verbose=False)
+                problem.elementwise = True
+                res = pymoo_minimize(
+                    problem,
+                    self.GA,
+                    seed=surrogateModel.nsamples(),
+                    verbose=False,
+                )
                 xselected = np.asarray([res.X[i] for i in range(dim)])
 
         return xselected.reshape(1, -1)
@@ -788,6 +780,10 @@ class MinimizeSurrogate(AcquisitionFunction):
 
 def pareto_front_target(paretoFront, oldTV=np.array([])):
     objdim = paretoFront.shape[1]
+    assert objdim > 1
+
+    if oldTV.size == 0:
+        oldTV = np.empty((0, objdim))
 
     # Create a surrogate model for the Pareto front in the objective space
     paretoModel = RbfModel(RbfType.LINEAR)

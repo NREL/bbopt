@@ -40,7 +40,7 @@ import time
 from dataclasses import dataclass
 
 from pymoo.optimize import minimize as pymoo_minimize
-from pymoo.algorithms.moo.nsga2 import NSGA2
+from pymoo.algorithms.moo.nsga2 import RankAndCrowdingSurvival
 from pymoo.core.mixed import MixedVariableGA
 
 from .acquisition import (
@@ -1149,7 +1149,7 @@ def socemo(
 ):
     dim = len(bounds)  # Dimension of the problem
     objdim = len(surrogateModels)  # Number of objective functions
-    assert dim > 0 and objdim > 0
+    assert dim > 0 and objdim > 1
 
     # Use a number of candidates that is greater than 1
     if acquisitionFunc.sampler.n <= 1:
@@ -1173,8 +1173,9 @@ def socemo(
 
     # Objects needed for the iterations
     iindex = surrogateModels[0].iindex
-    intArgs = [True if j in iindex else False for j in range(dim)]
-    moooptimizer = NSGA2(pop_size=100)
+    moooptimizer = MixedVariableGA(
+        pop_size=100, survival=RankAndCrowdingSurvival()
+    )
     gaoptimizer = MixedVariableGA(pop_size=100)
     oldTV = np.empty((0, objdim))
     tol = acquisitionFunc.tol(bounds)
@@ -1189,9 +1190,10 @@ def socemo(
 
         # Update surrogate models
         t0 = time.time()
-        for i in range(objdim):
-            surrogateModels[i].update_samples(xselected)
-            surrogateModels[i].update_coefficients(ySelected[i])
+        if m > 0:
+            for i in range(objdim):
+                surrogateModels[i].update_samples(xselected)
+                surrogateModels[i].update_coefficients(ySelected[:, i])
         tf = time.time()
         if disp:
             print("Time to update surrogate model: %f s" % (tf - t0))
@@ -1237,9 +1239,13 @@ def socemo(
             # If the Pareto-optimal solution set exists, define the sample point
             # that minimizes the L1 distance to the target value
             if res.X is not None:
-                idx = np.sum(np.abs(res.F - tau), axis=1).argmin()
+                idxs = np.sum(np.abs(res.F - tau), axis=1).argmin()
                 xselected = np.concatenate(
-                    (xselected, res.X[idx, :].reshape(1, -1)), axis=0
+                    (
+                        xselected,
+                        np.array([[res.X[idxs][i] for i in range(dim)]]),
+                    ),
+                    axis=0,
                 )
                 NumberNewSamples = 1
             else:
@@ -1331,7 +1337,7 @@ def socemo(
             bestCandidates = np.empty((objdim, dim))
             for i in range(objdim):
                 minimumPointProblem = ProblemNoConstraint(
-                    lambda x: surrogateModels[i].eval(x)[0], bounds, intArgs
+                    lambda x: surrogateModels[i].eval(x)[0], bounds, iindex
                 )
                 res = pymoo_minimize(
                     minimumPointProblem, gaoptimizer, verbose=False
@@ -1370,7 +1376,7 @@ def socemo(
             # maximizes the minimum distance of samples
             if bestCandidates.size == 0:
                 minimumPointProblem = ProblemNoConstraint(
-                    lambda x: -tree.query(x)[0], bounds, intArgs
+                    lambda x: -tree.query(x)[0], bounds, iindex
                 )
                 res = pymoo_minimize(
                     minimumPointProblem, gaoptimizer, verbose=False
@@ -1437,41 +1443,43 @@ def socemo(
             # If the Pareto-optimal solution set exists, randomly select 2*objdim
             # points from the Pareto front
             if res.X is not None:
-                nMax = res.X.shape[0]
-                idx = random.sample(range(nMax), min(2 * objdim, nMax))
-                bestCandidates = res.X[idx, :]
-
-            # Discard points that are too close to eachother and previously sampled
-            # points.
-            tree = KDTree(
-                np.concatenate(
-                    (surrogateModels[0].samples(), xselected), axis=0
+                nMax = len(res.X)
+                idxs = random.sample(range(nMax), min(2 * objdim, nMax))
+                bestCandidates = np.array(
+                    [[res.X[idx][i] for i in range(dim)] for idx in idxs]
                 )
-            )
-            selectedIdx = []
-            for i in range(objdim):
-                distNeighbor = tree.query(bestCandidates[i, :])[0]
-                if selectedIdx:
-                    distNeighbor = min(
-                        distNeighbor,
-                        np.min(
-                            cdist(
-                                bestCandidates[i, :].reshape(1, -1),
-                                bestCandidates[selectedIdx, :],
-                            )
-                        ).item(),
+
+                # Discard points that are too close to eachother and previously
+                # sampled points.
+                tree = KDTree(
+                    np.concatenate(
+                        (surrogateModels[0].samples(), xselected), axis=0
                     )
-                if distNeighbor >= tol:
-                    selectedIdx.append(i)
-            bestCandidates = bestCandidates[selectedIdx, :]
+                )
+                selectedIdx = []
+                for i in range(objdim):
+                    distNeighbor = tree.query(bestCandidates[i, :])[0]
+                    if selectedIdx:
+                        distNeighbor = min(
+                            distNeighbor,
+                            np.min(
+                                cdist(
+                                    bestCandidates[i, :].reshape(1, -1),
+                                    bestCandidates[selectedIdx, :],
+                                )
+                            ).item(),
+                        )
+                    if distNeighbor >= tol:
+                        selectedIdx.append(i)
+                bestCandidates = bestCandidates[selectedIdx, :]
 
-            # Add remaining best candidates to the selected points
-            xselected = np.concatenate(
-                (xselected, bestCandidates.reshape(-1, dim)), axis=0
-            )
+                # Add remaining best candidates to the selected points
+                xselected = np.concatenate(
+                    (xselected, bestCandidates.reshape(-1, dim)), axis=0
+                )
 
-            # Update NumberNewSamples
-            NumberNewSamples = xselected.shape[0]
+                # Update NumberNewSamples
+                NumberNewSamples = xselected.shape[0]
 
         # Record time
         tf = time.time()
