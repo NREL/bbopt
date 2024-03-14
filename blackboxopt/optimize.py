@@ -90,7 +90,7 @@ def initialize_surrogate(
     *,
     surrogateModel=RbfModel(),
     samples: np.ndarray = np.array([]),
-):
+) -> OptimizeResult:
     """Initialize the surrogate model and the output of the optimization.
 
     Parameters
@@ -207,7 +207,29 @@ def initialize_moo_surrogate(
     *,
     surrogateModels=(RbfModel(),),
     samples: np.ndarray = np.array([]),
-):
+) -> OptimizeResult:
+    """Initialize the surrogate model and the output of the optimization.
+
+    Parameters
+    ----------
+    fun : callable
+        The objective function to be minimized.
+    bounds : tuple | list
+        Bounds for variables. Each element of the tuple must be a tuple with two
+        elements, corresponding to the lower and upper bound for the variable.
+    maxeval : int
+        Maximum number of function evaluations.
+    surrogateModels : list, optional
+        Surrogate models to be used. The default is (RbfModel(),).
+    samples : np.ndarray, optional
+        Initial samples to be added to the surrogate model. The default is an
+        empty array.
+
+    Returns
+    -------
+    OptimizeResult
+        The optimization result.
+    """
     dim = len(bounds)  # Dimension of the problem
     objdim = len(surrogateModels)  # Dimension of the objective function
     assert dim > 0 and objdim > 0
@@ -499,7 +521,6 @@ def stochastic_response_surface(
         xselected = acquisitionFunc.acquire(
             surrogateModel,
             bounds,
-            (out.fx, np.Inf),
             NumberNewSamples,
             xbest=out.x,
             coord=coord,
@@ -802,7 +823,7 @@ def target_value_optimization(
         # Acquire new samples
         t0 = time.time()
         xselected = acquisitionFunc.acquire(
-            surrogateModel, bounds, (out.fx, maxf), NumberNewSamples
+            surrogateModel, bounds, NumberNewSamples, fbounds=(out.fx, maxf)
         )
         tf = time.time()
         if disp:
@@ -1100,7 +1121,7 @@ def cptvl(
     consecutiveQuickFailuresTol: int = 0,
     disp: bool = False,
 ) -> OptimizeResult:
-    """See cptv."""
+    """Wrapper to cptv. See cptv."""
     return cptv(
         fun,
         bounds,
@@ -1126,6 +1147,42 @@ def socemo(
     samples: np.ndarray = np.array([]),
     disp: bool = False,
 ):
+    """Minimize a multiobjective function using the surrogate model approach from [#]_.
+
+    Parameters
+    ----------
+    fun : callable
+        The objective function to be minimized.
+    bounds : tuple | list
+        Bounds for variables. Each element of the tuple must be a tuple with two
+        elements, corresponding to the lower and upper bound for the variable.
+    maxeval : int
+        Maximum number of function evaluations.
+    surrogateModels : tuple, optional
+        Surrogate models to be used. The default is (RbfModel(),).
+    acquisitionFunc : CoordinatePerturbation, optional
+        Acquisition function to be used in the CP step.
+    acquisitionFuncGlobal : UniformAcquisition, optional
+        Acquisition function to be used in the global step.
+    samples : np.ndarray, optional
+        Initial samples to be added to the surrogate model. The default is an
+        empty array.
+    disp : bool, optional
+        If True, print information about the optimization process. The default
+        is False.
+
+    Returns
+    -------
+    OptimizeResult
+        The optimization result.
+
+    References
+    ----------
+    .. [#] Juliane Mueller. SOCEMO: Surrogate Optimization of Computationally
+        Expensive Multiobjective Problems.
+        INFORMS Journal on Computing, 29(4):581-783, 2017.
+        https://doi.org/10.1287/ijoc.2017.0749
+    """
     dim = len(bounds)  # Dimension of the problem
     objdim = len(surrogateModels)  # Number of objective functions
     assert dim > 0 and objdim > 1
@@ -1159,10 +1216,8 @@ def socemo(
     tol = acquisitionFunc.tol(bounds)
 
     # Define acquisition functions
-    step1acquisition = ParetoFront(out.fx, mooptimizer, nGens)
-    step2acquisition = CoordinatePerturbationOverNondominated(
-        out.x, out.fx, acquisitionFunc
-    )
+    step1acquisition = ParetoFront(mooptimizer, nGens)
+    step2acquisition = CoordinatePerturbationOverNondominated(acquisitionFunc)
     step3acquisition = EndPointsParetoFront(gaoptimizer, tol)
     step5acquisition = MinimizeMOSurrogate(mooptimizer, nGens, tol)
 
@@ -1192,8 +1247,9 @@ def socemo(
         # 1. Define target values to fill gaps in the Pareto front
         #
         t0 = time.time()
-        step1acquisition.paretoFront = out.fx
-        xselected = step1acquisition.acquire(surrogateModels, bounds, n=1)
+        xselected = step1acquisition.acquire(
+            surrogateModels, bounds, n=1, paretoFront=out.fx
+        )
         tf = time.time()
         if disp:
             print(
@@ -1205,10 +1261,12 @@ def socemo(
         # 2. Random perturbation of the currently nondominated points
         #
         t0 = time.time()
-        step2acquisition.nondominated = out.x
-        step2acquisition.paretoFront = out.fx
         bestCandidates = step2acquisition.acquire(
-            surrogateModels, bounds, n=nMax
+            surrogateModels,
+            bounds,
+            n=nMax,
+            nondominated=out.x,
+            paretoFront=out.fx,
         )
         xselected = np.concatenate((xselected, bestCandidates), axis=0)
         tf = time.time()
@@ -1238,7 +1296,7 @@ def socemo(
         #
         t0 = time.time()
         bestCandidates = acquisitionFuncGlobal.acquire(
-            surrogateModels, bounds, (-np.inf, np.inf), n=1
+            surrogateModels, bounds, 1
         )
         xselected = np.concatenate((xselected, bestCandidates), axis=0)
         tf = time.time()

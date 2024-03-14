@@ -45,6 +45,7 @@ def datainput_BraninWithInteger():
 
 
 def myfun(x):
+    X = np.asarray(x if x.ndim > 1 else [x])
     y = [
         pow(
             xi[1]
@@ -55,7 +56,7 @@ def myfun(x):
         )
         + 10 * (1 - 1 / (8 * np.pi)) * np.cos(xi[0])
         + 10
-        for xi in x
+        for xi in X
     ]
     return y
 
