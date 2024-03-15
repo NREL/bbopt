@@ -32,11 +32,13 @@ __deprecated__ = False
 
 import warnings
 import numpy as np
-from numpy.linalg import cond
 from enum import Enum
+
+# Scipy imports
 from scipy.spatial.distance import cdist
 from scipy.linalg import solve, solve_triangular
 
+# Local imports
 from .sampling import Sampler
 
 RbfType = Enum("RbfType", ["LINEAR", "CUBIC", "THINPLATE"])
@@ -250,13 +252,13 @@ class RbfModel:
         elif self.type == RbfType.CUBIC:
             return np.power(r, 3)
         elif self.type == RbfType.THINPLATE:
-            if np.isscalar(r):
+            if not hasattr(r, "__len__"):
                 if r > 0:
                     return r**2 * np.log(r)
                 else:
                     return 0
             else:
-                ret = np.zeros(r.shape)
+                ret = np.zeros_like(r)
                 ret[r > 0] = np.multiply(
                     np.power(r[r > 0], 2), np.log(r[r > 0])
                 )
@@ -282,13 +284,13 @@ class RbfModel:
         elif self.type == RbfType.CUBIC:
             return 3 * np.power(r, 2)
         elif self.type == RbfType.THINPLATE:
-            if np.isscalar(r):
+            if not hasattr(r, "__len__"):
                 if r > 0:
                     return 2 * r * np.log(r) + r
                 else:
                     return 0
             else:
-                ret = np.zeros(r.shape)
+                ret = np.zeros_like(r)
                 ret[r > 0] = (
                     2 * np.multiply(r[r > 0], np.log(r[r > 0])) + r[r > 0]
                 )
@@ -315,13 +317,13 @@ class RbfModel:
         elif self.type == RbfType.CUBIC:
             return 3 * r
         elif self.type == RbfType.THINPLATE:
-            if np.isscalar(r):
+            if not hasattr(r, "__len__"):
                 if r > 0:
                     return 2 * np.log(r) + 1
                 else:
                     return 0
             else:
-                ret = np.zeros(r.shape)
+                ret = np.zeros_like(r)
                 ret[r > 0] = 2 * np.log(r[r > 0]) + 1
                 return ret
         else:
@@ -345,13 +347,13 @@ class RbfModel:
         elif self.type == RbfType.CUBIC:
             return 6 * r
         elif self.type == RbfType.THINPLATE:
-            if np.isscalar(r):
+            if not hasattr(r, "__len__"):
                 if r > 0:
                     return 2 * np.log(r) + 3
                 else:
                     return 0
             else:
-                ret = np.zeros(r.shape)
+                ret = np.zeros_like(r)
                 ret[r > 0] = 2 * np.log(r[r > 0]) + 3
                 return ret
         else:
@@ -550,7 +552,7 @@ class RbfModel:
         return y.flatten()
 
     def update_coefficients(
-        self, fx: np.ndarray, filter: RbfFilter = None
+        self, fx: np.ndarray, filter: RbfFilter | None = None
     ) -> None:
         """Updates the coefficients of the RBF model.
 
@@ -558,7 +560,7 @@ class RbfModel:
         ----------
         fx : np.ndarray
             Function values on the sampled points.
-        filter : RbfFilter, optional
+        filter : RbfFilter | None, optional
             Filter used with the function values. The default is None, which
             means the filter used in the initialization of the RBF model is
             used.
@@ -807,11 +809,10 @@ class RbfModel:
             https://doi.org/10.1023/A:1011255519438
         """
         # compute rbf value of the new point x
-        pdim = self.pdim()
         if xdist.size == 0:
             xdist = cdist(x.reshape(1, -1), self.samples())
         newRow = np.concatenate(
-            (self.phi(xdist).flatten(), self.pbasis(x).flatten())
+            (np.asarray(self.phi(xdist)).flatten(), self.pbasis(x).flatten())
         )
 
         if LDLt:

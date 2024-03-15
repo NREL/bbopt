@@ -35,8 +35,8 @@ __credits__ = [
 __version__ = "0.1.0"
 __deprecated__ = False
 
-from enum import Enum
 import numpy as np
+from enum import Enum
 
 
 class SamplingStrategy(Enum):
@@ -67,7 +67,7 @@ class Sampler:
         self.n = n
 
     def get_uniform_sample(
-        self, bounds: tuple | list, *, iindex: tuple = ()
+        self, bounds: tuple | list, *, iindex: tuple[int, ...] = ()
     ) -> np.ndarray:
         """Generate a sample from a uniform distribution inside the bounds.
 
@@ -97,7 +97,7 @@ class Sampler:
         return xnew
 
     def get_slhd_sample(
-        self, bounds: tuple | list, *, iindex: tuple = ()
+        self, bounds: tuple | list, *, iindex: tuple[int, ...] = ()
     ) -> np.ndarray:
         """Creates a Symmetric Latin Hypercube Design.
 
@@ -153,7 +153,7 @@ class Sampler:
         return X
 
     def get_sample(
-        self, bounds: tuple | list, *, iindex: tuple = ()
+        self, bounds: tuple | list, *, iindex: tuple[int, ...] = ()
     ) -> np.ndarray:
         """Generate a sample.
 
@@ -210,7 +210,7 @@ class NormalSampler(Sampler):
         self,
         bounds: tuple | list,
         *,
-        iindex: tuple = (),
+        iindex: tuple[int, ...] = (),
         mu: np.ndarray = np.array([0]),
         coord=(),
     ) -> np.ndarray:
@@ -264,7 +264,7 @@ class NormalSampler(Sampler):
         bounds: tuple | list,
         probability: float,
         *,
-        iindex: tuple = (),
+        iindex: tuple[int, ...] = (),
         mu: np.ndarray = np.array([0]),
         coord=(),
     ) -> np.ndarray:
@@ -344,7 +344,7 @@ class NormalSampler(Sampler):
         self,
         bounds: tuple | list,
         *,
-        iindex: tuple = (),
+        iindex: tuple[int, ...] = (),
         mu: np.ndarray = np.array([0]),
         probability: float = 1,
         coord=(),

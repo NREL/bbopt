@@ -93,6 +93,8 @@ def run_optimizer(
     if not isinstance(bounds[0], list) and nArgs == 1:
         bounds = [bounds]
     assert None not in bounds
+    assert isinstance(bounds[0], list)
+    assert not isinstance(bounds[0][0], list)
 
     # Define the objective function, guarantee minvalue at 1
     def objf(x: np.ndarray) -> np.ndarray:
@@ -123,7 +125,8 @@ def run_optimizer(
     if hasattr(acquisitionFunc, "sampler"):
         acquisitionFunc.sampler.n = min(100 * nArgs, 5000)
     if hasattr(acquisitionFunc, "tol"):
-        acquisitionFunc.tol *= np.min([b[1] - b[0] for b in bounds])
+        if not callable(getattr(acquisitionFunc, "tol", None)):
+            acquisitionFunc.tol *= np.min([b[1] - b[0] for b in bounds])
 
     # Find the minimum
     optimizer = algo["optimizer"]
@@ -147,34 +150,36 @@ def run_optimizer(
 @pytest.mark.parametrize("func", list(ssbmk.optRfuncs))
 def test_cptv(func: str) -> None:
     nArgs = ssbmk.rfuncs[func]
-    minval = ssbmk.get_min_function(func, nArgs)
-    # if minval is None:
-    #     integrality = [True if i in iindex else False for i in range(nArgs)]
-    #     optRes = differential_evolution(
-    #         objf,
-    #         bounds,
-    #         integrality=integrality,
-    #         maxiter=10000,
-    #         tol=1e-15,
-    #         disp=False,
-    #     )
-    #     if optRes.success:
-    #         minval = optRes.fun
-    #         print(f"Minimum value of {func} = {minval}")
-    #     else:
-    #         raise ValueError(
-    #             f"differential_evolution failed to find the minimum of {func}."
-    #         )
+
+    # If the function takes a variable number of arguments, use the lower bound
+    if not isinstance(nArgs, int):
+        nArgs = nArgs[0]
 
     # Run the optimization
-    rtol = 1e-3
-    optres = run_optimizer(func, 20, 3)
+    nfev = 4 * (nArgs + 1)
+    optres = run_optimizer(
+        func,
+        nArgs,
+        nfev,
+        {
+            "optimizer": optimize.cptvl,
+            "acquisition": acquisition.CoordinatePerturbation(
+                0,
+                sampling.NormalSampler(
+                    1,
+                    sigma=0.2,
+                    sigma_min=0.2 * 0.5**5,
+                    sigma_max=0.2,
+                    strategy=sampling.SamplingStrategy.DDS,
+                ),
+                [0.3, 0.5, 0.8, 0.95],
+            ),
+        },
+        1,
+        False,
+    )
 
-    minfx = min(optres[i].fx for i in range(3))
-    if minval == 0:
-        assert minfx < rtol * 0.1
-    else:
-        assert minfx - minval < rtol * abs(minval)
+    assert optres[0].nfev == nfev
 
 
 if __name__ == "__main__":

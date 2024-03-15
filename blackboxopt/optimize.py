@@ -30,16 +30,20 @@ __credits__ = [
 __version__ = "0.1.0"
 __deprecated__ = False
 
-from copy import deepcopy
 import numpy as np
-from scipy.optimize import minimize
-from scipy.spatial.distance import cdist
 import time
 from dataclasses import dataclass
+from copy import deepcopy
 
-from pymoo.algorithms.moo.nsga2 import RankAndCrowdingSurvival
+# Scipy imports
+from scipy.optimize import minimize
+from scipy.spatial.distance import cdist
+
+# Pymoo imports
+from pymoo.operators.survival.rank_and_crowding import RankAndCrowding
 from pymoo.core.mixed import MixedVariableGA
 
+# Local imports
 from .acquisition import (
     CoordinatePerturbation,
     CoordinatePerturbationOverNondominated,
@@ -1206,11 +1210,10 @@ def socemo(
         samples=samples,
     )
     m = out.nfev
+    assert isinstance(out.fx, np.ndarray)
 
     # Objects needed for the iterations
-    mooptimizer = MixedVariableGA(
-        pop_size=100, survival=RankAndCrowdingSurvival()
-    )
+    mooptimizer = MixedVariableGA(pop_size=100, survival=RankAndCrowding())
     gaoptimizer = MixedVariableGA(pop_size=100)
     nGens = 100
     tol = acquisitionFunc.tol(bounds)

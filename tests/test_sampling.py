@@ -24,7 +24,7 @@ __credits__ = ["Weslley S. Pereira"]
 __version__ = "0.1.0"
 __deprecated__ = False
 
-from random import randint
+import random
 import numpy as np
 import pytest
 from blackboxopt.sampling import NormalSampler, Sampler, SamplingStrategy
@@ -122,7 +122,7 @@ def test_iindex_sampler(boundx, strategy: SamplingStrategy):
     np.random.seed(5)
 
     for i in range(3):
-        iindex = [randint(0, dim - 1) for _ in range(dim // 2)]
+        iindex = random.sample(range(dim), dim // 2)
         mu = np.array([b[0] + (b[1] - b[0]) / 2 for b in bounds])
         mu[iindex] = np.round(mu[iindex])
 

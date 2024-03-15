@@ -17,15 +17,41 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+__authors__ = [
+    "Juliane Mueller",
+    "Christine A. Shoemaker",
+    "Haoyu Jia",
+    "Weslley S. Pereira",
+]
+__contact__ = "weslley.dasilvapereira@nrel.gov"
+__maintainer__ = "Weslley S. Pereira"
+__email__ = "weslley.dasilvapereira@nrel.gov"
+__credits__ = [
+    "Juliane Mueller",
+    "Christine A. Shoemaker",
+    "Haoyu Jia",
+    "Weslley S. Pereira",
+]
+__version__ = "0.1.0"
+__deprecated__ = False
+
 import random
 import numpy as np
 from math import log
+
+# Scipy imports
 from scipy.spatial.distance import cdist
 from scipy.spatial import KDTree
 from scipy.special import gamma
 from scipy.linalg import ldl
 from scipy.optimize import minimize, differential_evolution
 
+# Pymoo imports
+from pymoo.operators.survival.rank_and_crowding import RankAndCrowding
+from pymoo.core.mixed import MixedVariableGA
+from pymoo.optimize import minimize as pymoo_minimize
+
+# Local imports
 from .sampling import NormalSampler, Sampler
 from .rbf import RbfModel, RbfType
 from .problem import (
@@ -34,13 +60,6 @@ from .problem import (
     MultiobjTVProblem,
     MultiobjSurrogateProblem,
 )
-
-from pymoo.algorithms.moo.nsga2 import RankAndCrowdingSurvival
-from pymoo.core.mixed import MixedVariableGA
-from pymoo.optimize import minimize as pymoo_minimize
-from pymoo.config import Config
-
-Config.warnings["not_compiled"] = False
 
 
 def find_pareto_front(x, fx, iStart=0) -> list:
@@ -561,6 +580,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                     seed=surrogateModel.nsamples(),
                     verbose=False,
                 )
+                assert res.X is not None
                 xselected = np.asarray([res.X[i] for i in range(dim)])
 
             elif (
@@ -579,6 +599,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                     seed=surrogateModel.nsamples(),
                     verbose=False,
                 )
+                assert res.F is not None
                 f_rbf = res.F[0]
                 wk = (
                     1 - sample_stage / self.cycleLength
@@ -604,6 +625,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                     seed=surrogateModel.nsamples(),
                     verbose=False,
                 )
+                assert res.X is not None
                 xselected = np.asarray([res.X[i] for i in range(dim)])
             else:  # cycle step local search
                 assert len(fbounds) == 2
@@ -619,9 +641,11 @@ class TargetValueAcquisition(AcquisitionFunction):
                     seed=surrogateModel.nsamples(),
                     verbose=False,
                 )
+                assert res.F is not None
                 f_rbf = res.F[0]
                 if f_rbf < (fbounds[0] - 1e-6 * abs(fbounds[0])):
                     # select minimum point as new sample point if sufficient improvements
+                    assert res.X is not None
                     xselected = np.asarray([res.X[i] for i in range(dim)])
                     while np.any(tree.query(xselected)[0] < self.tol):
                         # the selected point is too close to already evaluated point
@@ -651,6 +675,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                         seed=surrogateModel.nsamples(),
                         verbose=False,
                     )
+                    assert res.X is not None
                     xselected = np.asarray([res.X[i] for i in range(dim)])
 
             x[i, :] = xselected
@@ -868,7 +893,7 @@ class ParetoFront(AcquisitionFunction):
     ----------
     mooptimizer
         Multi-objective optimizer. Default is MixedVariableGA from pymoo with
-        RankAndCrowdingSurvival survival strategy.
+        RankAndCrowding survival strategy.
     nGens : int
         Number of generations for the multi-objective optimizer. Default is 100.
     oldTV : numpy.ndarray
@@ -878,7 +903,7 @@ class ParetoFront(AcquisitionFunction):
 
     def __init__(
         self,
-        mooptimizer=MixedVariableGA(survival=RankAndCrowdingSurvival()),
+        mooptimizer=MixedVariableGA(survival=RankAndCrowding()),
         nGens: int = 100,
         oldTV: np.ndarray = np.array([]),
     ) -> None:
@@ -1107,7 +1132,7 @@ class MinimizeMOSurrogate(AcquisitionFunction):
     ----------
     mooptimizer
         Multi-objective optimizer. Default is MixedVariableGA from pymoo with
-        RankAndCrowdingSurvival survival strategy.
+        RankAndCrowding survival strategy.
     nGens : int
         Number of generations for the multi-objective optimizer. Default is 100.
     tol : float
@@ -1117,7 +1142,7 @@ class MinimizeMOSurrogate(AcquisitionFunction):
 
     def __init__(
         self,
-        mooptimizer=MixedVariableGA(survival=RankAndCrowdingSurvival()),
+        mooptimizer=MixedVariableGA(survival=RankAndCrowding()),
         nGens=100,
         tol=1e-3,
     ) -> None:
