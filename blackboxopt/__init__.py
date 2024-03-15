@@ -17,7 +17,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 __all__ = ["acquisition", "optimize", "sampling", "rbf"]
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 from . import acquisition
 from . import optimize

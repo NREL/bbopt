@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "blackboxopt"
-version = "0.1.0"
+version = "0.2.0"
 description = "Surrogate models and active learning for scientific applications"
 authors = ["Weslley S. Pereira <weslley.dasilvapereira@nrel.gov>"]
 license = "GPL v3"
