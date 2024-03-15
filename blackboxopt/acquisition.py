@@ -290,7 +290,9 @@ class CoordinatePerturbation(AcquisitionFunction):
         The default is [0.2, 0.4, 0.6, 0.9, 0.95, 1].
     reltol : float, optional
         Candidate points are chosen s.t.
+
             ||x - xbest|| >= reltol * sqrt(dim) * sigma,
+
         where sigma is the standard deviation of the normal distribution.
     """
 
@@ -337,7 +339,6 @@ class CoordinatePerturbation(AcquisitionFunction):
         -------
         numpy.ndarray
             n-by-dim matrix with the selected points.
-        numpy.ndarray
         """
         dim = len(bounds)  # Dimension of the problem
         minxrange = np.min([b[1] - b[0] for b in bounds])

@@ -300,23 +300,7 @@ def check_set_parameters(
     return maxeval, Ntrials, NumberNewSamples
 
 
-if __name__ == "__main__":
-    import argparse
-
-    np.random.seed(3)
-
-    parser = argparse.ArgumentParser(
-        description="Run the optimization and plot the results."
-    )
-    parser.add_argument(
-        "--config",
-        type=int,
-        help="Configuration number to be used.",
-        default=1,
-    )
-    args = parser.parse_args()
-
-    # args.config = 8
+def main(args):
     if args.config == 1:
         optres = read_and_run(
             data_file="datainput_Branin",
@@ -477,7 +461,29 @@ if __name__ == "__main__":
     else:
         raise ValueError("Invalid configuration number.")
 
+    return optres
+
+
+if __name__ == "__main__":
+    import argparse
+
+    np.random.seed(3)
+
+    parser = argparse.ArgumentParser(
+        description="Run the optimization and plot the results."
+    )
+    parser.add_argument(
+        "--config",
+        type=int,
+        help="Configuration number to be used.",
+        default=1,
+    )
+    args = parser.parse_args()
+
+    # args.config = 8
+    optres = main(args)
     Ntrials = len(optres)
+
     print("BestValues", [optres[i].fx for i in range(Ntrials)])
     print("BestPoints", [optres[i].x for i in range(Ntrials)])
     print("NumFuncEval", [optres[i].nfev for i in range(Ntrials)])

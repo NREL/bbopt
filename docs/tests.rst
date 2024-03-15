@@ -1,6 +1,14 @@
 tests package
 =============
 
+Subpackages
+-----------
+
+.. toctree::
+   :maxdepth: 4
+
+   tests.ssurjano_benchmark
+
 Submodules
 ----------
 
@@ -12,10 +20,18 @@ tests.test\_rbf module
    :undoc-members:
    :show-inheritance:
 
-tests.test\_utils module
-------------------------
+tests.test\_sampling module
+---------------------------
 
-.. automodule:: tests.test_utils
+.. automodule:: tests.test_sampling
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+tests.test\_ssurjano\_bench module
+----------------------------------
+
+.. automodule:: tests.test_ssurjano_bench
    :members:
    :undoc-members:
    :show-inheritance:
