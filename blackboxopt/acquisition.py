@@ -38,6 +38,7 @@ __deprecated__ = False
 import random
 import numpy as np
 from math import log
+from multiprocessing.pool import ThreadPool
 
 # Scipy imports
 from scipy.spatial.distance import cdist
@@ -50,6 +51,7 @@ from scipy.optimize import minimize, differential_evolution
 from pymoo.operators.survival.rank_and_crowding import RankAndCrowding
 from pymoo.core.mixed import MixedVariableGA
 from pymoo.optimize import minimize as pymoo_minimize
+from pymoo.core.problem import StarmapParallelization
 
 # Local imports
 from .sampling import NormalSampler, Sampler
@@ -516,10 +518,11 @@ class TargetValueAcquisition(AcquisitionFunction):
         Default is 1e-3.
     """
 
-    def __init__(self, tol=1e-3, popsize=10) -> None:
+    def __init__(self, tol=1e-3, popsize=10, ngen=10) -> None:
         self.cycleLength = 10
         self.tol = tol
         self.GA = MixedVariableGA(pop_size=popsize)
+        self.ngen = ngen
 
     def acquire(
         self,
@@ -575,12 +578,23 @@ class TargetValueAcquisition(AcquisitionFunction):
                     surrogateModel.iindex,
                 )
                 problem.elementwise = True
+
+                # # initialize the thread pool and create the runner
+                # pool = ThreadPool()
+                # runner = StarmapParallelization(pool.starmap)
+                # problem.elementwise_runner=runner
+
                 res = pymoo_minimize(
                     problem,
                     self.GA,
+                    ("n_gen", self.ngen),
                     seed=surrogateModel.nsamples(),
                     verbose=False,
                 )
+
+                # # close pool
+                # pool.close()
+
                 assert res.X is not None
                 xselected = np.asarray([res.X[i] for i in range(dim)])
 
@@ -597,6 +611,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                 res = pymoo_minimize(
                     problem,
                     self.GA,
+                    ("n_gen", self.ngen),
                     seed=surrogateModel.nsamples(),
                     verbose=False,
                 )
@@ -620,12 +635,23 @@ class TargetValueAcquisition(AcquisitionFunction):
                     surrogateModel.iindex,
                 )
                 problem.elementwise = True
+
+                # # initialize the thread pool and create the runner
+                # pool = ThreadPool()
+                # runner = StarmapParallelization(pool.starmap)
+                # problem.elementwise_runner=runner
+
                 res = pymoo_minimize(
                     problem,
                     self.GA,
+                    ("n_gen", self.ngen),
                     seed=surrogateModel.nsamples(),
                     verbose=False,
                 )
+
+                # # close pool
+                # pool.close()
+
                 assert res.X is not None
                 xselected = np.asarray([res.X[i] for i in range(dim)])
             else:  # cycle step local search
@@ -639,6 +665,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                 res = pymoo_minimize(
                     problem,
                     self.GA,
+                    ("n_gen", self.ngen),
                     seed=surrogateModel.nsamples(),
                     verbose=False,
                 )
@@ -670,12 +697,23 @@ class TargetValueAcquisition(AcquisitionFunction):
                         surrogateModel.iindex,
                     )
                     problem.elementwise = True
+
+                    # # initialize the thread pool and create the runner
+                    # pool = ThreadPool()
+                    # runner = StarmapParallelization(pool.starmap)
+                    # problem.elementwise_runner=runner
+
                     res = pymoo_minimize(
                         problem,
                         self.GA,
+                        ("n_gen", self.ngen),
                         seed=surrogateModel.nsamples(),
                         verbose=False,
                     )
+
+                    # # close pool
+                    # pool.close()
+
                     assert res.X is not None
                     xselected = np.asarray([res.X[i] for i in range(dim)])
 

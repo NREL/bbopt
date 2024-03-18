@@ -1081,6 +1081,10 @@ def cptv(
                 ),
             )
 
+            if np.linalg.norm(out.x - out_local.x) >= tol:
+                surrogateModel.update_samples(out_local.x.reshape(1, -1))
+                surrogateModel.update_coefficients(out_local.fx)
+
             if disp:
                 print("Local step ended after ", out_local.nfev, "f evals.")
 

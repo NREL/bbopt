@@ -98,9 +98,10 @@ def run_optimizer(
 
     # Define the objective function, guarantee minvalue at 1
     def objf(x: np.ndarray) -> np.ndarray:
+        X = np.asarray(x if x.ndim > 1 else [x])
         return (
             np.array(
-                [rfunc(robjects.FloatVector(xi.reshape(-1, 1)))[0] for xi in x]
+                [rfunc(robjects.FloatVector(xi.reshape(-1, 1)))[0] for xi in X]
             )
             - minval
             + 1
