@@ -125,7 +125,7 @@ def initialize_surrogate(
 
     # Initialize output
     out = OptimizeResult(
-        x=np.zeros(dim),
+        x=np.array([]),
         fx=np.inf,
         nit=0,
         nfev=0,
@@ -140,7 +140,7 @@ def initialize_surrogate(
     # Initialize out.x and out.fx
     if m0 > 0:
         iBest = np.argmin(surrogateModel.get_fsamples()).item()
-        out.x = surrogateModel.sample(iBest)
+        out.x = surrogateModel.sample(iBest).copy()
         out.fx = surrogateModel.get_fsamples()[iBest].item()
     else:
         out.x = np.array(
@@ -193,7 +193,7 @@ def initialize_surrogate(
     # If initial guess is provided, consider it in the output
     if len(x0y0) == 2:
         if x0y0[1] < out.fx:
-            out.x = x0y0[0]
+            out.x[:] = x0y0[0]
             out.fx = x0y0[1]
 
     if out.fx == np.inf:
@@ -313,7 +313,7 @@ def initialize_moo_surrogate(
         surrogateModels[0].samples(),
         fallsamples,
     )
-    out.x = surrogateModels[0].samples()[iPareto, :]
+    out.x = surrogateModels[0].samples()[iPareto, :].copy()
     out.fx = fallsamples[iPareto, :]
 
     return out
@@ -498,7 +498,7 @@ def stochastic_response_surface(
 
     # do until max number of f-evals reached or local min found
     xselected = np.empty((0, dim))
-    ySelected = out.fsamples[0:m]
+    ySelected = np.copy(out.fsamples[0:m])
     while m < maxeval:
         if disp:
             print("Iteration: %d" % out.nit)
@@ -561,7 +561,7 @@ def stochastic_response_surface(
             modifiedCoordinates = [
                 xselected[iSelectedBest, i] != out.x[i] for i in range(dim)
             ]
-            out.x = xselected[iSelectedBest, :]
+            out.x[:] = xselected[iSelectedBest, :]
             out.fx = fxSelectedBest
 
         # Update m, x, y and out.nit
@@ -661,7 +661,7 @@ def multistart_stochastic_response_surface(
 
     # Initialize output
     out = OptimizeResult(
-        x=np.zeros(dim),
+        x=np.empty(dim),
         fx=np.inf,
         nit=0,
         nfev=0,
@@ -685,7 +685,7 @@ def multistart_stochastic_response_surface(
 
         # Update output
         if out_local.fx < out.fx:
-            out.x = out_local.x
+            out.x[:] = out_local.x
             out.fx = out_local.fx
         out.samples[
             out.nfev : out.nfev + out_local.nfev, :
@@ -852,7 +852,7 @@ def target_value_optimization(
 
         # Update best point found so far if necessary
         if fxSelectedBest < out.fx:
-            out.x = xselected[iSelectedBest, :]
+            out.x[:] = xselected[iSelectedBest, :]
             out.fx = fxSelectedBest
 
         # Update remaining output variables
@@ -1054,7 +1054,7 @@ def cptv(
         else:
 
             def func_continuous_search(x):
-                x_ = out.x
+                x_ = out.x.copy()
                 x_[cindex] = x
                 return fun(x_)[0]
 
@@ -1066,24 +1066,21 @@ def cptv(
                 options={"maxfev": maxeval - out.nfev, "disp": False},
             )
 
-            xbest = out.x
-            xbest[cindex] = out_local_.x
             out_local = OptimizeResult(
-                x=xbest,
+                x=out.x.copy(),
                 fx=out_local_.fun,
                 nit=out_local_.nit,
                 nfev=out_local_.nfev,
-                samples=np.array(
-                    [xbest.flatten() for i in range(out_local_.nfev)]
-                ),
-                fsamples=np.array(
-                    [out_local_.fun for i in range(out_local_.nfev)]
-                ),
+                samples=np.array([out.x for i in range(out_local_.nfev)]),
+                fsamples=np.array([out.fx for i in range(out_local_.nfev)]),
             )
+            out_local.x[cindex] = out_local_.x
+            out_local.samples[-1, cindex] = out_local_.x
+            out_local.fsamples[-1] = out_local_.fun
 
             if np.linalg.norm(out.x - out_local.x) >= tol:
                 surrogateModel.update_samples(out_local.x.reshape(1, -1))
-                surrogateModel.update_coefficients(out_local.fx)
+                surrogateModel.update_coefficients(np.asarray(out_local.fx))
 
             if disp:
                 print("Local step ended after ", out_local.nfev, "f evals.")
@@ -1098,7 +1095,7 @@ def cptv(
 
         # Update output
         if out_local.fx < out.fx:
-            out.x = out_local.x
+            out.x[:] = out_local.x
             out.fx = out_local.fx
         out.samples[k : k + knew, :] = out_local.samples
         out.fsamples[k : k + knew] = out_local.fsamples
@@ -1230,8 +1227,9 @@ def socemo(
 
     # do until max number of f-evals reached or local min found
     xselected = np.empty((0, dim))
-    ySelected = out.fsamples[0:m, :]
+    ySelected = np.copy(out.fsamples[0:m, :])
     while m < maxeval:
+        nMax = maxeval - m
         if disp:
             print("Iteration: %d" % out.nit)
             print("fEvals: %d" % m)
@@ -1245,10 +1243,6 @@ def socemo(
         tf = time.time()
         if disp:
             print("Time to update surrogate model: %f s" % (tf - t0))
-
-        # 0. Reset values
-        nMax = maxeval - m
-        xselected = np.empty((0, dim))
 
         #
         # 1. Define target values to fill gaps in the Pareto front

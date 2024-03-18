@@ -347,7 +347,7 @@ class CoordinatePerturbation(AcquisitionFunction):
         sigma = self.sampler.sigma * minxrange
 
         # Check if surrogateModel is a list of models
-        listOfSurrogates = isinstance(surrogateModel, list)
+        listOfSurrogates = hasattr(surrogateModel, "__len__")
         iindex = (
             surrogateModel[0].iindex
             if listOfSurrogates
@@ -469,7 +469,7 @@ class UniformAcquisition(AcquisitionFunction):
             n-by-dim matrix with the selected points.
         """
         # Check if surrogateModel is a list of models
-        listOfSurrogates = isinstance(surrogateModel, list)
+        listOfSurrogates = hasattr(surrogateModel, "__len__")
         iindex = (
             surrogateModel[0].iindex
             if listOfSurrogates
@@ -849,17 +849,17 @@ class MinimizeSurrogate(AcquisitionFunction):
                 xi = candidates[chosenIds[i], :]
 
                 def func_continuous_search(x):
-                    x_ = xi
+                    x_ = xi.copy()
                     x_[cindex] = x
                     return surrogateModel.eval(x_)[0]
 
                 def dfunc_continuous_search(x):
-                    x_ = xi
+                    x_ = xi.copy()
                     x_[cindex] = x
                     return surrogateModel.jac(x_)[cindex]
 
                 # def hessp_continuous_search(x, p):
-                #     x_ = xi
+                #     x_ = xi.copy()
                 #     x_[cindex] = x
                 #     p_ = np.zeros(dim)
                 #     p_[cindex] = p
