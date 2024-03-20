@@ -1,10 +1,10 @@
-tests.ssurjano\_benchmark package
+tests.vlse\_benchmark package
 =================================
 
 Module contents
 ---------------
 
-.. automodule:: tests.ssurjano_benchmark
+.. automodule:: tests.vlse_benchmark
    :members:
    :undoc-members:
    :show-inheritance:

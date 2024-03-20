@@ -1,3 +1,35 @@
+"""Python interface to the Virtual Library of Simulation Experiments."""
+
+# Copyright (C) 2024 National Renewable Energy Laboratory
+
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+
+__all__ = [
+    "r",
+    "rfuncs",
+    "get_function_domain",
+    "optRfuncs",
+    "get_min_function",
+]
+__authors__ = ["Weslley S. Pereira"]
+__contact__ = "weslley.dasilvapereira@nrel.gov"
+__maintainer__ = "Weslley S. Pereira"
+__email__ = "weslley.dasilvapereira@nrel.gov"
+__credits__ = ["Sonja Surjanovic", "Derek Bingham", "Weslley S. Pereira"]
+__version__ = "0.2.0"
+__deprecated__ = False
+
 from rpy2.robjects import r
 import os
 
@@ -676,7 +708,7 @@ del benchPath, rfile
 del os
 
 if __name__ == "__main__":
-    print("SSURJANO benchmark loaded.")
+    print("VLSE benchmark loaded.")
     print("Available functions:")
 
     for func in rfuncs:

@@ -23,7 +23,7 @@ __authors__ = [
     "Haoyu Jia",
     "Weslley S. Pereira",
 ]
-__contact__ = "juliane.mueller@nrel.gov"
+__contact__ = "weslley.dasilvapereira@nrel.gov"
 __maintainer__ = "Weslley S. Pereira"
 __email__ = "weslley.dasilvapereira@nrel.gov"
 __credits__ = [

@@ -1,4 +1,4 @@
-"""Test functions from the SSURJANO benchmark.
+"""Test functions from the VLSE benchmark.
 """
 
 # Copyright (C) 2024 National Renewable Energy Laboratory
@@ -29,11 +29,11 @@ from random import randint
 import numpy as np
 import pytest
 from rpy2 import robjects
-import tests.ssurjano_benchmark as ssbmk
+import tests.vlse_benchmark as vlsebmk
 from blackboxopt import rbf, optimize, sampling, acquisition
 
 
-@pytest.mark.parametrize("func", list(ssbmk.rfuncs.keys()))
+@pytest.mark.parametrize("func", list(vlsebmk.rfuncs.keys()))
 def test_API(func: str):
     """Test function func can be called from the R API.
 
@@ -42,15 +42,15 @@ def test_API(func: str):
     func : str
         Name of the function to be tested.
     """
-    rfunc = getattr(ssbmk.r, func)
-    nArgs = ssbmk.rfuncs[func]
+    rfunc = getattr(vlsebmk.r, func)
+    nArgs = vlsebmk.rfuncs[func]
 
     # If the function takes a variable number of arguments, use the lower bound
     if not isinstance(nArgs, int):
         nArgs = nArgs[0]
 
     # Get the function domain
-    bounds = ssbmk.get_function_domain(func, nArgs)
+    bounds = vlsebmk.get_function_domain(func, nArgs)
     if isinstance(bounds[0], list) and len(bounds) == 1:
         bounds = bounds[0]
     assert (len(bounds) == nArgs) or (len(bounds) == 2 and nArgs == 1)
@@ -85,11 +85,11 @@ def test_API(func: str):
 def run_optimizer(
     func: str, nArgs: int, maxEval: int, algo, nRuns: int, disp: bool = False
 ) -> list[optimize.OptimizeResult]:
-    rfunc = getattr(ssbmk.r, func)
-    minval = ssbmk.get_min_function(func, nArgs)
+    rfunc = getattr(vlsebmk.r, func)
+    minval = vlsebmk.get_min_function(func, nArgs)
 
     # Get the function domain
-    bounds = ssbmk.get_function_domain(func, nArgs)
+    bounds = vlsebmk.get_function_domain(func, nArgs)
     if not isinstance(bounds[0], list) and nArgs == 1:
         bounds = [bounds]
     assert None not in bounds
@@ -148,9 +148,9 @@ def run_optimizer(
     return optres
 
 
-@pytest.mark.parametrize("func", list(ssbmk.optRfuncs))
+@pytest.mark.parametrize("func", list(vlsebmk.optRfuncs))
 def test_cptv(func: str) -> None:
-    nArgs = ssbmk.rfuncs[func]
+    nArgs = vlsebmk.rfuncs[func]
 
     # If the function takes a variable number of arguments, use the lower bound
     if not isinstance(nArgs, int):

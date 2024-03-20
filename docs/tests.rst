@@ -7,7 +7,7 @@ Subpackages
 .. toctree::
    :maxdepth: 4
 
-   tests.ssurjano_benchmark
+   tests.vlse_benchmark
 
 Submodules
 ----------
@@ -28,10 +28,10 @@ tests.test\_sampling module
    :undoc-members:
    :show-inheritance:
 
-tests.test\_ssurjano\_bench module
+tests.test\_vlse\_bench module
 ----------------------------------
 
-.. automodule:: tests.test_ssurjano_bench
+.. automodule:: tests.test_vlse_bench
    :members:
    :undoc-members:
    :show-inheritance:
