@@ -1119,7 +1119,10 @@ class EndPointsParetoFront(AcquisitionFunction):
                 lambda x: surrogateModels[i].eval(x)[0], bounds, iindex
             )
             res = pymoo_minimize(
-                minimumPointProblem, self.optimizer, verbose=False
+                minimumPointProblem,
+                self.optimizer,
+                seed=surrogateModels[0].nsamples(),
+                verbose=False,
             )
             assert res.X is not None
             for j in range(dim):
@@ -1153,7 +1156,10 @@ class EndPointsParetoFront(AcquisitionFunction):
                 lambda x: -tree.query(x)[0], bounds, iindex
             )
             res = pymoo_minimize(
-                minimumPointProblem, self.optimizer, verbose=False
+                minimumPointProblem,
+                self.optimizer,
+                verbose=False,
+                seed=surrogateModels[0].nsamples() + 1,
             )
             assert res.X is not None
             endpoints = np.empty((1, dim))
@@ -1346,3 +1352,95 @@ class CoordinatePerturbationOverNondominated(AcquisitionFunction):
         bestCandidates = bestCandidates[idxPredictedBest, :]
 
         return bestCandidates[:n, :]
+
+
+class GosacSample(AcquisitionFunction):
+    """GOSAC acquisition function as described in [#]_.
+
+    Attributes
+    ----------
+    fun : callable
+        Objective function.
+    optimizer : pymoo.optimizer
+        Optimizer for the acquisition function.
+    tol : float
+        Tolerance value for excluding candidate points that are too close to
+        already sampled points.
+
+    References
+    ----------
+    .. [#] Juliane Mueller and Joshua D. Woodbury. GOSAC: global optimization
+        with surrogate approximation of constraints.
+        J Glob Optim, 69:117-136, 2017.
+        https://doi.org/10.1007/s10898-017-0496-y
+    """
+
+    def __init__(
+        self,
+        fun,
+        optimizer=MixedVariableGA(),
+        tol: float = 1e-3,
+    ):
+        self.fun = fun
+        self.optimizer = optimizer
+        self.tol = tol
+
+    def acquire(
+        self,
+        surrogateModels,
+        bounds: tuple | list,
+        n: int = 1,
+        **kwargs,
+    ) -> np.ndarray:
+        """Acquire n points (Currently only n=1 is supported).
+
+        Parameters
+        ----------
+        surrogateModels : list
+            List of surrogate models for the constraints.
+        bounds : tuple | list
+            Bounds of the search space.
+        n : int, optional
+            Number of points to be acquired. The default is 1.
+
+        Returns
+        -------
+        numpy.ndarray
+            n-by-dim matrix with the selected points.
+        """
+        dim = len(bounds)
+        gdim = len(surrogateModels)
+        iindex = surrogateModels[0].iindex
+        assert n == 1
+
+        cheapProblem = ProblemWithConstraint(
+            self.fun,
+            lambda x: [surrogateModels[i].eval(x)[0] for i in range(gdim)],
+            bounds,
+            iindex,
+            n_ieq_constr=gdim,
+        )
+        res = pymoo_minimize(
+            cheapProblem,
+            self.optimizer,
+            seed=surrogateModels[0].nsamples(),
+            verbose=False,
+        )
+        assert res.X is not None
+        xnew = np.asarray([[res.X[i] for i in range(dim)]])
+
+        if cdist(xnew, surrogateModels[0].samples()).min() < self.tol:
+            tree = KDTree(surrogateModels[0].samples())
+            minimumPointProblem = ProblemNoConstraint(
+                lambda x: -tree.query(x)[0], bounds, iindex
+            )
+            res = pymoo_minimize(
+                minimumPointProblem,
+                self.optimizer,
+                seed=surrogateModels[0].nsamples() + 1,
+                verbose=False,
+            )
+            assert res.X is not None
+            xnew[0, :] = [res.X[i] for i in range(dim)]
+
+        return xnew

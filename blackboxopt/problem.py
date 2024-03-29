@@ -90,11 +90,18 @@ class ProblemWithConstraint(Problem):
         Constraint function.
     """
 
-    def __init__(self, objfunc, gfunc, bounds: tuple | list, iindex: list):
+    def __init__(
+        self,
+        objfunc,
+        gfunc,
+        bounds: tuple | list,
+        iindex: list,
+        n_ieq_constr: int = 1,
+    ):
         vars = _get_vars(bounds, iindex)
         self.objfunc = objfunc
         self.gfunc = gfunc
-        super().__init__(vars=vars, n_obj=1, n_ieq_constr=1)
+        super().__init__(vars=vars, n_obj=1, n_ieq_constr=n_ieq_constr)
 
     def _evaluate(self, X, out, *args, **kwargs):
         x = _dict_to_array(X)

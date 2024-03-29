@@ -53,6 +53,7 @@ from .acquisition import (
     CoordinatePerturbation,
     CoordinatePerturbationOverNondominated,
     EndPointsParetoFront,
+    GosacSample,
     MinimizeMOSurrogate,
     ParetoFront,
     TargetValueAcquisition,
@@ -320,6 +321,120 @@ def initialize_moo_surrogate(
     )
     out.x = surrogateModels[0].samples()[iPareto, :].copy()
     out.fx = fallsamples[iPareto, :]
+
+    return out
+
+
+def initialize_surrogate_constraints(
+    fun,
+    gfun,
+    bounds: tuple | list,
+    maxeval: int,
+    *,
+    surrogateModels=(RbfModel(),),
+    samples: np.ndarray = np.array([]),
+) -> OptimizeResult:
+    """Initialize the surrogate models for the constraints.
+
+    Parameters
+    ----------
+    fun : callable
+        The objective function to be minimized.
+    gfun : callable
+        The constraint functions. Each constraint function must return a scalar
+        value. If the constraint function returns a value greater than zero, it
+        is considered a violation of the constraint.
+    bounds : tuple | list
+        Bounds for variables. Each element of the tuple must be a tuple with two
+        elements, corresponding to the lower and upper bound for the variable.
+    maxeval : int
+        Maximum number of function evaluations.
+    surrogateModels : list, optional
+        Surrogate models to be used. The default is (RbfModel(),).
+    samples : np.ndarray, optional
+        Initial samples to be added to the surrogate model. The default is an
+        empty array.
+
+    Returns
+    -------
+    OptimizeResult
+        The optimization result.
+    """
+    dim = len(bounds)  # Dimension of the problem
+    gdim = len(surrogateModels)  # Number of constraints
+    assert dim > 0 and gdim > 0
+
+    # Initialize output
+    out = OptimizeResult(
+        x=np.array([]),
+        fx=np.array([]),
+        nit=0,
+        nfev=0,
+        samples=np.zeros((maxeval, dim)),
+        fsamples=np.zeros((maxeval, 1 + gdim)),
+    )
+    bestfx = np.Inf
+
+    # Number of initial samples
+    m0 = surrogateModels[0].nsamples()
+    m = min(samples.shape[0], maxeval)
+
+    # Add new samples to the surrogate model
+    if m == 0 and m0 == 0:
+        # Initialize surrogate model
+        # TODO: Improve me! The initial design must make sense for all
+        # surrogate models. This has to do with the type of the surrogate model.
+        surrogateModels[0].create_initial_design(dim, bounds, maxeval)
+        for i in range(1, gdim):
+            surrogateModels[i].update_samples(surrogateModels[0].samples())
+
+        # Update m
+        m = surrogateModels[0].nsamples()
+    else:
+        # Add samples to the surrogate model
+        if m > 0:
+            for i in range(gdim):
+                surrogateModels[i].update_samples(samples)
+
+        # Check if samples are integer values for integer variables
+        iindex = surrogateModels[0].iindex
+        if iindex:
+            if any(
+                surrogateModels[0].samples()[:, iindex]
+                != np.round(surrogateModels[0].samples()[:, iindex])
+            ):
+                raise ValueError(
+                    "Initial samples must be integer values for integer variables"
+                )
+
+        # Check if samples are sufficient to build the surrogate model
+        for i in range(gdim):
+            if (
+                np.linalg.matrix_rank(surrogateModels[i].get_matrixP())
+                != surrogateModels[i].pdim()
+            ):
+                raise ValueError(
+                    "Initial samples are not sufficient to build the surrogate model"
+                )
+
+    # Evaluate initial samples and update output
+    if m > 0:
+        # Add new samples to the output
+        out.samples[0:m, :] = surrogateModels[0].samples()[m0:, :]
+
+        # Compute f(samples) and g(samples)
+        out.fsamples[0:m, 0] = bestfx
+        out.fsamples[0:m, 1:] = gfun(out.samples[0:m, :])
+        out.nfev = m
+
+        # Update best point found so far
+        for i in range(m):
+            if np.max(out.fsamples[i, 1:]) <= 0:
+                out.fsamples[i, 0] = fun(out.samples[i, :].reshape(1, -1))
+                if out.x.size == 0 or out.fsamples[i, 0] < bestfx:
+                    out.x = out.samples[i, :].copy()
+                    out.fx = out.fsamples[i, :].copy()
+                    bestfx = out.fsamples[i, 0]
 
     return out
 
@@ -1368,5 +1483,216 @@ def socemo(
     out.nfev = m
     out.samples.resize(m, dim)
     out.fsamples.resize(m, objdim)
+
+    return out
+
+
+def gosac(
+    fun,
+    gfun,
+    bounds: tuple | list,
+    maxeval: int,
+    *,
+    surrogateModels=(RbfModel(),),
+    samples: np.ndarray = np.array([]),
+    disp: bool = False,
+):
+    """Minimize a scalar function of one or more variables subject to
+    constraints.
+
+    The surrogate models are used to approximate the constraints. The objective
+    function is assumed to be cheap to evaluate, while the constraints are
+    assumed to be expensive to evaluate.
+
+    Parameters
+    ----------
+    fun : callable
+        The objective function to be minimized.
+    gfun : callable
+        The constraint function to be minimized. The constraints must be
+        formulated as g(x) <= 0.
+    bounds : tuple | list
+        Bounds for variables. Each element of the tuple must be a tuple with two
+        elements, corresponding to the lower and upper bound for the variable.
+    maxeval : int
+        Maximum number of function evaluations.
+    surrogateModels : tuple, optional
+        Surrogate models to be used. The default is (RbfModel(),).
+    samples : np.ndarray, optional
+        Initial samples to be added to the surrogate model. The default is an
+        empty array.
+    disp : bool, optional
+        If True, print information about the optimization process. The default
+        is False.
+
+    Returns
+    -------
+    OptimizeResult
+        The optimization result.
+    """
+    dim = len(bounds)  # Dimension of the problem
+    gdim = len(surrogateModels)  # Number of constraints
+    assert dim > 0 and gdim > 0
+
+    # Reserve space for the surrogate model to avoid repeated allocations
+    for s in surrogateModels:
+        s.reserve(s.nsamples() + maxeval, dim)
+
+    # Initialize output
+    out = initialize_surrogate_constraints(
+        fun,
+        gfun,
+        bounds,
+        maxeval,
+        surrogateModels=surrogateModels,
+        samples=samples,
+    )
+    m = out.nfev
+    assert isinstance(out.fx, np.ndarray)
+
+    # Objects needed for the iterations
+    mooptimizer = MixedVariableGA(pop_size=100, survival=RankAndCrowding())
+    gaoptimizer = MixedVariableGA(pop_size=100)
+    nGens = 100
+    tol = 1e-3 * np.min([bounds[i][1] - bounds[i][0] for i in range(dim)])
+    acquisition1 = MinimizeMOSurrogate(mooptimizer, nGens, tol)
+    acquisition2 = GosacSample(fun, gaoptimizer, tol)
+
+    xselected = np.empty((0, dim))
+    ySelected = np.copy(out.fsamples[0:m, 1:])
+
+    # Phase 1: Find a feasible solution
+    while m < maxeval and out.x.size == 0:
+        nMax = maxeval - m
+        if disp:
+            print("(Phase 1) Iteration: %d" % out.nit)
+            print("fEvals: %d" % m)
+
+        # Update surrogate models
+        t0 = time.time()
+        if m > 0:
+            for i in range(gdim):
+                surrogateModels[i].update_samples(xselected)
+                surrogateModels[i].update_coefficients(ySelected[:, i])
+        tf = time.time()
+        if disp:
+            print("Time to update surrogate model: %f s" % (tf - t0))
+
+        # Solve the surrogate multiobjective problem
+        t0 = time.time()
+        bestCandidates = acquisition1.acquire(
+            surrogateModels, bounds, n=min(nMax, 2 * gdim)
+        )
+        tf = time.time()
+        if disp:
+            print(
+                "Solving the surrogate multiobjective problem: %d points in %f s"
+                % (len(bestCandidates), tf - t0)
+            )
+
+        # Evaluate the surrogate at the best candidates
+        sCandidates = np.empty((len(bestCandidates), gdim))
+        for i in range(gdim):
+            sCandidates[:, i], _ = surrogateModels[i].eval(bestCandidates)
+
+        # Find the minimum number of constraint violations
+        constraintViolation = [
+            np.sum(sCandidates[i, :] > 0) for i in range(len(bestCandidates))
+        ]
+        minViolation = np.min(constraintViolation)
+        idxMinViolation = np.where(constraintViolation == minViolation)[0]
+
+        # Find the candidate with the minimum violation
+        idxSelected = np.argmin(
+            [
+                np.sum(np.maximum(sCandidates[i, :], 0.0))
+                for i in idxMinViolation
+            ]
+        )
+        xselected = bestCandidates[idxSelected, :].reshape(1, -1)
+
+        # Compute g(xselected)
+        ySelected = np.asarray(gfun(xselected))
+
+        # Check if xselected is a feasible sample
+        if np.max(ySelected) <= 0:
+            fxSelected = fun(xselected)
+            out.x = xselected[0]
+            out.fx = np.empty(gdim + 1)
+            out.fx[0] = fxSelected
+            out.fx[1:] = ySelected
+            out.fsamples[m, 0] = fxSelected
+        else:
+            out.fsamples[m, 0] = np.Inf
+
+        # Update samples and fsamples in out
+        out.samples[m, :] = xselected
+        out.fsamples[m, 1:] = ySelected
+
+        # Update the counters
+        m = m + 1
+        out.nit = out.nit + 1
+        out.nfev = out.nfev + 1
+
+    if out.x.size == 0:
+        # No feasible solution was found
+        out.samples.resize(m, dim)
+        out.fsamples.resize(m, gdim)
+        return out
+
+    # Phase 2: Optimize the objective function
+    while m < maxeval:
+        nMax = maxeval - m
+        if disp:
+            print("(Phase 2) Iteration: %d" % out.nit)
+            print("fEvals: %d" % m)
+            print("Best value: %f" % out.fx[0])
+
+        # Update surrogate models
+        t0 = time.time()
+        if m > 0:
+            for i in range(gdim):
+                surrogateModels[i].update_samples(xselected)
+                surrogateModels[i].update_coefficients(ySelected[:, i])
+        tf = time.time()
+        if disp:
+            print("Time to update surrogate model: %f s" % (tf - t0))
+
+        # Solve cheap problem with multiple constraints
+        t0 = time.time()
+        xselected = acquisition2.acquire(surrogateModels, bounds)
+        tf = time.time()
+        if disp:
+            print(
+                "Solving the cheap problem with surrogate cons: %d points in %f s"
+                % (len(xselected), tf - t0)
+            )
+
+        # Compute g(xselected)
+        ySelected = np.asarray(gfun(xselected))
+
+        # Check if xselected is a feasible sample
+        if np.max(ySelected) <= 0:
+            fxSelected = fun(xselected)[0]
+            if fxSelected < out.fx[0]:
+                out.x = xselected
+                out.fx[0] = fxSelected
+                out.fx[1:] = ySelected
+            out.fsamples[m, 0] = fxSelected
+        else:
+            out.fsamples[m, 0] = np.Inf
+
+        # Update samples and fsamples in out
+        out.samples[m, :] = xselected
+        out.fsamples[m, 1:] = ySelected
+
+        # Update the counters
+        m = m + 1
+        out.nit = out.nit + 1
+        out.nfev = out.nfev + 1
+
+    # Update output
+    out.samples.resize(m, dim)
+    out.fsamples.resize(m, gdim)
 
     return out
