@@ -1550,11 +1550,14 @@ def gosac(
     m = out.nfev
     assert isinstance(out.fx, np.ndarray)
 
-    # Objects needed for the iterations
-    mooptimizer = MixedVariableGA(pop_size=100, survival=RankAndCrowding())
-    gaoptimizer = MixedVariableGA(pop_size=100)
+    # Parameters
     nGens = 100
+    popsize = 100
     tol = 1e-3 * np.min([bounds[i][1] - bounds[i][0] for i in range(dim)])
+
+    # Objects needed for the iterations
+    mooptimizer = MixedVariableGA(pop_size=popsize, survival=RankAndCrowding())
+    gaoptimizer = MixedVariableGA()
     acquisition1 = MinimizeMOSurrogate(mooptimizer, nGens, tol)
     acquisition2 = GosacSample(fun, gaoptimizer, tol)
 
@@ -1567,6 +1570,9 @@ def gosac(
         if disp:
             print("(Phase 1) Iteration: %d" % out.nit)
             print("fEvals: %d" % m)
+            print(
+                "Constraint violation in the last step: %f" % np.max(ySelected)
+            )
 
         # Update surrogate models
         t0 = time.time()
@@ -1581,7 +1587,7 @@ def gosac(
         # Solve the surrogate multiobjective problem
         t0 = time.time()
         bestCandidates = acquisition1.acquire(
-            surrogateModels, bounds, n=min(nMax, 2 * gdim)
+            surrogateModels, bounds, n=popsize
         )
         tf = time.time()
         if disp:
@@ -1675,7 +1681,7 @@ def gosac(
         if np.max(ySelected) <= 0:
             fxSelected = fun(xselected)[0]
             if fxSelected < out.fx[0]:
-                out.x = xselected
+                out.x = xselected[0]
                 out.fx[0] = fxSelected
                 out.fx[1:] = ySelected
             out.fsamples[m, 0] = fxSelected
