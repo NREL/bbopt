@@ -26,7 +26,8 @@ __deprecated__ = False
 
 import numpy as np
 import sys
-from blackboxopt.rbf import RbfModel, RbfType
+import pytest
+from blackboxopt.rbf import MedianLpfFilter, RbfModel, RbfType
 
 
 class TestRbfModel:
@@ -57,3 +58,30 @@ class TestRbfModel:
         assert self.rbf_model.phi(4.0) == (
             4 * 4 * np.log(4 + sys.float_info.min)
         )
+
+    def test_dim(self):
+        assert self.rbf_model.dim() == 0
+
+        self.rbf_model.reserve(0, 3)
+        assert self.rbf_model.dim() == 3
+
+        self.rbf_model.reserve(1, 4)
+        assert self.rbf_model.dim() == 4
+
+        # The dimension should not change
+        with pytest.raises(Exception):
+            self.rbf_model.reserve(1, 2)
+
+
+def test_median_lpf():
+    f = MedianLpfFilter()
+
+    x = [1, 2, 3, 4, 5]
+    medianx = np.median(x)
+    y = [min(x[i], medianx) for i in range(len(x))]
+    assert np.array_equal(f(x), y)
+
+    x = [7, 5, 29, 2, 8]
+    medianx = np.median(x)
+    y = [min(x[i], medianx) for i in range(len(x))]
+    assert np.array_equal(f(x), y)

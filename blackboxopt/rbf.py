@@ -39,12 +39,12 @@ RbfType = Enum("RbfType", ["LINEAR", "CUBIC", "THINPLATE"])
 
 
 class RbfFilter:
-    def __call__(self, x: np.ndarray) -> np.ndarray:
+    def __call__(self, x) -> np.ndarray:
         return x
 
 
 class MedianLpfFilter(RbfFilter):
-    def __call__(self, x: np.ndarray) -> np.ndarray:
+    def __call__(self, x) -> np.ndarray:
         """Filter values by replacing large function values by the median of all.
 
         This strategy was proposed by [#]_ based on results from [#]_.
@@ -207,8 +207,8 @@ class RbfModel:
             Dimension of the domain space.
         """
         assert self._x.size == 0 or self._x.ndim == 2
-        if self.samples().ndim == 2:
-            return self.samples().shape[1]
+        if self._x.ndim == 2:
+            return self._x.shape[1]
         else:
             return 0
 
