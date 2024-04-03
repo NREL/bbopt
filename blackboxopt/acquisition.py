@@ -1081,8 +1081,11 @@ class EndPointsParetoFront(AcquisitionFunction):
         already sampled points.
     """
 
-    def __init__(self, optimizer=MixedVariableGA(), tol=1e-3) -> None:
+    def __init__(
+        self, optimizer=MixedVariableGA(), nGens: int = 100, tol=1e-3
+    ) -> None:
         self.optimizer = optimizer
+        self.nGens = nGens
         self.tol = tol
 
     def acquire(
@@ -1121,6 +1124,7 @@ class EndPointsParetoFront(AcquisitionFunction):
             res = pymoo_minimize(
                 minimumPointProblem,
                 self.optimizer,
+                ("n_gen", self.nGens),
                 seed=surrogateModels[0].nsamples(),
                 verbose=False,
             )
@@ -1158,6 +1162,7 @@ class EndPointsParetoFront(AcquisitionFunction):
             res = pymoo_minimize(
                 minimumPointProblem,
                 self.optimizer,
+                ("n_gen", self.nGens),
                 verbose=False,
                 seed=surrogateModels[0].nsamples() + 1,
             )
@@ -1379,10 +1384,12 @@ class GosacSample(AcquisitionFunction):
         self,
         fun,
         optimizer=MixedVariableGA(),
+        nGens: int = 100,
         tol: float = 1e-3,
     ):
         self.fun = fun
         self.optimizer = optimizer
+        self.nGens = nGens
         self.tol = tol
 
     def acquire(
@@ -1415,7 +1422,9 @@ class GosacSample(AcquisitionFunction):
 
         cheapProblem = ProblemWithConstraint(
             self.fun,
-            lambda x: [surrogateModels[i].eval(x)[0] for i in range(gdim)],
+            lambda x: np.transpose(
+                [surrogateModels[i].eval(x)[0] for i in range(gdim)]
+            ),
             bounds,
             iindex,
             n_ieq_constr=gdim,
@@ -1423,6 +1432,7 @@ class GosacSample(AcquisitionFunction):
         res = pymoo_minimize(
             cheapProblem,
             self.optimizer,
+            ("n_gen", self.nGens),
             seed=surrogateModels[0].nsamples(),
             verbose=False,
         )
@@ -1437,6 +1447,7 @@ class GosacSample(AcquisitionFunction):
             res = pymoo_minimize(
                 minimumPointProblem,
                 self.optimizer,
+                ("n_gen", self.nGens),
                 seed=surrogateModels[0].nsamples() + 1,
                 verbose=False,
             )

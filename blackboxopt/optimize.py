@@ -1342,7 +1342,7 @@ def socemo(
     # Define acquisition functions
     step1acquisition = ParetoFront(mooptimizer, nGens)
     step2acquisition = CoordinatePerturbationOverNondominated(acquisitionFunc)
-    step3acquisition = EndPointsParetoFront(gaoptimizer, tol)
+    step3acquisition = EndPointsParetoFront(gaoptimizer, nGens, tol)
     step5acquisition = MinimizeMOSurrogate(mooptimizer, nGens, tol)
 
     # do until max number of f-evals reached or local min found
@@ -1551,22 +1551,25 @@ def gosac(
     assert isinstance(out.fx, np.ndarray)
 
     # Parameters
-    nGens = 100
-    popsize = 100
+    nGens1 = 100
+    popsize1 = 100
+    nGens2 = 100
+    popsize2 = 100
     tol = 1e-3 * np.min([bounds[i][1] - bounds[i][0] for i in range(dim)])
 
     # Objects needed for the iterations
-    mooptimizer = MixedVariableGA(pop_size=popsize, survival=RankAndCrowding())
-    gaoptimizer = MixedVariableGA()
-    acquisition1 = MinimizeMOSurrogate(mooptimizer, nGens, tol)
-    acquisition2 = GosacSample(fun, gaoptimizer, tol)
+    mooptimizer = MixedVariableGA(
+        pop_size=popsize1, survival=RankAndCrowding()
+    )
+    gaoptimizer = MixedVariableGA(pop_size=popsize2)
+    acquisition1 = MinimizeMOSurrogate(mooptimizer, nGens1, tol)
+    acquisition2 = GosacSample(fun, gaoptimizer, nGens2, tol)
 
     xselected = np.empty((0, dim))
     ySelected = np.copy(out.fsamples[0:m, 1:])
 
     # Phase 1: Find a feasible solution
     while m < maxeval and out.x.size == 0:
-        nMax = maxeval - m
         if disp:
             print("(Phase 1) Iteration: %d" % out.nit)
             print("fEvals: %d" % m)
@@ -1587,7 +1590,7 @@ def gosac(
         # Solve the surrogate multiobjective problem
         t0 = time.time()
         bestCandidates = acquisition1.acquire(
-            surrogateModels, bounds, n=popsize
+            surrogateModels, bounds, n=popsize1
         )
         tf = time.time()
         if disp:
@@ -1648,7 +1651,6 @@ def gosac(
 
     # Phase 2: Optimize the objective function
     while m < maxeval:
-        nMax = maxeval - m
         if disp:
             print("(Phase 2) Iteration: %d" % out.nit)
             print("fEvals: %d" % m)
