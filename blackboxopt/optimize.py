@@ -35,6 +35,7 @@ __credits__ = [
 __version__ = "0.2.0"
 __deprecated__ = False
 
+from typing import Callable
 import numpy as np
 import time
 from dataclasses import dataclass
@@ -439,81 +440,6 @@ def initialize_surrogate_constraints(
     return out
 
 
-# def srs_step(
-#     x0,
-#     y0,
-#     bounds: tuple | list,
-#     surrogateModel,
-#     acquisitionFunc,
-#     NumberNewSamples,
-#     expectedRelativeImprovement,
-#     performContinuousSearch,
-#     disp,
-# ):
-#     dim = len(bounds)  # Dimension of the problem
-#     assert dim > 0
-
-#     # Best initial guess
-#     i0Best = np.argmin(y0).item()
-#     x0Best = x0[i0Best, :]
-#     y0Best = y0[i0Best]
-
-#     # Best sample in the surrogate model
-#     iBest = surrogateModel.argmin()
-#     xBest = surrogateModel.sample(iBest)
-#     yBest = surrogateModel.get_fsamples()[iBest].item()
-
-#     # Update best sample and value
-#     modifiedCoordinates = [False] * dim
-#     if y0Best < yBest:
-#         modifiedCoordinates = [x0Best[i] != xBest[i] for i in range(dim)]
-#         xBest = x0Best
-#         yBest = y0Best
-
-#     # Determine if significant improvement was found
-#     hasImproved = (yBest - y0Best) > expectedRelativeImprovement * abs(yBest)
-
-#     if not performContinuousSearch:
-#         # Activate continuous search if an integer variables have changed and
-#         # a significant improvement was found
-#         if hasImproved:
-#             intCoordHasChanged = False
-#             for i in surrogateModel.iindex:
-#                 if modifiedCoordinates[i]:
-#                     intCoordHasChanged = True
-#                     break
-#             if intCoordHasChanged:
-#                 performContinuousSearch = True
-
-#     # Update surrogate model
-#     t0 = time.time()
-#     surrogateModel.update_samples(x0)
-#     surrogateModel.update_coefficients(y0)
-#     tf = time.time()
-#     if disp:
-#         print("Time to update surrogate model: %f s" % (tf - t0))
-
-#     # Acquire new samples
-#     t0 = time.time()
-#     if performContinuousSearch:
-#         coord = [i for i in range(dim) if i not in surrogateModel.iindex]
-#     else:
-#         coord = [i for i in range(dim)]
-#     x = acquisitionFunc.acquire(
-#         surrogateModel,
-#         bounds,
-#         (yBest, np.Inf),
-#         NumberNewSamples,
-#         xbest=xBest,
-#         coord=coord,
-#     )
-#     tf = time.time()
-#     if disp:
-#         print("Time to acquire new samples: %f s" % (tf - t0))
-
-#     return x, hasImproved, performContinuousSearch
-
-
 def stochastic_response_surface(
     fun,
     bounds: tuple | list,
@@ -528,6 +454,7 @@ def stochastic_response_surface(
     failtolerance: int = 5,
     performContinuousSearch: bool = True,
     disp: bool = False,
+    callback: Callable[[OptimizeResult], None] | None = None,
 ) -> OptimizeResult:
     """Minimize a scalar function of one or more variables using a response
     surface model approach based on a surrogate model.
@@ -571,6 +498,9 @@ def stochastic_response_surface(
     disp : bool, optional
         If True, print information about the optimization process. The default
         is False.
+    callback : callable, optional
+        If provided, the callback function will be called after each iteration
+        with the current optimization result. The default is None.
 
     Returns
     -------
@@ -603,7 +533,10 @@ def stochastic_response_surface(
         surrogateModel=surrogateModel,
         samples=samples,
     )
-    m = out.nfev
+
+    # Call the callback function
+    if callback is not None:
+        callback(out)
 
     # counters
     failctr = 0  # number of consecutive unsuccessful iterations
@@ -618,15 +551,15 @@ def stochastic_response_surface(
 
     # do until max number of f-evals reached or local min found
     xselected = np.empty((0, dim))
-    ySelected = np.copy(out.fsamples[0:m])
-    while m < maxeval:
+    ySelected = np.copy(out.fsamples[0 : out.nfev])
+    while out.nfev < maxeval:
         if disp:
             print("Iteration: %d" % out.nit)
-            print("fEvals: %d" % m)
+            print("fEvals: %d" % out.nfev)
             print("Best value: %f" % out.fx)
 
         # number of new samples in an iteration
-        NumberNewSamples = min(newSamplesPerIteration, maxeval - m)
+        NumberNewSamples = min(newSamplesPerIteration, maxeval - out.nfev)
 
         # Update surrogate model
         t0 = time.time()
@@ -684,11 +617,15 @@ def stochastic_response_surface(
             out.x[:] = xselected[iSelectedBest, :]
             out.fx = fxSelectedBest
 
-        # Update m, x, y and out.nit
-        out.samples[m : m + NumberNewSamples, :] = xselected
-        out.fsamples[m : m + NumberNewSamples] = ySelected
-        m = m + NumberNewSamples
+        # Update x, y, out.nit and out.nfev
+        out.samples[out.nfev : out.nfev + NumberNewSamples, :] = xselected
+        out.fsamples[out.nfev : out.nfev + NumberNewSamples] = ySelected
+        out.nfev = out.nfev + NumberNewSamples
         out.nit = out.nit + 1
+
+        # Call the callback function
+        if callback is not None:
+            callback(out)
 
         if countinuousSearch == 0:
             # Activate continuous search if an integer variables have changed and
@@ -723,9 +660,8 @@ def stochastic_response_surface(
                 succctr = 0
 
     # Update output
-    out.nfev = m
-    out.samples.resize(m, dim)
-    out.fsamples.resize(m)
+    out.samples.resize(out.nfev, dim)
+    out.fsamples.resize(out.nfev)
 
     return out
 
@@ -740,6 +676,7 @@ def multistart_stochastic_response_surface(
     newSamplesPerIteration: int = 1,
     performContinuousSearch: bool = True,
     disp: bool = False,
+    callback: Callable[[OptimizeResult], None] | None = None,
 ) -> OptimizeResult:
     """Minimize a scalar function of one or more variables using a surrogate
     model.
@@ -766,6 +703,10 @@ def multistart_stochastic_response_surface(
     disp : bool, optional
         If True, print information about the optimization process. The default
         is False.
+    callback : callable, optional
+        If provided, the callback function will be called after each iteration
+        with the current optimization result. The default is None. The callback
+        function will be called internally at stochastic_response_surface().
 
     Returns
     -------
@@ -801,6 +742,7 @@ def multistart_stochastic_response_surface(
             newSamplesPerIteration=newSamplesPerIteration,
             performContinuousSearch=performContinuousSearch,
             disp=disp,
+            callback=callback,
         )
 
         # Update output
@@ -836,6 +778,7 @@ def target_value_optimization(
     expectedRelativeImprovement: float = 1e-3,
     failtolerance: int = -1,
     disp: bool = False,
+    callback: Callable[[OptimizeResult], None] | None = None,
 ) -> OptimizeResult:
     """Minimize a scalar function of one or more variables using the target
     value strategy from [#]_.
@@ -875,6 +818,9 @@ def target_value_optimization(
     disp : bool, optional
         If True, print information about the optimization process. The default
         is False.
+    callback : callable, optional
+        If provided, the callback function will be called after each iteration
+        with the current optimization result. The default is None.
 
     Returns
     -------
@@ -903,15 +849,18 @@ def target_value_optimization(
         surrogateModel=surrogateModel,
         samples=samples,
     )
-    m = out.nfev
+
+    # Call the callback function
+    if callback is not None:
+        callback(out)
 
     # max value of f
     if surrogateModel.nsamples() > 0:
         maxf = np.max(surrogateModel.get_fsamples()).item()
     else:
         maxf = -np.Inf
-    if m > 0:
-        maxf = max(np.max(out.fsamples[0:m]).item(), maxf)
+    if out.nfev > 0:
+        maxf = max(np.max(out.fsamples[0 : out.nfev]).item(), maxf)
     if len(x0y0) == 2:
         maxf = max(maxf, x0y0[1])
 
@@ -926,15 +875,15 @@ def target_value_optimization(
 
     # do until max number of f-evals reached or local min found
     xselected = np.empty((0, dim))
-    ySelected = np.copy(out.fsamples[0:m])
-    while m < maxeval:
+    ySelected = np.copy(out.fsamples[0 : out.nfev])
+    while out.nfev < maxeval:
         if disp:
             print("Iteration: %d" % out.nit)
-            print("fEvals: %d" % m)
+            print("fEvals: %d" % out.nfev)
             print("Best value: %f" % out.fx)
 
         # number of new samples in an iteration
-        NumberNewSamples = min(newSamplesPerIteration, maxeval - m)
+        NumberNewSamples = min(newSamplesPerIteration, maxeval - out.nfev)
 
         # Update surrogate model
         t0 = time.time()
@@ -976,19 +925,22 @@ def target_value_optimization(
             out.fx = fxSelectedBest
 
         # Update remaining output variables
-        out.samples[m : m + NumberNewSamples, :] = xselected
-        out.fsamples[m : m + NumberNewSamples] = ySelected
-        m = m + NumberNewSamples
+        out.samples[out.nfev : out.nfev + NumberNewSamples, :] = xselected
+        out.fsamples[out.nfev : out.nfev + NumberNewSamples] = ySelected
+        out.nfev = out.nfev + NumberNewSamples
         out.nit = out.nit + 1
+
+        # Call the callback function
+        if callback is not None:
+            callback(out)
 
         # break if algorithm is not making progress
         if failctr >= failtolerance:
             break
 
     # Update output
-    out.nfev = m
-    out.samples.resize(m, dim)
-    out.fsamples.resize(m)
+    out.samples.resize(out.nfev, dim)
+    out.fsamples.resize(out.nfev)
 
     return out
 
@@ -1005,6 +957,7 @@ def cptv(
     consecutiveQuickFailuresTol: int = 0,
     useLocalSearch: bool = False,
     disp: bool = False,
+    callback: Callable[[OptimizeResult], None] | None = None,
 ) -> OptimizeResult:
     """Minimize a scalar function of one or more variables using the coordinate
     perturbation and target value strategy.
@@ -1043,6 +996,12 @@ def cptv(
     disp : bool, optional
         If True, print information about the optimization process. The default
         is False.
+    callback : callable, optional
+        If provided, the callback function will be called after each iteration
+        with the current optimization result. The default is None. The callback
+        function will be called internally at stochastic_response_surface() and
+        target_value_optimization(), as well as in the local search if it is
+        performed.
 
     Returns
     -------
@@ -1098,6 +1057,7 @@ def cptv(
                 failtolerance=failtolerance,
                 performContinuousSearch=False,
                 disp=disp,
+                callback=callback,
             )
 
             surrogateModel.update_samples(
@@ -1142,6 +1102,7 @@ def cptv(
                 expectedRelativeImprovement=expectedRelativeImprovement,
                 failtolerance=failtolerance,
                 disp=disp,
+                callback=callback,
             )
 
             surrogateModel.update_samples(
@@ -1198,6 +1159,10 @@ def cptv(
             out_local.samples[-1, cindex] = out_local_.x
             out_local.fsamples[-1] = out_local_.fun
 
+            # Call the callback function
+            if callback is not None:
+                callback(out_local)
+
             if np.linalg.norm(out.x - out_local.x) >= tol:
                 surrogateModel.update_samples(out_local.x.reshape(1, -1))
                 surrogateModel.update_coefficients(np.asarray(out_local.fx))
@@ -1245,6 +1210,7 @@ def cptvl(
     failtolerance: int = 5,
     consecutiveQuickFailuresTol: int = 0,
     disp: bool = False,
+    callback: Callable[[OptimizeResult], None] | None = None,
 ) -> OptimizeResult:
     """Wrapper to cptv. See cptv."""
     return cptv(
@@ -1258,6 +1224,7 @@ def cptvl(
         consecutiveQuickFailuresTol=consecutiveQuickFailuresTol,
         useLocalSearch=True,
         disp=disp,
+        callback=callback,
     )
 
 
@@ -1271,6 +1238,7 @@ def socemo(
     acquisitionFuncGlobal: UniformAcquisition = UniformAcquisition(0),
     samples: np.ndarray = np.array([]),
     disp: bool = False,
+    callback: Callable[[OptimizeResult], None] | None = None,
 ):
     """Minimize a multiobjective function using the surrogate model approach from [#]_.
 
@@ -1295,6 +1263,9 @@ def socemo(
     disp : bool, optional
         If True, print information about the optimization process. The default
         is False.
+    callback : callable, optional
+        If provided, the callback function will be called after each iteration
+        with the current optimization result. The default is None.
 
     Returns
     -------
@@ -1330,7 +1301,6 @@ def socemo(
         surrogateModels=surrogateModels,
         samples=samples,
     )
-    m = out.nfev
     assert isinstance(out.fx, np.ndarray)
 
     # Objects needed for the iterations
@@ -1347,16 +1317,16 @@ def socemo(
 
     # do until max number of f-evals reached or local min found
     xselected = np.empty((0, dim))
-    ySelected = np.copy(out.fsamples[0:m, :])
-    while m < maxeval:
-        nMax = maxeval - m
+    ySelected = np.copy(out.fsamples[0 : out.nfev, :])
+    while out.nfev < maxeval:
+        nMax = maxeval - out.nfev
         if disp:
             print("Iteration: %d" % out.nit)
-            print("fEvals: %d" % m)
+            print("fEvals: %d" % out.nfev)
 
         # Update surrogate models
         t0 = time.time()
-        if m > 0:
+        if out.nfev > 0:
             for i in range(objdim):
                 surrogateModels[i].update_samples(xselected)
                 surrogateModels[i].update_coefficients(ySelected[:, i])
@@ -1457,7 +1427,7 @@ def socemo(
         # 7. Evaluate the objective function and update the Pareto front
         #
 
-        NumberNewSamples = min(len(xselected), maxeval - m)
+        NumberNewSamples = min(len(xselected), maxeval - out.nfev)
         xselected.resize(NumberNewSamples, dim)
         print("Number of new samples: ", NumberNewSamples)
 
@@ -1472,17 +1442,20 @@ def socemo(
         out.fx = out.fx[iPareto, :]
 
         # Update samples and fsamples in out
-        out.samples[m : m + NumberNewSamples, :] = xselected
-        out.fsamples[m : m + NumberNewSamples, :] = ySelected
+        out.samples[out.nfev : out.nfev + NumberNewSamples, :] = xselected
+        out.fsamples[out.nfev : out.nfev + NumberNewSamples, :] = ySelected
 
         # Update the counters
-        m = m + NumberNewSamples
+        out.nfev = out.nfev + NumberNewSamples
         out.nit = out.nit + 1
 
+        # Call the callback function
+        if callback is not None:
+            callback(out)
+
     # Update output
-    out.nfev = m
-    out.samples.resize(m, dim)
-    out.fsamples.resize(m, objdim)
+    out.samples.resize(out.nfev, dim)
+    out.fsamples.resize(out.nfev, objdim)
 
     return out
 
@@ -1496,6 +1469,7 @@ def gosac(
     surrogateModels=(RbfModel(),),
     samples: np.ndarray = np.array([]),
     disp: bool = False,
+    callback: Callable[[OptimizeResult], None] | None = None,
 ):
     """Minimize a scalar function of one or more variables subject to
     constraints.
@@ -1524,6 +1498,9 @@ def gosac(
     disp : bool, optional
         If True, print information about the optimization process. The default
         is False.
+    callback : callable, optional
+        If provided, the callback function will be called after each iteration
+        with the current optimization result. The default is None.
 
     Returns
     -------
@@ -1547,7 +1524,6 @@ def gosac(
         surrogateModels=surrogateModels,
         samples=samples,
     )
-    m = out.nfev
     assert isinstance(out.fx, np.ndarray)
 
     # Parameters
@@ -1566,20 +1542,20 @@ def gosac(
     acquisition2 = GosacSample(fun, gaoptimizer, nGens2, tol)
 
     xselected = np.empty((0, dim))
-    ySelected = np.copy(out.fsamples[0:m, 1:])
+    ySelected = np.copy(out.fsamples[0 : out.nfev, 1:])
 
     # Phase 1: Find a feasible solution
-    while m < maxeval and out.x.size == 0:
+    while out.nfev < maxeval and out.x.size == 0:
         if disp:
             print("(Phase 1) Iteration: %d" % out.nit)
-            print("fEvals: %d" % m)
+            print("fEvals: %d" % out.nfev)
             print(
                 "Constraint violation in the last step: %f" % np.max(ySelected)
             )
 
         # Update surrogate models
         t0 = time.time()
-        if m > 0:
+        if out.nfev > 0:
             for i in range(gdim):
                 surrogateModels[i].update_samples(xselected)
                 surrogateModels[i].update_coefficients(ySelected[:, i])
@@ -1630,35 +1606,38 @@ def gosac(
             out.fx = np.empty(gdim + 1)
             out.fx[0] = fxSelected
             out.fx[1:] = ySelected
-            out.fsamples[m, 0] = fxSelected
+            out.fsamples[out.nfev, 0] = fxSelected
         else:
-            out.fsamples[m, 0] = np.Inf
+            out.fsamples[out.nfev, 0] = np.Inf
 
         # Update samples and fsamples in out
-        out.samples[m, :] = xselected
-        out.fsamples[m, 1:] = ySelected
+        out.samples[out.nfev, :] = xselected
+        out.fsamples[out.nfev, 1:] = ySelected
 
         # Update the counters
-        m = m + 1
-        out.nit = out.nit + 1
         out.nfev = out.nfev + 1
+        out.nit = out.nit + 1
+
+        # Call the callback function
+        if callback is not None:
+            callback(out)
 
     if out.x.size == 0:
         # No feasible solution was found
-        out.samples.resize(m, dim)
-        out.fsamples.resize(m, gdim)
+        out.samples.resize(out.nfev, dim)
+        out.fsamples.resize(out.nfev, gdim)
         return out
 
     # Phase 2: Optimize the objective function
-    while m < maxeval:
+    while out.nfev < maxeval:
         if disp:
             print("(Phase 2) Iteration: %d" % out.nit)
-            print("fEvals: %d" % m)
+            print("fEvals: %d" % out.nfev)
             print("Best value: %f" % out.fx[0])
 
         # Update surrogate models
         t0 = time.time()
-        if m > 0:
+        if out.nfev > 0:
             for i in range(gdim):
                 surrogateModels[i].update_samples(xselected)
                 surrogateModels[i].update_coefficients(ySelected[:, i])
@@ -1686,21 +1665,24 @@ def gosac(
                 out.x = xselected[0]
                 out.fx[0] = fxSelected
                 out.fx[1:] = ySelected
-            out.fsamples[m, 0] = fxSelected
+            out.fsamples[out.nfev, 0] = fxSelected
         else:
-            out.fsamples[m, 0] = np.Inf
+            out.fsamples[out.nfev, 0] = np.Inf
 
         # Update samples and fsamples in out
-        out.samples[m, :] = xselected
-        out.fsamples[m, 1:] = ySelected
+        out.samples[out.nfev, :] = xselected
+        out.fsamples[out.nfev, 1:] = ySelected
 
         # Update the counters
-        m = m + 1
-        out.nit = out.nit + 1
         out.nfev = out.nfev + 1
+        out.nit = out.nit + 1
+
+        # Call the callback function
+        if callback is not None:
+            callback(out)
 
     # Update output
-    out.samples.resize(m, dim)
-    out.fsamples.resize(m, gdim)
+    out.samples.resize(out.nfev, dim)
+    out.fsamples.resize(out.nfev, gdim)
 
     return out
