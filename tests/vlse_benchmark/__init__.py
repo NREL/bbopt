@@ -164,7 +164,7 @@ rfuncs = {
 }
 
 
-def get_function_domain(func: str, d: int = 2) -> list[list] | list:
+def get_function_domain(func: str, d: int = 2) -> list:
     """Get the domain of the function func.
 
     Parameters

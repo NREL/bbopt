@@ -1,5 +1,4 @@
-"""Sampling strategies for the optimization algorithms.
-"""
+"""Sampling strategies for the optimization algorithms."""
 
 # Copyright (C) 2024 National Renewable Energy Laboratory
 # Copyright (C) 2014 Cornell University
@@ -67,13 +66,13 @@ class Sampler:
         self.n = n
 
     def get_uniform_sample(
-        self, bounds: tuple | list, *, iindex: tuple[int, ...] = ()
+        self, bounds, *, iindex: tuple[int, ...] = ()
     ) -> np.ndarray:
         """Generate a sample from a uniform distribution inside the bounds.
 
         Parameters
         ----------
-        bounds : tuple | list
+        bounds
             Bounds for variables. Each element of the tuple must be a tuple with two elements,
             corresponding to the lower and upper bound for the variable.
         iindex : tuple, optional
@@ -97,13 +96,13 @@ class Sampler:
         return xnew
 
     def get_slhd_sample(
-        self, bounds: tuple | list, *, iindex: tuple[int, ...] = ()
+        self, bounds, *, iindex: tuple[int, ...] = ()
     ) -> np.ndarray:
         """Creates a Symmetric Latin Hypercube Design.
 
         Parameters
         ----------
-        bounds : tuple | list
+        bounds
             Bounds for variables. Each element of the tuple must be a tuple with two elements,
             corresponding to the lower and upper bound for the variable.
         iindex : tuple, optional
@@ -153,13 +152,13 @@ class Sampler:
         return X
 
     def get_sample(
-        self, bounds: tuple | list, *, iindex: tuple[int, ...] = ()
+        self, bounds, *, iindex: tuple[int, ...] = ()
     ) -> np.ndarray:
         """Generate a sample.
 
         Parameters
         ----------
-        bounds : tuple | list
+        bounds
             Bounds for variables. Each element of the tuple must be a tuple with two elements,
             corresponding to the lower and upper bound for the variable.
         iindex : tuple, optional
@@ -208,7 +207,7 @@ class NormalSampler(Sampler):
 
     def get_normal_sample(
         self,
-        bounds: tuple | list,
+        bounds,
         *,
         iindex: tuple[int, ...] = (),
         mu: np.ndarray = np.array([0]),
@@ -218,7 +217,7 @@ class NormalSampler(Sampler):
 
         Parameters
         ----------
-        bounds : tuple | list
+        bounds
             Bounds for variables. Each element of the tuple must be a tuple with two elements,
             corresponding to the lower and upper bound for the variable.
         iindex : tuple, optional
@@ -261,7 +260,7 @@ class NormalSampler(Sampler):
 
     def get_dds_sample(
         self,
-        bounds: tuple | list,
+        bounds,
         probability: float,
         *,
         iindex: tuple[int, ...] = (),
@@ -272,7 +271,7 @@ class NormalSampler(Sampler):
 
         Parameters
         ----------
-        bounds : tuple | list
+        bounds
             Bounds for variables. Each element of the tuple must be a tuple with two elements,
             corresponding to the lower and upper bound for the variable.
         probability : float
@@ -342,7 +341,7 @@ class NormalSampler(Sampler):
 
     def get_sample(
         self,
-        bounds: tuple | list,
+        bounds,
         *,
         iindex: tuple[int, ...] = (),
         mu: np.ndarray = np.array([0]),
@@ -353,7 +352,7 @@ class NormalSampler(Sampler):
 
         Parameters
         ----------
-        bounds : tuple | list
+        bounds
             Bounds for variables. Each element of the tuple must be a tuple with two elements,
             corresponding to the lower and upper bound for the variable.
         iindex : tuple, optional

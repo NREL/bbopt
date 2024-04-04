@@ -1,30 +1,45 @@
-[tool.poetry]
+[project]
 name = "blackboxopt"
 version = "0.2.0"
 description = "Surrogate models and active learning for scientific applications"
-authors = ["Weslley S. Pereira <weslley.dasilvapereira@nrel.gov>"]
-license = "GPL v3"
+authors = [
+    {name = "Weslley da Silva Pereira", email = "weslley.dasilvapereira@nrel.gov"},
+]
+license = {file = "LICENSE"}
 readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "numpy>=1.26.2",
+    "scipy>=1.11.4",
+    "pymoo>=0.6.1.1",
+]
 
-[tool.poetry.dependencies]
-python = "^3.9"
-numpy = "^1.26.2"
-scipy = "^1.11.4"
-pymoo = "^0.6.1.1"
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
 
-[tool.poetry.group.dev.dependencies]
-pytest = "^7.4.3"
-rpy2 = "3.5.1"
-matplotlib = "^3.8.2"
-ruff = "^0.1.9"
+[tool.pdm]
+distribution = true
 
-[tool.poetry.group.docs]
-optional = true
+[tool.pdm.dev-dependencies]
+test = [
+    "pytest>=7.4.3",
+    "rpy2==3.5.1",
+    "matplotlib>=3.8.2",
+]
+lint = [
+    "ruff>=0.3.5",
+]
+doc = [
+    "sphinx>=7.2.6",
+    "sphinx-rtd-theme>=2.0.0",
+    "myst-parser>=2.0.0",
+]
 
-[tool.poetry.group.docs.dependencies]
-sphinx = "^7.2.6"
-sphinx-rtd-theme = "^2.0.0"
-myst-parser = "^2.0.0"
+[tool.pdm.build]
+includes = ["blackboxopt"]
+source-includes = ["tests/test_*.py"]
+source-excludes = ["tests/**"]
 
 [tool.ruff]
 line-length = 79
@@ -39,7 +54,3 @@ docstring-code-line-length = 60
 
 [tool.ruff.lint.pycodestyle]
 max-doc-length = 80
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"

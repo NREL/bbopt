@@ -1,5 +1,4 @@
-"""Problem definitions for interfacing with pymoo.
-"""
+"""Problem definitions for interfacing with pymoo."""
 
 # Copyright (C) 2024 National Renewable Energy Laboratory
 
@@ -25,13 +24,14 @@ __version__ = "0.2.0"
 __deprecated__ = False
 
 import numpy as np
+from typing import Union
 
 # Pymoo imports
 from pymoo.core.problem import Problem
 from pymoo.core.variable import Real, Integer
 
 
-def _get_vars(bounds: tuple | list, iindex: list = []) -> dict:
+def _get_vars(bounds, iindex: list = []) -> dict:
     """Get the type of variables for the problem.
 
     Parameters
@@ -55,7 +55,7 @@ def _get_vars(bounds: tuple | list, iindex: list = []) -> dict:
     return vars
 
 
-def _dict_to_array(xdict: dict | list[dict]) -> np.ndarray:
+def _dict_to_array(xdict: Union[dict, list[dict]]) -> np.ndarray:
     """Convert a dictionary indexed by a range(n_var) to an array of values.
 
     Also accepts a list of dictionaries, in which case it returns a 2D array.
@@ -94,7 +94,7 @@ class ProblemWithConstraint(Problem):
         self,
         objfunc,
         gfunc,
-        bounds: tuple | list,
+        bounds,
         iindex: list,
         n_ieq_constr: int = 1,
     ):

@@ -1,5 +1,4 @@
-"""Test the RBF model.
-"""
+"""Test the RBF model."""
 
 # Copyright (C) 2024 National Renewable Energy Laboratory
 

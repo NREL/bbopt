@@ -1,5 +1,4 @@
-"""Radial Basis Function model.
-"""
+"""Radial Basis Function model."""
 
 # Copyright (C) 2024 National Renewable Energy Laboratory
 
@@ -24,6 +23,7 @@ __credits__ = ["Weslley S. Pereira"]
 __version__ = "0.2.0"
 __deprecated__ = False
 
+from typing import Optional
 import warnings
 import numpy as np
 from enum import Enum
@@ -546,7 +546,7 @@ class RbfModel:
         return y.flatten()
 
     def update_coefficients(
-        self, fx: np.ndarray, filter: RbfFilter | None = None
+        self, fx: np.ndarray, filter: Optional[RbfFilter] = None
     ) -> None:
         """Updates the coefficients of the RBF model.
 
@@ -641,9 +641,7 @@ class RbfModel:
         # Coefficients are not valid anymore
         self._valid_coefficients = False
 
-    def create_initial_design(
-        self, dim: int, bounds: tuple | list, maxm: int = 0
-    ) -> None:
+    def create_initial_design(self, dim: int, bounds, maxm: int = 0) -> None:
         """Creates an initial set of samples for the RBF model.
 
         The points are generated using a symmetric Latin hypercube design.
@@ -652,7 +650,7 @@ class RbfModel:
         ----------
         dim : int
             Dimension of the domain space.
-        bounds : tuple | list
+        bounds
             Tuple of lower and upper bounds for each dimension of the domain
             space.
         maxm : int, optional
@@ -775,7 +773,7 @@ class RbfModel:
         self,
         x: np.ndarray,
         xdist: np.ndarray = np.array([]),
-        LDLt: list | tuple = tuple(),
+        LDLt=tuple(),
     ) -> float:
         """Compute the value of abs(mu) in the inf step of the target value
         sampling strategy. See [#]_ for more details.
@@ -787,7 +785,7 @@ class RbfModel:
         xdist : np.ndarray, optional
             Distances between x and the sampled points. If not provided, the
             distances are computed.
-        LDLt : list | tuple [lu,d,perm], optional
+        LDLt : (lu,d,perm), optional
             LDLt factorization of the matrix A as returned by the function
             scipy.linalg.ldl. If not provided, the factorization is computed.
 
@@ -888,7 +886,7 @@ class RbfModel:
         self,
         x: np.ndarray,
         target,
-        PLU: list | tuple = tuple(),
+        LDLt=tuple(),
     ) -> float:
         """Compute the bumpiness of the surrogate model for a potential sample
         point x as defined in [#]_.
@@ -899,10 +897,9 @@ class RbfModel:
             Possible point to be added to the surrogate model.
         target : a number
             Target value.
-        PLU : list | tuple [P,L,U], optional
-            PLU factorization of the matrix A. If not provided, the
-            factorization is computed. Considers the permutation information as
-            row indices.
+        LDLt : (lu,d,perm), optional
+            LDLt factorization of the matrix A as returned by the function
+            scipy.linalg.ldl. If not provided, the factorization is computed.
 
         Returns
         -------
@@ -915,7 +912,7 @@ class RbfModel:
             Optimization. Journal of Global Optimization 19, 201–227 (2001).
             https://doi.org/10.1023/A:1011255519438
         """
-        absmu = self.mu_measure(x, LDLt=PLU)
+        absmu = self.mu_measure(x, LDLt=LDLt)
         assert (
             absmu > 0
         )  # if absmu == 0, the linear system in the surrogate model singular

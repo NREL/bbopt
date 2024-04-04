@@ -1,5 +1,4 @@
-"""Optimization algorithms for blackboxopt.
-"""
+"""Optimization algorithms for blackboxopt."""
 
 # Copyright (C) 2024 National Renewable Energy Laboratory
 # Copyright (C) 2014 Cornell University
@@ -35,7 +34,7 @@ __credits__ = [
 __version__ = "0.2.0"
 __deprecated__ = False
 
-from typing import Callable
+from typing import Callable, Optional, Union
 import numpy as np
 import time
 from dataclasses import dataclass
@@ -86,7 +85,7 @@ class OptimizeResult:
     """
 
     x: np.ndarray
-    fx: float | np.ndarray
+    fx: Union[float, np.ndarray]
     nit: int
     nfev: int
     samples: np.ndarray
@@ -95,7 +94,7 @@ class OptimizeResult:
 
 def initialize_surrogate(
     fun,
-    bounds: tuple | list,
+    bounds,
     maxeval: int,
     x0y0: tuple = (),
     *,
@@ -108,7 +107,7 @@ def initialize_surrogate(
     ----------
     fun : callable
         The objective function to be minimized.
-    bounds : tuple | list
+    bounds
         Bounds for variables. Each element of the tuple must be a tuple with two
         elements, corresponding to the lower and upper bound for the variable.
     maxeval : int
@@ -213,7 +212,7 @@ def initialize_surrogate(
 
 def initialize_moo_surrogate(
     fun,
-    bounds: tuple | list,
+    bounds,
     maxeval: int,
     *,
     surrogateModels=(RbfModel(),),
@@ -225,7 +224,7 @@ def initialize_moo_surrogate(
     ----------
     fun : callable
         The objective function to be minimized.
-    bounds : tuple | list
+    bounds
         Bounds for variables. Each element of the tuple must be a tuple with two
         elements, corresponding to the lower and upper bound for the variable.
     maxeval : int
@@ -329,7 +328,7 @@ def initialize_moo_surrogate(
 def initialize_surrogate_constraints(
     fun,
     gfun,
-    bounds: tuple | list,
+    bounds,
     maxeval: int,
     *,
     surrogateModels=(RbfModel(),),
@@ -345,7 +344,7 @@ def initialize_surrogate_constraints(
         The constraint functions. Each constraint function must return a scalar
         value. If the constraint function returns a value greater than zero, it
         is considered a violation of the constraint.
-    bounds : tuple | list
+    bounds
         Bounds for variables. Each element of the tuple must be a tuple with two
         elements, corresponding to the lower and upper bound for the variable.
     maxeval : int
@@ -442,7 +441,7 @@ def initialize_surrogate_constraints(
 
 def stochastic_response_surface(
     fun,
-    bounds: tuple | list,
+    bounds,
     maxeval: int,
     x0y0: tuple = (),
     *,
@@ -454,7 +453,7 @@ def stochastic_response_surface(
     failtolerance: int = 5,
     performContinuousSearch: bool = True,
     disp: bool = False,
-    callback: Callable[[OptimizeResult], None] | None = None,
+    callback: Optional[Callable[[OptimizeResult], None]] = None,
 ) -> OptimizeResult:
     """Minimize a scalar function of one or more variables using a response
     surface model approach based on a surrogate model.
@@ -465,7 +464,7 @@ def stochastic_response_surface(
     ----------
     fun : callable
         The objective function to be minimized.
-    bounds : tuple | list
+    bounds
         Bounds for variables. Each element of the tuple must be a tuple with two
         elements, corresponding to the lower and upper bound for the variable.
     maxeval : int
@@ -668,7 +667,7 @@ def stochastic_response_surface(
 
 def multistart_stochastic_response_surface(
     fun,
-    bounds: tuple | list,
+    bounds,
     maxeval: int,
     *,
     surrogateModel=RbfModel(),
@@ -676,7 +675,7 @@ def multistart_stochastic_response_surface(
     newSamplesPerIteration: int = 1,
     performContinuousSearch: bool = True,
     disp: bool = False,
-    callback: Callable[[OptimizeResult], None] | None = None,
+    callback: Optional[Callable[[OptimizeResult], None]] = None,
 ) -> OptimizeResult:
     """Minimize a scalar function of one or more variables using a surrogate
     model.
@@ -685,7 +684,7 @@ def multistart_stochastic_response_surface(
     ----------
     fun : callable
         The objective function to be minimized.
-    bounds : tuple | list
+    bounds
         Bounds for variables. Each element of the tuple must be a tuple with two
         elements, corresponding to the lower and upper bound for the variable.
     maxeval : int
@@ -749,9 +748,9 @@ def multistart_stochastic_response_surface(
         if out_local.fx < out.fx:
             out.x[:] = out_local.x
             out.fx = out_local.fx
-        out.samples[
-            out.nfev : out.nfev + out_local.nfev, :
-        ] = out_local.samples
+        out.samples[out.nfev : out.nfev + out_local.nfev, :] = (
+            out_local.samples
+        )
         out.fsamples[out.nfev : out.nfev + out_local.nfev] = out_local.fsamples
         out.nfev = out.nfev + out_local.nfev
 
@@ -767,7 +766,7 @@ def multistart_stochastic_response_surface(
 
 def target_value_optimization(
     fun,
-    bounds: tuple | list,
+    bounds,
     maxeval: int,
     x0y0: tuple = (),
     *,
@@ -778,7 +777,7 @@ def target_value_optimization(
     expectedRelativeImprovement: float = 1e-3,
     failtolerance: int = -1,
     disp: bool = False,
-    callback: Callable[[OptimizeResult], None] | None = None,
+    callback: Optional[Callable[[OptimizeResult], None]] = None,
 ) -> OptimizeResult:
     """Minimize a scalar function of one or more variables using the target
     value strategy from [#]_.
@@ -787,7 +786,7 @@ def target_value_optimization(
     ----------
     fun : callable
         The objective function to be minimized.
-    bounds : tuple | list
+    bounds
         Bounds for variables. Each element of the tuple must be a tuple with two
         elements, corresponding to the lower and upper bound for the variable.
     maxeval : int
@@ -947,7 +946,7 @@ def target_value_optimization(
 
 def cptv(
     fun,
-    bounds: tuple | list,
+    bounds,
     maxeval: int,
     *,
     surrogateModel=RbfModel(),
@@ -957,7 +956,7 @@ def cptv(
     consecutiveQuickFailuresTol: int = 0,
     useLocalSearch: bool = False,
     disp: bool = False,
-    callback: Callable[[OptimizeResult], None] | None = None,
+    callback: Optional[Callable[[OptimizeResult], None]] = None,
 ) -> OptimizeResult:
     """Minimize a scalar function of one or more variables using the coordinate
     perturbation and target value strategy.
@@ -966,7 +965,7 @@ def cptv(
     ----------
     fun : callable
         The objective function to be minimized.
-    bounds : tuple | list
+    bounds
         Bounds for variables. Each element of the tuple must be a tuple with two
         elements, corresponding to the lower and upper bound for the variable.
     maxeval : int
@@ -1201,7 +1200,7 @@ def cptv(
 
 def cptvl(
     fun,
-    bounds: tuple | list,
+    bounds,
     maxeval: int,
     *,
     surrogateModel=RbfModel(),
@@ -1210,7 +1209,7 @@ def cptvl(
     failtolerance: int = 5,
     consecutiveQuickFailuresTol: int = 0,
     disp: bool = False,
-    callback: Callable[[OptimizeResult], None] | None = None,
+    callback: Optional[Callable[[OptimizeResult], None]] = None,
 ) -> OptimizeResult:
     """Wrapper to cptv. See cptv."""
     return cptv(
@@ -1230,7 +1229,7 @@ def cptvl(
 
 def socemo(
     fun,
-    bounds: tuple | list,
+    bounds,
     maxeval: int,
     *,
     surrogateModels=(RbfModel(),),
@@ -1238,7 +1237,7 @@ def socemo(
     acquisitionFuncGlobal: UniformAcquisition = UniformAcquisition(0),
     samples: np.ndarray = np.array([]),
     disp: bool = False,
-    callback: Callable[[OptimizeResult], None] | None = None,
+    callback: Optional[Callable[[OptimizeResult], None]] = None,
 ):
     """Minimize a multiobjective function using the surrogate model approach from [#]_.
 
@@ -1246,7 +1245,7 @@ def socemo(
     ----------
     fun : callable
         The objective function to be minimized.
-    bounds : tuple | list
+    bounds
         Bounds for variables. Each element of the tuple must be a tuple with two
         elements, corresponding to the lower and upper bound for the variable.
     maxeval : int
@@ -1463,13 +1462,13 @@ def socemo(
 def gosac(
     fun,
     gfun,
-    bounds: tuple | list,
+    bounds,
     maxeval: int,
     *,
     surrogateModels=(RbfModel(),),
     samples: np.ndarray = np.array([]),
     disp: bool = False,
-    callback: Callable[[OptimizeResult], None] | None = None,
+    callback: Optional[Callable[[OptimizeResult], None]] = None,
 ):
     """Minimize a scalar function of one or more variables subject to
     constraints.
@@ -1485,7 +1484,7 @@ def gosac(
     gfun : callable
         The constraint function to be minimized. The constraints must be
         formulated as g(x) <= 0.
-    bounds : tuple | list
+    bounds
         Bounds for variables. Each element of the tuple must be a tuple with two
         elements, corresponding to the lower and upper bound for the variable.
     maxeval : int

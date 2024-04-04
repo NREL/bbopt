@@ -1,5 +1,4 @@
-"""Acquisition functions for surrogate optimization.
-"""
+"""Acquisition functions for surrogate optimization."""
 
 # Copyright (C) 2024 National Renewable Energy Laboratory
 # Copyright (C) 2014 Cornell University
@@ -245,7 +244,7 @@ class AcquisitionFunction:
     def acquire(
         self,
         surrogateModel,
-        bounds: tuple | list,
+        bounds,
         n: int = 1,
         **kwargs,
     ) -> np.ndarray:
@@ -255,7 +254,7 @@ class AcquisitionFunction:
         ----------
         surrogateModel : Surrogate model
             Surrogate model.
-        bounds : tuple | list
+        bounds
             Bounds of the search space.
         n : int, optional
             Number of points to be acquired, or maximum requested number.
@@ -314,7 +313,7 @@ class CoordinatePerturbation(AcquisitionFunction):
     def acquire(
         self,
         surrogateModel,
-        bounds: tuple | list,
+        bounds,
         n: int = 1,
         *,
         xbest: np.ndarray = np.array([0]),
@@ -327,7 +326,7 @@ class CoordinatePerturbation(AcquisitionFunction):
         ----------
         surrogateModel : Surrogate model
             Surrogate model.
-        bounds : tuple | list
+        bounds
             Bounds of the search space.
         n : int, optional
             Number of points to be acquired. The default is 1.
@@ -406,7 +405,7 @@ class CoordinatePerturbation(AcquisitionFunction):
 
         return xselected
 
-    def tol(self, bounds: tuple | list) -> float:
+    def tol(self, bounds) -> float:
         dim = len(bounds)
         minxrange = np.min([b[1] - b[0] for b in bounds])
         sigma = self.sampler.sigma * minxrange
@@ -448,7 +447,7 @@ class UniformAcquisition(AcquisitionFunction):
     def acquire(
         self,
         surrogateModel,
-        bounds: tuple | list,
+        bounds,
         n: int = 1,
         **kwargs,
     ) -> np.ndarray:
@@ -458,7 +457,7 @@ class UniformAcquisition(AcquisitionFunction):
         ----------
         surrogateModel : Surrogate model
             Surrogate model.
-        bounds : tuple | list
+        bounds
             Bounds of the search space.
         n : int, optional
             Number of points to be acquired. The default is 1.
@@ -527,11 +526,11 @@ class TargetValueAcquisition(AcquisitionFunction):
     def acquire(
         self,
         surrogateModel,
-        bounds: tuple | list,
+        bounds,
         n: int = 1,
         *,
         sampleStage: int = -1,
-        fbounds: tuple | list = (),
+        fbounds=(),
         **kwargs,
     ) -> np.ndarray:
         """Acquire n points.
@@ -540,14 +539,14 @@ class TargetValueAcquisition(AcquisitionFunction):
         ----------
         surrogateModel : Surrogate model
             Surrogate model.
-        bounds : tuple | list
+        bounds
             Bounds of the search space.
         n : int, optional
             Number of points to be acquired. The default is 1.
         sampleStage : int, optional
             Stage of the sampling process. The default is -1, which means that
             the stage is not specified.
-        fbounds : tuple | list, optional
+        fbounds, optional
             Bounds of the objective function so far. Optional if sampleStage is
             0.
 
@@ -747,7 +746,7 @@ class MinimizeSurrogate(AcquisitionFunction):
     def acquire(
         self,
         surrogateModel,
-        bounds: tuple | list,
+        bounds,
         n: int = 1,
         **kwargs,
     ) -> np.ndarray:
@@ -757,7 +756,7 @@ class MinimizeSurrogate(AcquisitionFunction):
         ----------
         surrogateModel : Surrogate model
             Surrogate model.
-        bounds : tuple | list
+        bounds
             Bounds of the search space.
         n : int, optional
             Max number of points to be acquired. The default is 1.
@@ -1002,7 +1001,7 @@ class ParetoFront(AcquisitionFunction):
     def acquire(
         self,
         surrogateModels,
-        bounds: tuple | list,
+        bounds,
         n: int = 1,
         *,
         paretoFront: np.ndarray = np.array([]),
@@ -1014,7 +1013,7 @@ class ParetoFront(AcquisitionFunction):
         ----------
         surrogateModels : list
             List of surrogate models.
-        bounds : tuple | list
+        bounds
             Bounds of the search space.
         n : int, optional
             Number of points to be acquired. The default is 1.
@@ -1091,7 +1090,7 @@ class EndPointsParetoFront(AcquisitionFunction):
     def acquire(
         self,
         surrogateModels,
-        bounds: tuple | list,
+        bounds,
         n: int = 1,
         **kwargs,
     ) -> np.ndarray:
@@ -1101,7 +1100,7 @@ class EndPointsParetoFront(AcquisitionFunction):
         ----------
         surrogateModels : list
             List of surrogate models.
-        bounds : tuple | list
+        bounds
             Bounds of the search space.
         n : int, optional
             Maximum number of points to be acquired. The default is 1.
@@ -1203,7 +1202,7 @@ class MinimizeMOSurrogate(AcquisitionFunction):
     def acquire(
         self,
         surrogateModels,
-        bounds: tuple | list,
+        bounds,
         n: int = 1,
         **kwargs,
     ) -> np.ndarray:
@@ -1213,7 +1212,7 @@ class MinimizeMOSurrogate(AcquisitionFunction):
         ----------
         surrogateModels : list
             List of surrogate models.
-        bounds : tuple | list
+        bounds
             Bounds of the search space.
         n : int, optional
             Maximum number of points to be acquired. The default is 1.
@@ -1286,7 +1285,7 @@ class CoordinatePerturbationOverNondominated(AcquisitionFunction):
     def acquire(
         self,
         surrogateModels,
-        bounds: tuple | list,
+        bounds,
         n: int = 1,
         *,
         nondominated: np.ndarray = np.array([]),
@@ -1299,7 +1298,7 @@ class CoordinatePerturbationOverNondominated(AcquisitionFunction):
         ----------
         surrogateModels : list
             List of surrogate models.
-        bounds : tuple | list
+        bounds
             Bounds of the search space.
         n : int
             Maximum number of points to be acquired. The default is 1.
@@ -1395,7 +1394,7 @@ class GosacSample(AcquisitionFunction):
     def acquire(
         self,
         surrogateModels,
-        bounds: tuple | list,
+        bounds,
         n: int = 1,
         **kwargs,
     ) -> np.ndarray:
@@ -1405,7 +1404,7 @@ class GosacSample(AcquisitionFunction):
         ----------
         surrogateModels : list
             List of surrogate models for the constraints.
-        bounds : tuple | list
+        bounds
             Bounds of the search space.
         n : int, optional
             Number of points to be acquired. The default is 1.

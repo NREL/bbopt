@@ -1,7 +1,7 @@
 from copy import copy
 import numpy as np
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, Optional
 
 
 @dataclass
@@ -32,8 +32,8 @@ class Problem:
     gfun: Callable[[np.ndarray], np.ndarray]
     iindex: tuple[int, ...]
     bounds: tuple[tuple[float, float], ...]
-    xmin: tuple[float, ...] | None = None
-    fmin: float | None = None
+    xmin: Optional[tuple[float, ...]] = None
+    fmin: Optional[float] = None
 
 
 # Problems from the GOSAC benchmark
