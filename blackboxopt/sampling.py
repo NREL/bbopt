@@ -233,6 +233,9 @@ class NormalSampler(Sampler):
         numpy.ndarray
             Matrix with the generated samples.
         """
+        # The normal sampler does not support integer variables
+        assert iindex == ()
+
         dim = len(bounds)
         xlow = np.array([bounds[i][0] for i in range(dim)])
         xup = np.array([bounds[i][1] for i in range(dim)])
@@ -252,9 +255,6 @@ class NormalSampler(Sampler):
             coord = tuple(range(dim))
         xnew[:, coord] += sigma * np.random.randn(self.n, len(coord))
         xnew[:, coord] = np.maximum(xlow, np.minimum(xnew[:, coord], xup))
-
-        # Round integer variables
-        xnew[:, iindex] = np.round(xnew[:, iindex])
 
         return xnew
 

@@ -1,5 +1,4 @@
-"""Test the sampling functions.
-"""
+"""Test the sampling functions."""
 
 # Copyright (C) 2024 National Renewable Energy Laboratory
 
@@ -106,7 +105,6 @@ def test_normal_sampler(dim: int, strategy: SamplingStrategy):
     [
         SamplingStrategy.UNIFORM,
         SamplingStrategy.SLHD,
-        SamplingStrategy.NORMAL,
         SamplingStrategy.DDS,
         SamplingStrategy.DDS_UNIFORM,
     ],
