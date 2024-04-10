@@ -1705,8 +1705,4 @@ def gosac(
         if callback is not None:
             callback(out)
 
-    # Update output
-    out.samples.resize(out.nfev, dim)
-    out.fsamples.resize(out.nfev, gdim)
-
     return out
