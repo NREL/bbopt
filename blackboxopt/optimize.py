@@ -46,7 +46,7 @@ from scipy.spatial.distance import cdist
 
 # Pymoo imports
 from pymoo.operators.survival.rank_and_crowding import RankAndCrowding
-from pymoo.core.mixed import MixedVariableGA
+from pymoo.core.mixed import MixedVariableGA, MixedVariableMating
 
 # Local imports
 from .acquisition import (
@@ -62,6 +62,7 @@ from .acquisition import (
     find_pareto_front,
 )
 from .rbf import RbfModel
+from .problem import BBOptDuplicateElimination
 
 
 @dataclass
@@ -1303,8 +1304,21 @@ def socemo(
     assert isinstance(out.fx, np.ndarray)
 
     # Objects needed for the iterations
-    mooptimizer = MixedVariableGA(pop_size=100, survival=RankAndCrowding())
-    gaoptimizer = MixedVariableGA(pop_size=100)
+    mooptimizer = MixedVariableGA(
+        pop_size=100,
+        survival=RankAndCrowding(),
+        eliminate_duplicates=BBOptDuplicateElimination(),
+        mating=MixedVariableMating(
+            eliminate_duplicates=BBOptDuplicateElimination()
+        ),
+    )
+    gaoptimizer = MixedVariableGA(
+        pop_size=100,
+        eliminate_duplicates=BBOptDuplicateElimination(),
+        mating=MixedVariableMating(
+            eliminate_duplicates=BBOptDuplicateElimination()
+        ),
+    )
     nGens = 100
     tol = acquisitionFunc.tol(bounds)
 
@@ -1534,9 +1548,20 @@ def gosac(
 
     # Objects needed for the iterations
     mooptimizer = MixedVariableGA(
-        pop_size=popsize1, survival=RankAndCrowding()
+        pop_size=popsize1,
+        survival=RankAndCrowding(),
+        eliminate_duplicates=BBOptDuplicateElimination(),
+        mating=MixedVariableMating(
+            eliminate_duplicates=BBOptDuplicateElimination()
+        ),
     )
-    gaoptimizer = MixedVariableGA(pop_size=popsize2)
+    gaoptimizer = MixedVariableGA(
+        pop_size=popsize2,
+        eliminate_duplicates=BBOptDuplicateElimination(),
+        mating=MixedVariableMating(
+            eliminate_duplicates=BBOptDuplicateElimination()
+        ),
+    )
     acquisition1 = MinimizeMOSurrogate(mooptimizer, nGens1, tol)
     acquisition2 = GosacSample(fun, gaoptimizer, nGens2, tol)
 

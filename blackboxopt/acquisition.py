@@ -48,7 +48,7 @@ from scipy.optimize import minimize, differential_evolution
 
 # Pymoo imports
 from pymoo.operators.survival.rank_and_crowding import RankAndCrowding
-from pymoo.core.mixed import MixedVariableGA
+from pymoo.core.mixed import MixedVariableGA, MixedVariableMating
 from pymoo.optimize import minimize as pymoo_minimize
 from pymoo.core.problem import StarmapParallelization
 
@@ -60,6 +60,7 @@ from .problem import (
     ProblemNoConstraint,
     MultiobjTVProblem,
     MultiobjSurrogateProblem,
+    BBOptDuplicateElimination,
 )
 
 
@@ -520,7 +521,13 @@ class TargetValueAcquisition(AcquisitionFunction):
     def __init__(self, tol=1e-3, popsize=10, ngen=10) -> None:
         self.cycleLength = 10
         self.tol = tol
-        self.GA = MixedVariableGA(pop_size=popsize)
+        self.GA = MixedVariableGA(
+            pop_size=popsize,
+            eliminate_duplicates=BBOptDuplicateElimination(),
+            mating=MixedVariableMating(
+                eliminate_duplicates=BBOptDuplicateElimination()
+            ),
+        )
         self.ngen = ngen
 
     def acquire(

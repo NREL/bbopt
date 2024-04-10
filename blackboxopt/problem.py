@@ -25,10 +25,12 @@ __deprecated__ = False
 
 import numpy as np
 from typing import Union
+from scipy.spatial.distance import cdist
 
 # Pymoo imports
 from pymoo.core.problem import Problem
 from pymoo.core.variable import Real, Integer
+from pymoo.core.duplicate import DefaultDuplicateElimination
 
 
 def _get_vars(bounds, iindex: list = []) -> dict:
@@ -71,12 +73,25 @@ def _dict_to_array(xdict: Union[dict, list[dict]]) -> np.ndarray:
         Array with the values of the variables.
     """
     if isinstance(xdict, dict):
-        n_var = len(xdict)
-        return np.array([xdict[i] for i in range(n_var)])
+        return np.array([xdict[i] for i in sorted(xdict)])
     else:
         # xdict is a list of dictionaries
-        n_var = len(xdict[0])
-        return np.array([[xi[i] for i in range(n_var)] for xi in xdict])
+        return np.array([[xi[i] for i in sorted(xi)] for xi in xdict])
+
+
+class BBOptDuplicateElimination(DefaultDuplicateElimination):
+    def __init__(self, **kwargs) -> None:
+        super().__init__(**kwargs)
+
+    def calc_dist(self, pop, other=None):
+        X = np.array([[xi.X[i] for i in sorted(xi.X)] for xi in pop])
+        if other is None:
+            D = cdist(X, X)
+            D[np.triu_indices(len(X))] = np.inf
+        else:
+            _X = np.array([[xi.X[i] for i in sorted(xi.X)] for xi in other])
+            D = cdist(X, _X)
+        return D
 
 
 class ProblemWithConstraint(Problem):
