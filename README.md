@@ -2,9 +2,9 @@
 
 Surrogate models and active learning for scientific applications.
 
-## Building the environment
+## Building
 
-This project uses [poetry](https://python-poetry.org/) to manage the Python virtual environment. With poetry installed, run `poetry shell` at the root of this repository to activate the virtual environment. Then, run `poetry install` to install the dependencies. The file `pyproject.toml` in the root of this project contains the list of dependencies that will be installed automatically. Please, find more information about poetry in its [documentation](https://python-poetry.org/docs/).
+This project uses [pdm](https://pdm-project.org/en/stable/) as its package manager. With pdm installed, run `pdm install` at the root of this repository to install the dependencies. The file [pyproject.toml](pyproject.toml) has the list of dependencies and configurations for the project. Use `pdm build` to build the project. The build artifacts will be in the `dist` directory. Please, find more information about pdm in its website.
 
 ## Documentation
 
