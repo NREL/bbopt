@@ -23,23 +23,27 @@ __credits__ = ["Weslley S. Pereira"]
 __version__ = "0.2.0"
 __deprecated__ = False
 
+import os
 import numpy as np
 import pickle
 import time
+from random import seed
 from test_vlse_bench import run_optimizer
 from blackboxopt import optimize, acquisition, sampling
 
 # Functions to be tested
-# myRfuncs = ("hart6",)
-# myRfuncs = ("branin", "hart3", "hart6", "shekel")
-myRfuncs = ("hart3", "hart6", "shekel")
-# myRfuncs = ("ackley",)
-# myRfuncs = ("levy", "powell", "michal", "spheref", "rastr")
-# myRfuncs = ("levy",)
-# myRfuncs = ("powell",)
-# myRfuncs = ("michal",)
-# myRfuncs = ("spheref",)
-# myRfuncs = ("rastr",)
+myRfuncs = (
+    "branin",
+    "hart3",
+    "hart6",
+    "shekel",
+    "ackley",
+    "levy",
+    "powell",
+    "michal",
+    "spheref",
+    "rastr",
+)
 
 # Number of arguments for each function
 myNargs = {}
@@ -108,42 +112,67 @@ maxEvals = {}  # [20*n for n in myNargs]
 for rfunc in myRfuncs:
     maxEvals[rfunc] = 100 * (myNargs[rfunc] + 1)
 
-# Number of trials and relative tolerance
-nTrials = 3
+if __name__ == "__main__":
+    import argparse
 
-# Run the tests
-np.random.seed(3)
-optres = {}
-for a in algorithms.keys():
-    print(a)
-    optres[a] = {}
-    # for rFunc in myRfuncs:
-    for rFunc in myRfuncs:
-        print(rFunc)
-        t0 = time.time()
-        optres[a][rFunc] = run_optimizer(
-            rFunc,
-            myNargs[rFunc],
-            maxEvals[rFunc],
-            algorithms[a],
-            nTrials,
+    # Set seeds for reproducibility
+    seed(3)
+    np.random.seed(3)
+
+    parser = argparse.ArgumentParser(
+        description="Run given algorithm and problem from the vlse benchmark"
+    )
+    parser.add_argument(
+        "-a",
+        "--algorithm",
+        choices=algorithms.keys(),
+        default="CPTVl",
+    )
+    parser.add_argument(
+        "-p",
+        "--problem",
+        choices=myRfuncs,
+        default="branin",
+    )
+    parser.add_argument(
+        "-n",
+        "--ntrials",
+        type=int,
+        default=3,
+    )
+    args = parser.parse_args()
+
+    print(args.algorithm)
+    print(args.problem)
+    print(args.ntrials)
+    fulldir = os.path.dirname(os.path.abspath(__file__))
+
+    t0 = time.time()
+    optres = run_optimizer(
+        args.problem,
+        myNargs[args.problem],
+        maxEvals[args.problem],
+        algorithms[args.algorithm],
+        args.ntrials,
+    )
+    tf = time.time()
+    # Save the results
+    with open(
+        fulldir
+        + "/pickle/vlse_bench_plot_"
+        + args.problem
+        + "_"
+        + args.algorithm
+        + ".pkl",
+        "wb",
+    ) as f:
+        pickle.dump(
+            [
+                myNargs[args.problem],
+                maxEvals[args.problem],
+                args.ntrials,
+                optres,
+                (tf - t0),
+            ],
+            f,
         )
-        tf = time.time()
-        # Save the results
-        with open(
-            "pickle/vlse_bench_plot_" + rFunc + "_" + a + ".pkl", "wb"
-        ) as f:
-            pickle.dump(
-                [
-                    myNargs[rFunc],
-                    maxEvals[rFunc],
-                    nTrials,
-                    optres[a][rFunc],
-                    (tf - t0),
-                ],
-                f,
-            )
-
-# Save the results
-with open("pickle/vlse_bench_plot.pkl", "wb") as f:
-    pickle.dump([myRfuncs, myNargs, algorithms, maxEvals, nTrials, optres], f)
