@@ -1,5 +1,4 @@
-"""Test functions from the VLSE benchmark.
-"""
+"""Test functions from the VLSE benchmark."""
 
 # Copyright (C) 2024 National Renewable Energy Laboratory
 
@@ -31,6 +30,7 @@ import pytest
 from rpy2 import robjects
 import tests.vlse_benchmark as vlsebmk
 from blackboxopt import rbf, optimize, sampling, acquisition
+from scipy.optimize import differential_evolution
 
 
 @pytest.mark.parametrize("func", list(vlsebmk.rfuncs.keys()))
@@ -95,6 +95,20 @@ def run_optimizer(
     assert None not in bounds
     assert isinstance(bounds[0], list)
     assert not isinstance(bounds[0][0], list)
+
+    # Find the minimum value if unknown
+    if not np.isfinite(minval):
+
+        def objf_for_df(x: np.ndarray) -> np.ndarray:
+            X = np.asarray(x if x.ndim > 1 else [x])
+            return np.array(
+                [rfunc(robjects.FloatVector(xi.reshape(-1, 1)))[0] for xi in X]
+            )
+
+        res = differential_evolution(
+            objf_for_df, bounds, maxiter=10000, tol=1e-15
+        )
+        minval = res.fun
 
     # Define the objective function, guarantee minvalue at 1
     def objf(x: np.ndarray) -> np.ndarray:

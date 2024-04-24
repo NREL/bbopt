@@ -588,6 +588,8 @@ optRfuncs = (
 
 
 def get_min_function(func: str, d: int = 2) -> float:
+    from numpy import inf
+
     # Many local minima
     if func == "ackley":
         return 0.0
@@ -678,16 +680,12 @@ def get_min_function(func: str, d: int = 2) -> float:
     # maxiter=10000 and tol=1e-15
     if func == "grlee12":
         return -0.8690111349894997
-    if func == "langer":
-        return -4.100861111320395
     if func == "schaffer4":
         return 0.29257863203598045
     if func == "powersum":
         return 0.0  # Solution at (1,2,2,4)
     if func == "dejong5":
         return 0.99800383779445
-    if func == "michal":
-        return -1.8013034100985532
     if func == "forretal08":
         return -6.020740055767083
     if func == "hart4":
@@ -695,7 +693,41 @@ def get_min_function(func: str, d: int = 2) -> float:
     if func == "shekel":
         return -10.53644315348353
 
-    raise ValueError(f"Minimum value of {func} is unknown.")
+    # Obtained from the paper:
+    # Certified Global Minima for a Benchmark of Difficult Optimization Problems
+    # by Charlie Vanaret et al. 2020
+    # See https://arxiv.org/pdf/2003.09867
+    if func == "michal":
+        if d == 10:
+            return -9.6601517
+        if d == 15:
+            return -14.6464002
+        if d == 20:
+            return -19.6370136
+        if d == 25:
+            return -24.6331947
+        if d == 30:
+            return -29.6308839
+        if d == 35:
+            return -34.6288550
+        if d == 40:
+            return -39.6267489
+        if d == 45:
+            return -44.6256251
+        if d == 50:
+            return -49.6248323
+        if d == 55:
+            return -54.6240533
+        if d == 60:
+            return -59.6231462
+        if d == 65:
+            return -64.6226167
+        if d == 70:
+            return -69.6222202
+        if d == 75:
+            return -74.6218112
+
+    return inf
 
 
 # Load the R functions
