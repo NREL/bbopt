@@ -100,6 +100,10 @@ class Sampler:
     ) -> np.ndarray:
         """Creates a Symmetric Latin Hypercube Design.
 
+        Note that, for integer variables, it may not be possible to generate
+        a SLHD. In this case, the algorithm will do its best to try not to
+        repeat values in the integer variables.
+
         Parameters
         ----------
         bounds
@@ -120,10 +124,19 @@ class Sampler:
         X = np.empty((m, d))
         for j in range(d):
             delta = (bounds[j][1] - bounds[j][0]) / m
-            X[:, j] = [
-                bounds[j][0] + ((2 * i + 1) / 2.0) * delta for i in range(m)
-            ]
-        X[:, iindex] = np.round(X[:, iindex])
+            if j not in iindex:
+                X[:, j] = [
+                    bounds[j][0] + ((2 * i + 1) / 2.0) * delta
+                    for i in range(m)
+                ]
+            else:
+                if delta == 1:
+                    X[:, j] = np.arange(bounds[j][0], bounds[j][1])
+                else:
+                    X[:, j] = [
+                        bounds[j][0] + round(((2 * i + 1) / 2.0) * delta)
+                        for i in range(m)
+                    ]
 
         if m > 1:
             # Generate permutation matrix P
@@ -133,7 +146,7 @@ class Sampler:
                 k = m // 2
             else:
                 k = (m - 1) // 2
-                P[k, :] = (k + 1) * np.ones((1, d))
+                P[k, :] = k * np.ones((1, d))
             for j in range(1, d):
                 P[0:k, j] = np.random.permutation(np.arange(k))
 

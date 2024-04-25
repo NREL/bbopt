@@ -131,3 +131,29 @@ def test_iindex_sampler(boundx, strategy: SamplingStrategy):
         # Check if the sample has integer values in the iindex
         for i in iindex:
             assert np.all(sample[:, i] - np.round(sample[:, i]) == 0)
+
+
+@pytest.mark.parametrize("boundx", [(0, 1), (-1, 1), (0, 10)])
+def test_slhd(boundx):
+    dim = 10
+    bounds = [boundx] * dim
+
+    # Set seed to 5 for reproducibility
+    np.random.seed(5)
+
+    for i in range(3):
+        iindex = random.sample(range(dim), dim // 2)
+
+        for n in (boundx[1] - boundx[0], boundx[1] - boundx[0] + 1):
+            sample = Sampler(
+                n, strategy=SamplingStrategy.SLHD
+            ).get_slhd_sample(bounds, iindex=iindex)
+
+            # Check if the sample has integer values in the iindex
+            for i in iindex:
+                assert np.all(sample[:, i] - np.round(sample[:, i]) == 0)
+
+            # Check if the sample has repeated values
+            for i in range(dim):
+                u, c = np.unique(sample[:, i], return_counts=True)
+                assert u[c > 1].size == 0
