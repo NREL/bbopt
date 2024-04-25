@@ -191,14 +191,14 @@ class NormalSampler(Sampler):
     Attributes
     ----------
     sigma : float
-        Standard deviation of the normal distribution, relative to the minimum
-        range of the input space.
+        Standard deviation of the normal distribution, relative to the bounds
+        [0, 1].
     sigma_min : float
         Minimum standard deviation of the normal distribution, relative to the
-        minimum range of the input space.
+        bounds [0, 1].
     sigma_max : float
         Maximum standard deviation of the normal distribution, relative to the
-        minimum range of the input space.
+        bounds [0, 1].
     """
 
     def __init__(
@@ -252,9 +252,7 @@ class NormalSampler(Sampler):
         dim = len(bounds)
         xlow = np.array([bounds[i][0] for i in range(dim)])
         xup = np.array([bounds[i][1] for i in range(dim)])
-
-        minxrange = (xup - xlow).min()
-        sigma = self.sigma * minxrange
+        sigma = np.array([self.sigma * (xup[i] - xlow[i]) for i in range(dim)])
 
         # Check if mu is valid
         xnew = np.tile(mu, (self.n, 1))
@@ -305,9 +303,7 @@ class NormalSampler(Sampler):
         dim = len(bounds)
         xlow = np.array([bounds[i][0] for i in range(dim)])
         xup = np.array([bounds[i][1] for i in range(dim)])
-
-        minxrange = (xup - xlow).min()
-        sigma = self.sigma * minxrange
+        sigma = np.array([self.sigma * (xup[i] - xlow[i]) for i in range(dim)])
 
         # Check if mu is valid
         xnew = np.tile(mu, (self.n, 1))
@@ -332,8 +328,8 @@ class NormalSampler(Sampler):
                 ar[r[0]] = True
             for jj in range(cdim):
                 if ar[jj]:
-                    s_std = sigma * np.random.randn(1).item()
                     j = coord[jj]
+                    s_std = sigma[j] * np.random.randn(1).item()
                     if j in iindex:
                         # integer perturbation has to be at least 1 unit
                         if abs(s_std) < 1:
