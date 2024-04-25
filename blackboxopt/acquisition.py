@@ -343,8 +343,6 @@ class CoordinatePerturbation(AcquisitionFunction):
             n-by-dim matrix with the selected points.
         """
         dim = len(bounds)  # Dimension of the problem
-        minxrange = np.min([b[1] - b[0] for b in bounds])
-        sigma = self.sampler.sigma * minxrange
 
         # Check if surrogateModel is a list of models
         listOfSurrogates = hasattr(surrogateModel, "__len__")
@@ -374,23 +372,27 @@ class CoordinatePerturbation(AcquisitionFunction):
 
         # Evaluate candidates
         if not listOfSurrogates:
-            fx, distx = surrogateModel.eval(x)
+            fx, _ = surrogateModel.eval(x)
         else:
             objdim = len(surrogateModel)
             fx = np.empty((nCand, objdim))
-            distx = np.empty((nCand, nCand))
             for i in range(objdim):
-                fx[:, i], dist = surrogateModel[i].eval(x)
-                if i == 0:
-                    distx = dist
+                fx[:, i], _ = surrogateModel[i].eval(x)
+
+        # Create scaled x and scaled distx
+        xlow = np.array([bounds[i][0] for i in range(dim)])
+        xup = np.array([bounds[i][1] for i in range(dim)])
+        sx = (x - xlow) / (xup - xlow)
+        ssamples = (surrogateModel.samples() - xlow) / (xup - xlow)
+        sdistx = cdist(sx, ssamples)
 
         # Select best candidates
         xselected, _ = find_best(
-            x,
-            distx,
+            sx,
+            sdistx,
             fx,
             n,
-            tol=self.reltol * sigma * np.sqrt(dim),
+            tol=self.reltol * self.sampler.sigma * np.sqrt(dim),
             weightpattern=self.weightpattern,
         )
         assert n == xselected.shape[0]
@@ -408,9 +410,7 @@ class CoordinatePerturbation(AcquisitionFunction):
 
     def tol(self, bounds) -> float:
         dim = len(bounds)
-        minxrange = np.min([b[1] - b[0] for b in bounds])
-        sigma = self.sampler.sigma * minxrange
-        return self.reltol * sigma * np.sqrt(dim)
+        return self.reltol * self.sampler.sigma * np.sqrt(dim)
 
 
 class UniformAcquisition(AcquisitionFunction):
@@ -468,6 +468,8 @@ class UniformAcquisition(AcquisitionFunction):
         numpy.ndarray
             n-by-dim matrix with the selected points.
         """
+        dim = len(bounds)  # Dimension of the problem
+
         # Check if surrogateModel is a list of models
         listOfSurrogates = hasattr(surrogateModel, "__len__")
         iindex = (
@@ -482,20 +484,24 @@ class UniformAcquisition(AcquisitionFunction):
 
         # Evaluate candidates
         if not listOfSurrogates:
-            fx, distx = surrogateModel.eval(x)
+            fx, _ = surrogateModel.eval(x)
         else:
             objdim = len(surrogateModel)
             fx = np.empty((nCand, objdim))
-            distx = np.empty((nCand, nCand))
             for i in range(objdim):
-                fx[:, i], dist = surrogateModel[i].eval(x)
-                if i == 0:
-                    distx = dist
+                fx[:, i], _ = surrogateModel[i].eval(x)
+
+        # Create scaled x and scaled distx
+        xlow = np.array([bounds[i][0] for i in range(dim)])
+        xup = np.array([bounds[i][1] for i in range(dim)])
+        sx = (x - xlow) / (xup - xlow)
+        ssamples = (surrogateModel.samples() - xlow) / (xup - xlow)
+        sdistx = cdist(sx, ssamples)
 
         # Select best candidates
         xselected, _ = find_best(
-            x,
-            distx,
+            sx,
+            sdistx,
             fx,
             n,
             tol=self.tol,
