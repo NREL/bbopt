@@ -1,5 +1,4 @@
-"""Example with optimization and plot.
-"""
+"""Example with optimization and plot."""
 
 # Copyright (C) 2024 National Renewable Energy Laboratory
 # Copyright (C) 2014 Cornell University
@@ -393,10 +392,9 @@ def main(args):
             optim_func=optimize.stochastic_response_surface,
         )
     elif args.config == 5:
-        minxrange = 15
         optres = read_and_run(
             data_file="datainput_BraninWithInteger",
-            acquisitionFunc=TargetValueAcquisition(0.001 * minxrange),
+            acquisitionFunc=TargetValueAcquisition(0.001),
             filter=rbf.RbfFilter(),
             maxeval=100,
             Ntrials=3,
@@ -450,12 +448,9 @@ def main(args):
             optim_func=optimize.cptvl,
         )
     elif args.config == 8:
-        minxrange = 15
         optres = read_and_run(
             data_file="datainput_BraninWithInteger",
-            acquisitionFunc=MinimizeSurrogate(
-                100, 0.005 * minxrange * sqrt(2)
-            ),
+            acquisitionFunc=MinimizeSurrogate(100, 0.005 * sqrt(2)),
             filter=rbf.RbfFilter(),
             maxeval=100,
             Ntrials=3,

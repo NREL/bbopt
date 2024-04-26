@@ -1,5 +1,4 @@
-"""Compare different learning strategies for RBF surrogate optimization.
-"""
+"""Compare different learning strategies for RBF surrogate optimization."""
 
 # Copyright (C) 2024 National Renewable Energy Laboratory
 
@@ -359,10 +358,9 @@ if __name__ == "__main__":
             optim_func=optimize.stochastic_response_surface,
         )
     if 5 in comparisonList:
-        minxrange = 15
         optresList[5] = read_and_run(
             data_file="datainput_BraninWithInteger",
-            acquisitionFunc=TargetValueAcquisition(0.001 * minxrange),
+            acquisitionFunc=TargetValueAcquisition(0.001),
             filter=rbf.RbfFilter(),
             maxeval=100,
             Ntrials=3,
@@ -415,12 +413,9 @@ if __name__ == "__main__":
             optim_func=optimize.cptvl,
         )
     if 8 in comparisonList:
-        minxrange = 15
         optresList[8] = read_and_run(
             data_file="datainput_BraninWithInteger",
-            acquisitionFunc=MinimizeSurrogate(
-                100, 0.005 * minxrange * sqrt(2)
-            ),
+            acquisitionFunc=MinimizeSurrogate(100, 0.005 * sqrt(2)),
             filter=rbf.RbfFilter(),
             maxeval=100,
             Ntrials=3,

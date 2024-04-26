@@ -208,7 +208,11 @@ def find_best(
 
         # Return index with the best (smallest) score
         iBest = np.argmin(score)
-        assert score[iBest] != np.inf
+        if score[iBest] == np.inf:
+            print(
+                "Warning: all candidates are too close to already evaluated points. Choose a better tolerance."
+            )
+            exit()
 
         return iBest
 
@@ -372,8 +376,10 @@ class CoordinatePerturbation(AcquisitionFunction):
 
         # Evaluate candidates
         if not listOfSurrogates:
+            samples = surrogateModel.samples()
             fx, _ = surrogateModel.eval(x)
         else:
+            samples = surrogateModel[0].samples()
             objdim = len(surrogateModel)
             fx = np.empty((nCand, objdim))
             for i in range(objdim):
@@ -383,7 +389,7 @@ class CoordinatePerturbation(AcquisitionFunction):
         xlow = np.array([bounds[i][0] for i in range(dim)])
         xup = np.array([bounds[i][1] for i in range(dim)])
         sx = (x - xlow) / (xup - xlow)
-        ssamples = (surrogateModel.samples() - xlow) / (xup - xlow)
+        ssamples = (samples - xlow) / (xup - xlow)
         sdistx = cdist(sx, ssamples)
 
         # Select best candidates
@@ -392,10 +398,14 @@ class CoordinatePerturbation(AcquisitionFunction):
             sdistx,
             fx,
             n,
-            tol=self.reltol * self.sampler.sigma * np.sqrt(dim),
+            tol=self.tol(bounds),
             weightpattern=self.weightpattern,
         )
         assert n == xselected.shape[0]
+
+        # Rescale selected points
+        xselected = xselected * (xup - xlow) + xlow
+        xselected[:, iindex] = np.round(xselected[:, iindex])
 
         # Rotate weight pattern
         self.weightpattern[:] = (
@@ -484,8 +494,10 @@ class UniformAcquisition(AcquisitionFunction):
 
         # Evaluate candidates
         if not listOfSurrogates:
+            samples = surrogateModel.samples()
             fx, _ = surrogateModel.eval(x)
         else:
+            samples = surrogateModel[0].samples()
             objdim = len(surrogateModel)
             fx = np.empty((nCand, objdim))
             for i in range(objdim):
@@ -495,7 +507,7 @@ class UniformAcquisition(AcquisitionFunction):
         xlow = np.array([bounds[i][0] for i in range(dim)])
         xup = np.array([bounds[i][1] for i in range(dim)])
         sx = (x - xlow) / (xup - xlow)
-        ssamples = (surrogateModel.samples() - xlow) / (xup - xlow)
+        ssamples = (samples - xlow) / (xup - xlow)
         sdistx = cdist(sx, ssamples)
 
         # Select best candidates
@@ -508,6 +520,10 @@ class UniformAcquisition(AcquisitionFunction):
             weightpattern=(self.weight,),
         )
         assert n == xselected.shape[0]
+
+        # Rescale selected points
+        xselected = xselected * (xup - xlow) + xlow
+        xselected[:, iindex] = np.round(xselected[:, iindex])
 
         return xselected
 
@@ -570,7 +586,11 @@ class TargetValueAcquisition(AcquisitionFunction):
         """
         dim = len(bounds)  # Dimension of the problem
 
-        tree = KDTree(surrogateModel.samples())
+        # Create scaled samples and KDTree with those
+        xlow = np.array([bounds[i][0] for i in range(dim)])
+        xup = np.array([bounds[i][1] for i in range(dim)])
+        ssamples = (surrogateModel.samples() - xlow) / (xup - xlow)
+        tree = KDTree(ssamples)
 
         # see Holmstrom 2008 "An adaptive radial basis algorithm (ARBF) for
         # expensive black-box global optimization", JOGO
@@ -585,7 +605,8 @@ class TargetValueAcquisition(AcquisitionFunction):
                 LDLt = ldl(surrogateModel.get_RBFmatrix())
                 problem = ProblemWithConstraint(
                     lambda x: surrogateModel.mu_measure(x, np.array([]), LDLt),
-                    lambda x: self.tol - tree.query(x)[0],
+                    lambda x: self.tol
+                    - tree.query((x - xlow) / (xup - xlow))[0],
                     bounds,
                     surrogateModel.iindex,
                 )
@@ -642,7 +663,8 @@ class TargetValueAcquisition(AcquisitionFunction):
                     lambda x: surrogateModel.bumpiness_measure(
                         x, f_target, LDLt
                     ),
-                    lambda x: self.tol - tree.query(x)[0],
+                    lambda x: self.tol
+                    - tree.query((x - xlow) / (xup - xlow))[0],
                     bounds,
                     surrogateModel.iindex,
                 )
@@ -687,7 +709,10 @@ class TargetValueAcquisition(AcquisitionFunction):
                     # select minimum point as new sample point if sufficient improvements
                     assert res.X is not None
                     xselected = np.asarray([res.X[i] for i in range(dim)])
-                    while np.any(tree.query(xselected)[0] < self.tol):
+                    while np.any(
+                        tree.query((xselected - xlow) / (xup - xlow))[0]
+                        < self.tol
+                    ):
                         # the selected point is too close to already evaluated point
                         # randomly select point from variable domain
                         # May only happen after a local search step
@@ -704,7 +729,8 @@ class TargetValueAcquisition(AcquisitionFunction):
                         lambda x: surrogateModel.bumpiness_measure(
                             x, f_target, LDLt
                         ),
-                        lambda x: self.tol - tree.query(x)[0],
+                        lambda x: self.tol
+                        - tree.query((x - xlow) / (xup - xlow))[0],
                         bounds,
                         surrogateModel.iindex,
                     )
@@ -734,7 +760,13 @@ class TargetValueAcquisition(AcquisitionFunction):
         # Discard selected points that are too close to each other
         idxs = [0]
         for i in range(1, n):
-            if cdist(x[idxs, :], x[i, :].reshape(1, -1)).min() >= self.tol:
+            if (
+                cdist(
+                    (x[idxs, :] - xlow) / (xup - xlow),
+                    (x[i, :].reshape(1, -1) - xlow) / (xup - xlow),
+                ).min()
+                >= self.tol
+            ):
                 idxs.append(i)
 
         return x[idxs, :]
@@ -800,7 +832,12 @@ class MinimizeSurrogate(AcquisitionFunction):
         fcand = np.empty(self.sampler.n * maxiter)
         startpID = np.full((self.sampler.n * maxiter,), False)
         selected = np.empty((n, dim))
-        tree = KDTree(surrogateModel.samples())
+
+        # Create scaled samples and KDTree with those
+        xlow = np.array([bounds[i][0] for i in range(dim)])
+        xup = np.array([bounds[i][1] for i in range(dim)])
+        ssamples = (surrogateModel.samples() - xlow) / (xup - xlow)
+        tree = KDTree(ssamples)
 
         iter = 0
         k = 0
@@ -893,7 +930,10 @@ class MinimizeSurrogate(AcquisitionFunction):
                 remevals -= res.nfev
                 xi[cindex] = res.x
 
-                if tree.n == 0 or tree.query(xi)[0] > self.tol:
+                if (
+                    tree.n == 0
+                    or tree.query((xi - xlow) / (xup - xlow))[0] > self.tol
+                ):
                     selected[k, :] = xi
                     k += 1
                     if k == n:
@@ -901,7 +941,10 @@ class MinimizeSurrogate(AcquisitionFunction):
                     else:
                         tree = KDTree(
                             np.concatenate(
-                                (surrogateModel.samples(), selected[0:k, :]),
+                                (
+                                    ssamples,
+                                    (selected[0:k, :] - xlow) / (xup - xlow),
+                                ),
                                 axis=0,
                             )
                         )
@@ -930,7 +973,7 @@ class MinimizeSurrogate(AcquisitionFunction):
             selected = singleCandSampler.get_uniform_sample(
                 bounds, iindex=surrogateModel.iindex
             )
-            while tree.query(selected)[0] > self.tol:
+            while tree.query((selected - xlow) / (xup - xlow))[0] > self.tol:
                 selected = singleCandSampler.get_uniform_sample(
                     bounds, iindex=surrogateModel.iindex
                 )
@@ -1144,18 +1187,26 @@ class EndPointsParetoFront(AcquisitionFunction):
             for j in range(dim):
                 endpoints[i, j] = res.X[j]
 
+        # Create scaled samples and KDTree with those
+        xlow = np.array([bounds[i][0] for i in range(dim)])
+        xup = np.array([bounds[i][1] for i in range(dim)])
+        ssamples = (surrogateModels[0].samples() - xlow) / (xup - xlow)
+        tree = KDTree(ssamples)
+
         # Discard points that are too close to eachother and previously samples.
-        tree = KDTree(surrogateModels[0].samples())
         selectedIdx = []
         for i in range(objdim):
-            distNeighbor = tree.query(endpoints[i, :])[0]
+            distNeighbor = tree.query((endpoints[i, :] - xlow) / (xup - xlow))[
+                0
+            ]
             if selectedIdx:
                 distNeighbor = min(
                     distNeighbor,
                     np.min(
                         cdist(
-                            endpoints[i, :].reshape(1, -1),
-                            endpoints[selectedIdx, :],
+                            (endpoints[i, :].reshape(1, -1) - xlow)
+                            / (xup - xlow),
+                            (endpoints[selectedIdx, :] - xlow) / (xup - xlow),
                         )
                     ).item(),
                 )
@@ -1169,7 +1220,9 @@ class EndPointsParetoFront(AcquisitionFunction):
         # maximizes the minimum distance of samples
         if endpoints.size == 0:
             minimumPointProblem = ProblemNoConstraint(
-                lambda x: -tree.query(x)[0], bounds, iindex
+                lambda x: -tree.query((x - xlow) / (xup - xlow))[0],
+                bounds,
+                iindex,
             )
             res = pymoo_minimize(
                 minimumPointProblem,
@@ -1258,19 +1311,28 @@ class MinimizeMOSurrogate(AcquisitionFunction):
                 [[res.X[idx][i] for i in range(dim)] for idx in idxs]
             )
 
+            # Create scaled samples and KDTree with those
+            xlow = np.array([bounds[i][0] for i in range(dim)])
+            xup = np.array([bounds[i][1] for i in range(dim)])
+            ssamples = (surrogateModels[0].samples() - xlow) / (xup - xlow)
+            tree = KDTree(ssamples)
+
             # Discard points that are too close to eachother and previously
             # sampled points.
-            tree = KDTree(surrogateModels[0].samples())
             selectedIdx = []
             for i in range(len(bestCandidates)):
-                distNeighbor = tree.query(bestCandidates[i, :])[0]
+                distNeighbor = tree.query(
+                    (bestCandidates[i, :] - xlow) / (xup - xlow)
+                )[0]
                 if selectedIdx:
                     distNeighbor = min(
                         distNeighbor,
                         np.min(
                             cdist(
-                                bestCandidates[i, :].reshape(1, -1),
-                                bestCandidates[selectedIdx, :],
+                                (bestCandidates[i, :].reshape(1, -1) - xlow)
+                                / (xup - xlow),
+                                (bestCandidates[selectedIdx, :] - xlow)
+                                / (xup - xlow),
                             )
                         ).item(),
                     )
@@ -1324,6 +1386,10 @@ class CoordinatePerturbationOverNondominated(AcquisitionFunction):
         dim = len(bounds)
         tol = self.acquisitionFunc.tol(bounds)
 
+        # Create vectors xlow and xup
+        xlow = np.array([bounds[i][0] for i in range(dim)])
+        xup = np.array([bounds[i][1] for i in range(dim)])
+
         # Find a collection of points that are close to the Pareto front
         bestCandidates = np.empty((0, dim))
         for ndpoint in nondominated:
@@ -1337,7 +1403,12 @@ class CoordinatePerturbationOverNondominated(AcquisitionFunction):
             if bestCandidates.size == 0:
                 bestCandidates = x.reshape(1, -1)
             else:
-                distNeighborOfx = np.min(cdist(x, bestCandidates)).item()
+                distNeighborOfx = np.min(
+                    cdist(
+                        (x - xlow) / (xup - xlow),
+                        (bestCandidates - xlow) / (xup - xlow),
+                    )
+                ).item()
                 if distNeighborOfx >= tol:
                     bestCandidates = np.concatenate(
                         (bestCandidates, x), axis=0
@@ -1451,8 +1522,13 @@ class GosacSample(AcquisitionFunction):
         assert res.X is not None
         xnew = np.asarray([[res.X[i] for i in range(dim)]])
 
-        if cdist(xnew, surrogateModels[0].samples()).min() < self.tol:
-            tree = KDTree(surrogateModels[0].samples())
+        # Create scaled samples and KDTree with those
+        xlow = np.array([bounds[i][0] for i in range(dim)])
+        xup = np.array([bounds[i][1] for i in range(dim)])
+        ssamples = (surrogateModels[0].samples() - xlow) / (xup - xlow)
+        tree = KDTree(ssamples)
+
+        if tree.query((xnew - xlow) / (xup - xlow))[0] < self.tol:
             minimumPointProblem = ProblemNoConstraint(
                 lambda x: -tree.query(x)[0], bounds, iindex
             )

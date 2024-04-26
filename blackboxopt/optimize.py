@@ -1011,6 +1011,10 @@ def cptv(
     dim = len(bounds)  # Dimension of the problem
     assert dim > 0
 
+    # xup and xlow
+    xup = np.array([b[1] for b in bounds])
+    xlow = np.array([b[0] for b in bounds])
+
     # tolerance parameters
     failtolerance = max(failtolerance, dim)  # must be at least dim
 
@@ -1022,7 +1026,7 @@ def cptv(
     acquisitionFunc0 = deepcopy(acquisitionFunc)
 
     # Tolerance for the tv step
-    tol = 1e-3 * np.min([bounds[i][1] - bounds[i][0] for i in range(dim)])
+    tol = 1e-3
     if consecutiveQuickFailuresTol == 0:
         consecutiveQuickFailuresTol = maxeval
 
@@ -1163,7 +1167,7 @@ def cptv(
             if callback is not None:
                 callback(out_local)
 
-            if np.linalg.norm(out.x - out_local.x) >= tol:
+            if np.linalg.norm((out.x - out_local.x) / (xup - xlow)) >= tol:
                 surrogateModel.update_samples(out_local.x.reshape(1, -1))
                 surrogateModel.update_coefficients(np.asarray(out_local.fx))
 
@@ -1282,6 +1286,10 @@ def socemo(
     dim = len(bounds)  # Dimension of the problem
     objdim = len(surrogateModels)  # Number of objective functions
     assert dim > 0 and objdim > 1
+
+    # xup and xlow
+    xup = np.array([b[1] for b in bounds])
+    xlow = np.array([b[0] for b in bounds])
 
     # Use a number of candidates that is greater than 1
     if acquisitionFunc.sampler.n <= 1:
@@ -1432,7 +1440,13 @@ def socemo(
             idxs = [0]
             for i in range(1, xselected.shape[0]):
                 x = xselected[i, :].reshape(1, -1)
-                if cdist(x, xselected[idxs, :]).min() >= tol:
+                if (
+                    cdist(
+                        (x - xlow) / (xup - xlow),
+                        (xselected[idxs, :] - xlow) / (xup - xlow),
+                    ).min()
+                    >= tol
+                ):
                     idxs.append(i)
             xselected = xselected[idxs, :]
 
@@ -1544,7 +1558,7 @@ def gosac(
     popsize1 = 100
     nGens2 = 100
     popsize2 = 100
-    tol = 1e-3 * np.min([bounds[i][1] - bounds[i][0] for i in range(dim)])
+    tol = 1e-3
 
     # Objects needed for the iterations
     mooptimizer = MixedVariableGA(
