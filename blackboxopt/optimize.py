@@ -31,7 +31,7 @@ __credits__ = [
     "Haoyu Jia",
     "Weslley S. Pereira",
 ]
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __deprecated__ = False
 
 from typing import Callable, Optional, Union
@@ -96,6 +96,7 @@ class OptimizeResult:
 def initialize_surrogate(
     fun,
     bounds,
+    mineval: int,
     maxeval: int,
     x0y0: tuple = (),
     *,
@@ -111,6 +112,8 @@ def initialize_surrogate(
     bounds
         Bounds for variables. Each element of the tuple must be a tuple with two
         elements, corresponding to the lower and upper bound for the variable.
+    mineval : int
+        Minimum number of function evaluations to build the surrogate model.
     maxeval : int
         Maximum number of function evaluations.
     x0y0 : tuple, optional
@@ -158,7 +161,7 @@ def initialize_surrogate(
     # Add new samples to the surrogate model
     if m == 0 and surrogateModel.nsamples() == 0:
         # Initialize surrogate model
-        surrogateModel.create_initial_design(dim, bounds, maxeval)
+        surrogateModel.create_initial_design(dim, bounds, mineval, maxeval)
         m = surrogateModel.nsamples()
     else:
         # Add samples to the surrogate model
@@ -214,6 +217,7 @@ def initialize_surrogate(
 def initialize_moo_surrogate(
     fun,
     bounds,
+    mineval: int,
     maxeval: int,
     *,
     surrogateModels=(RbfModel(),),
@@ -228,6 +232,8 @@ def initialize_moo_surrogate(
     bounds
         Bounds for variables. Each element of the tuple must be a tuple with two
         elements, corresponding to the lower and upper bound for the variable.
+    mineval : int
+        Minimum number of function evaluations to build the surrogate model.
     maxeval : int
         Maximum number of function evaluations.
     surrogateModels : list, optional
@@ -264,7 +270,7 @@ def initialize_moo_surrogate(
         # Initialize surrogate model
         # TODO: Improve me! The initial design must make sense for all
         # surrogate models. This has to do with the type of the surrogate model.
-        surrogateModels[0].create_initial_design(dim, bounds, maxeval)
+        surrogateModels[0].create_initial_design(dim, bounds, mineval, maxeval)
         for i in range(1, objdim):
             surrogateModels[i].update_samples(surrogateModels[0].samples())
 
@@ -330,6 +336,7 @@ def initialize_surrogate_constraints(
     fun,
     gfun,
     bounds,
+    mineval: int,
     maxeval: int,
     *,
     surrogateModels=(RbfModel(),),
@@ -348,6 +355,8 @@ def initialize_surrogate_constraints(
     bounds
         Bounds for variables. Each element of the tuple must be a tuple with two
         elements, corresponding to the lower and upper bound for the variable.
+    mineval : int
+        Minimum number of function evaluations to build the surrogate model.
     maxeval : int
         Maximum number of function evaluations.
     surrogateModels : list, optional
@@ -385,7 +394,7 @@ def initialize_surrogate_constraints(
         # Initialize surrogate model
         # TODO: Improve me! The initial design must make sense for all
         # surrogate models. This has to do with the type of the surrogate model.
-        surrogateModels[0].create_initial_design(dim, bounds, maxeval)
+        surrogateModels[0].create_initial_design(dim, bounds, mineval, maxeval)
         for i in range(1, gdim):
             surrogateModels[i].update_samples(surrogateModels[0].samples())
 
@@ -528,6 +537,7 @@ def stochastic_response_surface(
     out = initialize_surrogate(
         fun,
         bounds,
+        newSamplesPerIteration,
         maxeval,
         x0y0,
         surrogateModel=surrogateModel,
@@ -844,6 +854,7 @@ def target_value_optimization(
     out = initialize_surrogate(
         fun,
         bounds,
+        newSamplesPerIteration,
         maxeval,
         x0y0,
         surrogateModel=surrogateModel,
@@ -1305,6 +1316,7 @@ def socemo(
     out = initialize_moo_surrogate(
         fun,
         bounds,
+        0,
         maxeval,
         surrogateModels=surrogateModels,
         samples=samples,
@@ -1547,6 +1559,7 @@ def gosac(
         fun,
         gfun,
         bounds,
+        0,
         maxeval,
         surrogateModels=surrogateModels,
         samples=samples,

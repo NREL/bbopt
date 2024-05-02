@@ -1,5 +1,4 @@
-"""Black-Box Optimization Library
-"""
+"""Black-Box Optimization Library"""
 
 # Copyright (C) 2024 National Renewable Energy Laboratory
 
@@ -17,7 +16,7 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 __all__ = ["acquisition", "optimize", "sampling", "rbf"]
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 from . import acquisition
 from . import optimize

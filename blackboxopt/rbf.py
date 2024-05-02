@@ -20,7 +20,7 @@ __contact__ = "weslley.dasilvapereira@nrel.gov"
 __maintainer__ = "Weslley S. Pereira"
 __email__ = "weslley.dasilvapereira@nrel.gov"
 __credits__ = ["Weslley S. Pereira"]
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __deprecated__ = False
 
 from typing import Optional
@@ -641,7 +641,9 @@ class RbfModel:
         # Coefficients are not valid anymore
         self._valid_coefficients = False
 
-    def create_initial_design(self, dim: int, bounds, maxm: int = 0) -> None:
+    def create_initial_design(
+        self, dim: int, bounds, minm: int = 0, maxm: int = 0
+    ) -> None:
         """Creates an initial set of samples for the RBF model.
 
         The points are generated using a symmetric Latin hypercube design.
@@ -653,13 +655,16 @@ class RbfModel:
         bounds
             Tuple of lower and upper bounds for each dimension of the domain
             space.
+        minm : int, optional
+            Minimum number of points to generate. If not provided, the initial
+            design will have min(2 * pdim(),maxm) points.
         maxm : int, optional
-            Maximum number of points to generate. If not provided, 2 * pdim()
-            points are generated.
+            Maximum number of points to generate. If not provided, the initial
+            design will have max(2 * pdim(),minm) points.
         """
         self.reserve(0, dim)
         pdim = self.pdim()
-        m = min(maxm, 2 * pdim)
+        m = min(maxm, max(minm, 2 * pdim))
         self.reserve(m, dim)
 
         if m == 0 or dim <= 0:
@@ -702,11 +707,6 @@ class RbfModel:
     def reset(self) -> None:
         """Resets the RBF model."""
         self._m = 0
-        # self._x = np.array([])
-        # self._fx = np.array([])
-        # self._coef = np.array([])
-        # self._PHI = np.array([])
-        # self._P = np.array([])
 
     def samples(self) -> np.ndarray:
         """Get the sampled points.

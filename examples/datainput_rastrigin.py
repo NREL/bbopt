@@ -1,5 +1,4 @@
-"""Data class for the Rastigrin problem definition.
-"""
+"""Data class for the Rastigrin problem definition."""
 
 # Copyright (C) 2024 National Renewable Energy Laboratory
 # Copyright (C) 2014 Cornell University
@@ -27,7 +26,7 @@ __credits__ = [
     "Haoyu Jia",
     "Weslley S. Pereira",
 ]
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __deprecated__ = False
 
 import numpy as np

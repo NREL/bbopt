@@ -31,7 +31,7 @@ __credits__ = [
     "Haoyu Jia",
     "Weslley S. Pereira",
 ]
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __deprecated__ = False
 
 

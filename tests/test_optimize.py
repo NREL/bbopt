@@ -1,5 +1,4 @@
-"""Test the optimization routines.
-"""
+"""Test the optimization routines."""
 
 # Copyright (C) 2024 National Renewable Energy Laboratory
 
@@ -21,7 +20,7 @@ __contact__ = "weslley.dasilvapereira@nrel.gov"
 __maintainer__ = "Weslley S. Pereira"
 __email__ = "weslley.dasilvapereira@nrel.gov"
 __credits__ = ["Weslley S. Pereira"]
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __deprecated__ = False
 
 import numpy as np
