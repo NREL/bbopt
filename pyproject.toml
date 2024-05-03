@@ -40,7 +40,12 @@ doc = [
 
 [tool.pdm.build]
 includes = ["blackboxopt"]
-source-includes = ["tests/test_*.py"]
+source-includes = [
+    "tests/test_*.py",
+    "**/__init__.py",
+    "tests/vlse_benchmark/**.r",
+    "tests/gosac_benchmark.py"
+]
 source-excludes = ["tests/**"]
 
 [tool.ruff]

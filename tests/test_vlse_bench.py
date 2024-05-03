@@ -83,15 +83,25 @@ def test_API(func: str):
 
 
 def run_optimizer(
-    func: str, nArgs: int, maxEval: int, algo, nRuns: int, disp: bool = False
+    func: str,
+    nArgs: int,
+    maxEval: int,
+    algo,
+    nRuns: int,
+    *,
+    bounds=None,
+    disp: bool = False,
 ) -> list[optimize.OptimizeResult]:
     rfunc = getattr(vlsebmk.r, func)
     minval = vlsebmk.get_min_function(func, nArgs)
 
     # Get the function domain
-    bounds = vlsebmk.get_function_domain(func, nArgs)
-    if not isinstance(bounds[0], list) and nArgs == 1:
-        bounds = [bounds]
+    if bounds is None:
+        bounds = vlsebmk.get_function_domain(func, nArgs)
+        if not isinstance(bounds[0], list) and nArgs == 1:
+            bounds = [bounds]
+
+    assert len(bounds) == nArgs
     assert None not in bounds
     assert isinstance(bounds[0], list)
     assert not isinstance(bounds[0][0], list)
@@ -188,7 +198,7 @@ def test_cptv(func: str) -> None:
             ),
         },
         1,
-        False,
+        disp=False,
     )
 
     assert optres[0].nfev == nfev
@@ -225,7 +235,7 @@ if __name__ == "__main__":
         #     ),
         # },
         nRuns,
-        True,
+        disp=True,
     )
 
     for i in range(nRuns):

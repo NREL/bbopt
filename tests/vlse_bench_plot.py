@@ -43,6 +43,13 @@ myRfuncs = (
     "michal",
     "spheref",
     "rastr",
+    "mccorm",
+    "bukin6",
+    "camel6",
+    "crossit",
+    "drop",
+    "egg",
+    "griewank",
 )
 
 # Number of arguments for each function
@@ -57,6 +64,13 @@ myNargs["powell"] = 24
 myNargs["michal"] = 25
 myNargs["spheref"] = 27
 myNargs["rastr"] = 30
+myNargs["mccorm"] = 2
+myNargs["bukin6"] = 2
+myNargs["camel6"] = 2
+myNargs["crossit"] = 2
+myNargs["drop"] = 2
+myNargs["egg"] = 2
+myNargs["griewank"] = 2
 
 # Algorithms to be tested
 algorithms = {}
@@ -76,6 +90,20 @@ algorithms["SRS"] = {
 }
 algorithms["DYCORS"] = {
     "optimizer": optimize.multistart_stochastic_response_surface,
+    "acquisition": acquisition.CoordinatePerturbation(
+        0,
+        sampling.NormalSampler(
+            1,
+            sigma=0.2,
+            sigma_min=0.2 * 0.5**5,
+            sigma_max=0.2,
+            strategy=sampling.SamplingStrategy.DDS,
+        ),
+        [0.3, 0.5, 0.8, 0.95],
+    ),
+}
+algorithms["CPTV"] = {
+    "optimizer": optimize.cptv,
     "acquisition": acquisition.CoordinatePerturbation(
         0,
         sampling.NormalSampler(
@@ -123,29 +151,34 @@ if __name__ == "__main__":
         description="Run given algorithm and problem from the vlse benchmark"
     )
     parser.add_argument(
-        "-a",
-        "--algorithm",
-        choices=algorithms.keys(),
-        default="CPTVl",
+        "-a", "--algorithm", choices=algorithms.keys(), default="CPTVl"
     )
+    parser.add_argument("-p", "--problem", choices=myRfuncs, default="branin")
+    parser.add_argument("-n", "--ntrials", type=int, default=3)
     parser.add_argument(
-        "-p",
-        "--problem",
-        choices=myRfuncs,
-        default="branin",
-    )
-    parser.add_argument(
-        "-n",
-        "--ntrials",
-        type=int,
-        default=3,
+        "-b",
+        "--bounds",
+        metavar="[low,high]",
+        type=float,
+        nargs="+",
+        help="Pass in order: low0, high0, low1, high1, ...",
     )
     args = parser.parse_args()
 
+    # Process bounds
+    if args.bounds is not None:
+        bounds = [
+            [args.bounds[2 * i], args.bounds[2 * i + 1]]
+            for i in range(len(args.bounds) // 2)
+        ]
+    else:
+        bounds = None
+
+    # Print params
     print(args.algorithm)
     print(args.problem)
+    print(bounds)
     print(args.ntrials)
-    fulldir = os.path.dirname(os.path.abspath(__file__))
 
     t0 = time.time()
     optres = run_optimizer(
@@ -154,18 +187,22 @@ if __name__ == "__main__":
         maxEvals[args.problem],
         algorithms[args.algorithm],
         args.ntrials,
+        bounds=bounds,
     )
     tf = time.time()
+
     # Save the results
-    with open(
-        fulldir
+    filepath = (
+        os.path.dirname(os.path.abspath(__file__))
         + "/pickle/vlse_bench_plot_"
         + args.problem
         + "_"
         + args.algorithm
-        + ".pkl",
-        "wb",
-    ) as f:
+        + "_"
+        + ("bounds" if bounds else "default")
+        + ".pkl"
+    )
+    with open(filepath, "wb") as f:
         pickle.dump(
             [
                 myNargs[args.problem],
@@ -173,6 +210,7 @@ if __name__ == "__main__":
                 args.ntrials,
                 optres,
                 (tf - t0),
+                bounds,
             ],
             f,
         )
