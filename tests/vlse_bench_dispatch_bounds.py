@@ -15,6 +15,16 @@ myRfuncs = {
     "drop": [[-512, 512], [-5.12, 5.12]],
     "egg": [[400.0, 500.0], [-512.0, 512.0]],
     "griewank": [[-600.0, 600.0], [-6.0, 6.0]],
+    "holder": [[-10.0, 10.0], [9.0, 10.0]],
+    "levy": [
+        [-10.0, 10.0] if (i % 2 == 0) else [-1.0, 1.0]
+        for i in range(myNargs["levy"])
+    ],
+    "levy13": [[0.0, 1.0], [-10.0, 10.0]],
+    "rastr": [
+        [-10.0, 10.0] if (i % 2 == 0) else [-1.0, 1.0]
+        for i in range(myNargs["rastr"])
+    ],
 }
 algorithms = ("SRS", "DYCORS", "CPTV", "CPTVl")
 

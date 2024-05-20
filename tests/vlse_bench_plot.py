@@ -50,6 +50,10 @@ myRfuncs = (
     "drop",
     "egg",
     "griewank",
+    "holder",
+    "levy",
+    "levy13",
+    "rastr",
 )
 
 # Number of arguments for each function
@@ -71,6 +75,10 @@ myNargs["crossit"] = 2
 myNargs["drop"] = 2
 myNargs["egg"] = 2
 myNargs["griewank"] = 2
+myNargs["holder"] = 2
+myNargs["levy"] = 4
+myNargs["levy13"] = 2
+myNargs["rastr"] = 4
 
 # Algorithms to be tested
 algorithms = {}
