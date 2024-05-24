@@ -1568,10 +1568,10 @@ def gosac(
 
     # Parameters
     nGens1 = 100
-    popsize1 = 100
+    popsize1 = 15
     nGens2 = 100
-    popsize2 = 100
-    tol = 1e-3
+    popsize2 = 15
+    tol = 1e-6
 
     # Objects needed for the iterations
     mooptimizer = MixedVariableGA(

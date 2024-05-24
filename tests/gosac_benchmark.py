@@ -42,11 +42,7 @@ gosac_p: list[Problem] = []
 # Problem 1
 gosac_p.append(
     Problem(
-        # f(x) = 5(x2 − 0.2)2 + 0.8 − 0.7x1
         lambda x: 5 * (x[:, 1] - 0.2) ** 2 + 0.8 - 0.7 * x[:, 0],
-        # −exp(x2 −0.2)−x3 ≤ 0
-        # x3 + 1.1x1 + 1 ≤ 0
-        # x2 − 1.2x1 ≤ 0
         lambda x: np.transpose(
             [
                 -np.exp(x[:, 1] - 0.2) - x[:, 2],
@@ -64,17 +60,11 @@ gosac_p.append(
 # Problem 2
 gosac_p.append(
     Problem(
-        # 2x1 + 3x2 + 1.5x3 + 2x4 − 0.5x5
         lambda x: 2 * x[:, 0]
         + 3 * x[:, 1]
         + 1.5 * x[:, 2]
         + 2 * x[:, 3]
         - 0.5 * x[:, 4],
-        # x21 + x3 ≤ 1.25
-        # x1.5 + 1.5x4 ≤ 3
-        # x1 + x3 ≤ 1.6
-        # 1.333x2 + x4 ≤ 3
-        # −x3 − x4 + x5 ≤ 0
         lambda x: np.transpose(
             [
                 x[:, 0] ** 2 + x[:, 2] - 1.25,
@@ -94,15 +84,11 @@ gosac_p.append(
 # Problem 3
 gosac_p.append(
     Problem(
-        # f(x) = 2x1 + 3x2 + 1.5x3 + 2x4 − 0.5x5
         lambda x: 2 * x[:, 0]
         + 3 * x[:, 1]
         + 1.5 * x[:, 2]
         + 2 * x[:, 3]
         - 0.5 * x[:, 4],
-        # x1 + x3 ≤ 1.6
-        # 1.333x2 + x4 ≤ 3
-        # −x3 −x4 +x5 ≤0
         lambda x: np.transpose(
             [
                 x[:, 0] + x[:, 2] - 1.6,
@@ -120,7 +106,6 @@ gosac_p.append(
 # Problem 4
 gosac_p.append(
     Problem(
-        # f(x) = (x5 −1)2 +(x6 −2)2 +(x7 −1)2 −log(x8 +1) +(x9 −1)2 +(x10 −2)2 +(x11 −3)2
         lambda x: (x[:, 4] - 1) ** 2
         + (x[:, 5] - 2) ** 2
         + (x[:, 6] - 1) ** 2
@@ -225,9 +210,6 @@ gosac_p.append(
         + 0.8356891 * x[:, 0] * x[:, 4]
         + 37.293239 * x[:, 0]
         - 40792.141,
-        # 0 ≤ 85.334407 + 0.0056858x2x5 + 0.0006262x1x4 − 0.0022053x3x5 ≤ 92
-        # 90 ≤ 80.51249 + 0.0071317x2x5 + 0.0029955x1x2 + 0.0021813x23 ≤ 110
-        # 20 ≤ 9.300961 + 0.0047026x3x5 + 0.0012547x1x3 + 0.0019085x3x4 ≤ 25
         lambda x: np.transpose(
             [
                 -85.334407
@@ -271,7 +253,6 @@ gosac_p.append(
 # Problem 7
 gosac_p.append(
     Problem(
-        # (x1 −10)2 +5(x2 −12)2 +x43 +3(x4 −11)2+10x65 + 7x26 + x47 − 4x6x7 − 10x6 − 8x7
         lambda x: (x[:, 0] - 10) ** 2
         + 5 * (x[:, 1] - 12) ** 2
         + x[:, 3] ** 2
@@ -282,10 +263,6 @@ gosac_p.append(
         - 4 * x[:, 2] * x[:, 3]
         - 10 * x[:, 2]
         - 8 * x[:, 3],
-        # 2x21 +3x42 +x3 +4x24 +5x5 ≤ 127
-        # 7x1 +3x2 +10x23 +x4 −x5 ≤ 282
-        # 23x1 +x2 +6x26 −8x7 ≤196
-        # 4x21 +x2 −3x1x2 +2x23 +5x6 −11x7 ≤ 0
         lambda x: np.transpose(
             [
                 2 * x[:, 0] ** 2
@@ -409,13 +386,13 @@ gosac_p.append(
         # Rana test function
         lambda x: np.reshape(
             np.sum(
-                x
-                * np.sin(np.sqrt(np.abs(x[:, 0] - x + 1)))
-                * np.cos(np.sqrt(np.abs(x[:, 0] + x + 1)))
+                x.T
+                * np.sin(np.sqrt(np.abs(x[:, 0] - x.T + 1)))
+                * np.cos(np.sqrt(np.abs(x[:, 0] + x.T + 1)))
                 + (x[:, 0] + 1)
-                * np.sin(np.sqrt(np.abs(x[:, 0] + x + 1)))
-                * np.cos(np.sqrt(np.abs(x[:, 0] - x + 1))),
-                axis=1,
+                * np.sin(np.sqrt(np.abs(x[:, 0] + x.T + 1)))
+                * np.cos(np.sqrt(np.abs(x[:, 0] - x.T + 1))),
+                axis=0,
             )
             - 5,
             (-1, 1),
@@ -519,9 +496,6 @@ gosac_p[-1].fmin = -106.7645
 # Problem 19
 gosac_p.append(
     Problem(
-        # 0x5x7x9x10x14x15x16 + 7x1x2x3x4x8x11 + x3x4x6x7x8+ 12x3x4x8x11
-        # + 8x6x7x8x12 + 3x6x7x9x14x16 + x9x10x14x16+ 5x5x10x14x15x16
-        # + 3x1x2x11x12
         lambda x: 10
         * x[:, 4]
         * x[:, 6]
@@ -538,13 +512,6 @@ gosac_p.append(
         + x[:, 8] * x[:, 9] * x[:, 13] * x[:, 15]
         + 5 * x[:, 4] * x[:, 9] * x[:, 13] * x[:, 14] * x[:, 15]
         + 3 * x[:, 0] * x[:, 1] * x[:, 10] * x[:, 11],
-        # 3x5x7x9x10x14x15x16 − 12x1x2x3x4x8x11 − 8x3x4x6x7x8+ x3x4x8x11 − 7x1x2x11x12 + 2x13x14x15x16 + 2 ≤ 0
-        # x1x2x3x4x8x11 − 10x3x4x6x7x8 − 5x6x7x8x12 + x6x7x9x14x16+ 7x9x10x14x16 + x5x10x14x15x16 + 1 ≤ 0
-        # 5x5x7x9x10x14x15x16 − 3x1x2x3x4x8x11 − x3x4x6x7x8− 2x5x10x14x15x16 + x13x14x15x16 + 1 ≤ 0
-        # 3x1x2x3x4x8x11 − 5x5x7x9x10x14x15x16 + x3x4x6x7x8+ 2x5x10x14x15x16 − x13x14x15x16 − 1 ≤ 0
-        # − 4x3x4x6x7x8 − 2x3x4x8x11 − 5x6x7x9x14x16 + x9x10x14x16− 9x5x10x14x15x16 − 2x1x2x11x12 + 3 ≤ 0
-        # 9x1x2x3x4x8x11 − 12x3x4x8x11 − 7x6x7x8x12 + 6x6x7x9x14x16+ 2x5x10x14x15x16 − 15x1x2x11x12 + 3x13x14x15x16 + 7 ≤ 0
-        # 5x1x2x3x4x8x11 − 8x5x7x9x10x14x15x16 + 2x3x4x6x7x8 − 7x3x4x8x11− x6x7x8x12 − 5x9x10x14x16 − 10x1x2x11x12 + 1 ≤ 0
         lambda x: np.transpose(
             [
                 3
