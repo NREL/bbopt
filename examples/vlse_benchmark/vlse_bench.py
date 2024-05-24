@@ -28,7 +28,7 @@ import numpy as np
 import pickle
 import time
 from random import seed
-from test_vlse_bench import run_optimizer
+from tests.test_vlse_bench import run_optimizer
 from blackboxopt import optimize, acquisition, sampling
 
 # Functions to be tested
@@ -138,10 +138,10 @@ algorithms["CPTVl"] = {
         [0.3, 0.5, 0.8, 0.95],
     ),
 }
-# algorithms["MLSL"] = {
-#     "optimizer": optimize.target_value_optimization,
-#     "acquisition": acquisition.MinimizeSurrogate(1, 0.005 * np.sqrt(2.0)),
-# }
+algorithms["MLSL"] = {
+    "optimizer": optimize.target_value_optimization,
+    "acquisition": acquisition.MinimizeSurrogate(1, 0.005 * np.sqrt(2.0)),
+}
 
 # Maximum number of evaluations
 maxEvals = {}  # [20*n for n in myNargs]

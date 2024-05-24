@@ -29,7 +29,7 @@ __credits__ = [
 __version__ = "0.3.0"
 __deprecated__ = False
 
-from examples.optprogram1 import read_check_data_file
+from optprogram1 import read_check_data_file
 from blackboxopt.rbf import RbfType, RbfModel, MedianLpfFilter
 from blackboxopt.optimize import stochastic_response_surface
 from blackboxopt.sampling import NormalSampler, Sampler, SamplingStrategy

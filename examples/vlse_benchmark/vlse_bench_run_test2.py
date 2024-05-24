@@ -1,15 +1,15 @@
 #!/usr/bin/env python
 import subprocess
-from vlse_bench_plot import myNargs
+from examples.vlse_benchmark.vlse_bench import myNargs
 
 useSbatch = False
 
 # All:
 myRfuncs = {
-    # "ackley": [
-    #     [-20, 20] if (i % 2 == 0) else [-200, 200]
-    #     for i in range(myNargs["ackley"])
-    # ],
+    "ackley": [
+        [-20, 20] if (i % 2 == 0) else [-200, 200]
+        for i in range(myNargs["ackley"])
+    ],
     "bukin6": [[-115, 95], [-3, 3]],
     "crossit": [[-10, 10], [-100, 100]],
     "drop": [[-512, 512], [-5.12, 5.12]],

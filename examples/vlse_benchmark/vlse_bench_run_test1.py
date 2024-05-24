@@ -17,17 +17,7 @@ myRfuncs = (
     "bukin6",
     "camel6",
 )
-algorithms = ("SRS", "DYCORS", "CPTVl")
-
-# # Needs more than 10min to run (usually less than 20min):
-# myRfuncs = (
-#     "michal",
-#         "powell",
-#         "spheref",
-#         "rastr",
-# )
-# algorithms = ("DYCORS", "CPTVl")
-# # algorithms = ("CPTVl",)
+algorithms = ("SRS", "DYCORS", "CPTV", "CPTVl")
 
 for func in myRfuncs:
     for a in algorithms:

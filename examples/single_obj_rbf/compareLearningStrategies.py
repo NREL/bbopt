@@ -271,7 +271,7 @@ def check_set_parameters(
 if __name__ == "__main__":
     np.random.seed(3)
 
-    comparisonList = [3, 6, 7]
+    comparisonList = [3, 5, 6, 7, 8]
     optresList = {}
     strategyName = []
 
@@ -358,6 +358,7 @@ if __name__ == "__main__":
             optim_func=optimize.stochastic_response_surface,
         )
     if 5 in comparisonList:
+        strategyName.append("TargetValue")
         optresList[5] = read_and_run(
             data_file="datainput_BraninWithInteger",
             acquisitionFunc=TargetValueAcquisition(0.001),
@@ -413,6 +414,7 @@ if __name__ == "__main__":
             optim_func=optimize.cptvl,
         )
     if 8 in comparisonList:
+        strategyName.append("MinimizeSurrogate")
         optresList[8] = read_and_run(
             data_file="datainput_BraninWithInteger",
             acquisitionFunc=MinimizeSurrogate(100, 0.005 * sqrt(2)),
