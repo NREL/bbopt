@@ -39,7 +39,7 @@ doc = [
 ]
 
 [tool.pdm.build]
-includes = ["blackboxopt"]
+includes = ["blackboxopt/*.py"]
 source-includes = [
     "tests/test_*.py",
     "**/__init__.py",
