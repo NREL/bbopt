@@ -34,7 +34,6 @@ __credits__ = [
 __version__ = "0.3.0"
 __deprecated__ = False
 
-import random
 import numpy as np
 from math import log
 from multiprocessing.pool import ThreadPool
@@ -599,7 +598,7 @@ class TargetValueAcquisition(AcquisitionFunction):
             sample_stage = (
                 sampleStage
                 if sampleStage >= 0
-                else random.sample(range(0, self.cycleLength + 2), 1)[0]
+                else np.random.choice(self.cycleLength + 2)
             )
             if sample_stage == 0:  # InfStep - minimize Mu_n
                 LDLt = ldl(surrogateModel.get_RBFmatrix())
@@ -1023,7 +1022,7 @@ class ParetoFront(AcquisitionFunction):
 
         # Create a surrogate model for the Pareto front in the objective space
         paretoModel = RbfModel(RbfType.LINEAR)
-        k = random.randint(0, objdim - 1)
+        k = np.random.choice(objdim)
         paretoModel.update_samples(
             np.array([paretoFront[:, i] for i in range(objdim) if i != k]).T
         )
@@ -1306,7 +1305,7 @@ class MinimizeMOSurrogate(AcquisitionFunction):
         # points from the Pareto front
         if res.X is not None:
             nMax = len(res.X)
-            idxs = random.sample(range(nMax), min(n, nMax))
+            idxs = np.random.choice(nMax, size=min(n, nMax))
             bestCandidates = np.array(
                 [[res.X[idx][i] for i in range(dim)] for idx in idxs]
             )

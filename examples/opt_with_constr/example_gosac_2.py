@@ -23,7 +23,6 @@ __credits__ = ["Juliane Mueller", "Weslley S. Pereira"]
 __version__ = "0.3.0"
 __deprecated__ = False
 
-from random import seed
 from blackboxopt.optimize import gosac
 from blackboxopt.rbf import RbfModel
 
@@ -48,7 +47,6 @@ def gfun(x):
 
 if __name__ == "__main__":
     bounds = ((0, 10), (0, 10), (0, 10), (0, 1), (0, 1))
-    seed(3)
     np.random.seed(2)
 
     iindex = (0, 1)

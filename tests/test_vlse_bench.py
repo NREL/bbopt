@@ -24,7 +24,6 @@ __version__ = "0.3.0"
 __deprecated__ = False
 
 from copy import deepcopy
-from random import randint
 import numpy as np
 import pytest
 from rpy2 import robjects
@@ -70,7 +69,7 @@ def test_API(func: str):
     else:
         for b in bounds:
             if isinstance(b[0], int) and isinstance(b[1], int):
-                x.append(randint(b[0], b[1]))
+                x.append(np.random.choice(np.arange(b[0], b[1] + 1)))
             else:
                 x.append(np.random.uniform(b[0], b[1]))
 

@@ -23,7 +23,6 @@ __credits__ = ["Weslley S. Pereira"]
 __version__ = "0.3.0"
 __deprecated__ = False
 
-import random
 import numpy as np
 import pytest
 from blackboxopt.sampling import NormalSampler, Sampler, SamplingStrategy
@@ -120,7 +119,7 @@ def test_iindex_sampler(boundx, strategy: SamplingStrategy):
     np.random.seed(5)
 
     for i in range(3):
-        iindex = random.sample(range(dim), dim // 2)
+        iindex = np.random.choice(dim, size=dim // 2)
         mu = np.array([b[0] + (b[1] - b[0]) / 2 for b in bounds])
         mu[iindex] = np.round(mu[iindex])
 
@@ -142,7 +141,7 @@ def test_slhd(boundx):
     np.random.seed(5)
 
     for i in range(3):
-        iindex = random.sample(range(dim), dim // 2)
+        iindex = np.random.choice(dim, size=dim // 2)
 
         for n in (boundx[1] - boundx[0], boundx[1] - boundx[0] + 1):
             sample = Sampler(

@@ -1,4 +1,3 @@
-from random import seed
 import numpy as np
 import pytest
 from blackboxopt.optimize import gosac
@@ -8,7 +7,6 @@ import tests.gosac_benchmark as gosacbmk
 
 @pytest.mark.parametrize("problem", gosacbmk.gosac_p)
 def test_gosac(problem: gosacbmk.Problem) -> None:
-    seed(3)
     np.random.seed(3)
 
     dim = len(problem.bounds)
@@ -55,6 +53,5 @@ def test_gosac(problem: gosacbmk.Problem) -> None:
 
 
 if __name__ == "__main__":
-    seed(3)
     np.random.seed(3)
     test_gosac(gosacbmk.gosac_p[1])
