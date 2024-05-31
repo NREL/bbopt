@@ -27,7 +27,7 @@ __contact__ = "weslley.dasilvapereira@nrel.gov"
 __maintainer__ = "Weslley S. Pereira"
 __email__ = "weslley.dasilvapereira@nrel.gov"
 __credits__ = ["Sonja Surjanovic", "Derek Bingham", "Weslley S. Pereira"]
-__version__ = "0.3.0"
+__version__ = "0.3.2"
 __deprecated__ = False
 
 from rpy2.robjects import r

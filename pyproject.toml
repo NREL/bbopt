@@ -1,6 +1,6 @@
 [project]
 name = "blackboxopt"
-version = "0.3.0"
+version = "0.3.2"
 description = "Surrogate models and active learning for scientific applications"
 authors = [
     {name = "Weslley da Silva Pereira", email = "weslley.dasilvapereira@nrel.gov"},
