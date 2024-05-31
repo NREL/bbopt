@@ -33,15 +33,15 @@ from pymoo.core.variable import Real, Integer
 from pymoo.core.duplicate import DefaultDuplicateElimination
 
 
-def _get_vars(bounds, iindex: list = []) -> dict:
+def _get_vars(bounds, iindex=()) -> dict:
     """Get the type of variables for the problem.
 
     Parameters
     ----------
     bounds : tuple or list
         Bounds for the variables.
-    iindex : list, optional
-        Index of the integer variables, by default [].
+    iindex : list-like, optional
+        Index of the integer variables, by default ().
         If empty, all variables are real.
 
     Returns
@@ -105,14 +105,7 @@ class ProblemWithConstraint(Problem):
         Constraint function.
     """
 
-    def __init__(
-        self,
-        objfunc,
-        gfunc,
-        bounds,
-        iindex: list,
-        n_ieq_constr: int = 1,
-    ):
+    def __init__(self, objfunc, gfunc, bounds, iindex, n_ieq_constr: int = 1):
         vars = _get_vars(bounds, iindex)
         self.objfunc = objfunc
         self.gfunc = gfunc

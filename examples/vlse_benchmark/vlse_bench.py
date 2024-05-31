@@ -27,7 +27,6 @@ import os
 import numpy as np
 import pickle
 import time
-from random import seed
 from tests.test_vlse_bench import run_optimizer
 from blackboxopt import optimize, acquisition, sampling
 
@@ -152,7 +151,6 @@ if __name__ == "__main__":
     import argparse
 
     # Set seeds for reproducibility
-    seed(3)
     np.random.seed(3)
 
     parser = argparse.ArgumentParser(

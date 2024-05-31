@@ -223,7 +223,7 @@ class NormalSampler(Sampler):
         bounds,
         *,
         iindex: tuple[int, ...] = (),
-        mu: np.ndarray = np.array([0]),
+        mu=None,
         coord=(),
     ) -> np.ndarray:
         """Generate a sample from a normal distribution around a given point mu.
@@ -235,8 +235,8 @@ class NormalSampler(Sampler):
             corresponding to the lower and upper bound for the variable.
         iindex : tuple, optional
             Indices of the input space that are integer. The default is ().
-        mu : numpy.ndarray, optional
-            Point around which the sample will be generated. The default is zero.
+        mu : array-like, optional
+            Point around which the sample will be generated. The default is the origin.
         coord : tuple, optional
             Coordinates of the input space that will vary. The default is (), which means that all
             coordinates will vary.
@@ -254,12 +254,11 @@ class NormalSampler(Sampler):
         xup = np.array([bounds[i][1] for i in range(dim)])
         sigma = np.array([self.sigma * (xup[i] - xlow[i]) for i in range(dim)])
 
-        # Check if mu is valid
+        # Create xnew
+        if mu is None:
+            mu = np.zeros(dim)
         xnew = np.tile(mu, (self.n, 1))
-        if xnew.shape != (self.n, dim):
-            raise ValueError(
-                "mu must either be a scalar or a vector of size dim"
-            )
+        assert xnew.shape == (self.n, dim)
 
         # Generate n samples
         if len(coord) == 0:
@@ -275,7 +274,7 @@ class NormalSampler(Sampler):
         probability: float,
         *,
         iindex: tuple[int, ...] = (),
-        mu: np.ndarray = np.array([0]),
+        mu=None,
         coord=(),
     ) -> np.ndarray:
         """Generate a DDS sample.
@@ -289,8 +288,8 @@ class NormalSampler(Sampler):
             Perturbation probability.
         iindex : tuple, optional
             Indices of the input space that are integer. The default is ().
-        mu : numpy.ndarray, optional
-            Point around which the sample will be generated. The default is zero.
+        mu : array-like, optional
+            Point around which the sample will be generated. The default is the origin.
         coord : tuple, optional
             Coordinates of the input space that will vary. The default is (), which means that all
             coordinates will vary.
@@ -305,12 +304,11 @@ class NormalSampler(Sampler):
         xup = np.array([bounds[i][1] for i in range(dim)])
         sigma = np.array([self.sigma * (xup[i] - xlow[i]) for i in range(dim)])
 
-        # Check if mu is valid
+        # Create xnew
+        if mu is None:
+            mu = np.zeros(dim)
         xnew = np.tile(mu, (self.n, 1))
-        if xnew.shape != (self.n, dim):
-            raise ValueError(
-                "mu must either be a scalar or a vector of size dim"
-            )
+        assert xnew.shape == (self.n, dim)
 
         # Check if probability is valid
         if not (0 <= probability <= 1):
@@ -353,7 +351,7 @@ class NormalSampler(Sampler):
         bounds,
         *,
         iindex: tuple[int, ...] = (),
-        mu: np.ndarray = np.array([0]),
+        mu=None,
         probability: float = 1,
         coord=(),
     ) -> np.ndarray:
@@ -366,8 +364,8 @@ class NormalSampler(Sampler):
             corresponding to the lower and upper bound for the variable.
         iindex : tuple, optional
             Indices of the input space that are integer. The default is ().
-        mu : numpy.ndarray, optional
-            Point around which the sample will be generated. The default is zero.
+        mu : array-like, optional
+            Point around which the sample will be generated. The default is the origin.
         probability : float, optional
             Perturbation probability. The default is 1.
         coord : tuple, optional

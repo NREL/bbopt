@@ -103,7 +103,7 @@ def find_best(
     fx: np.ndarray,
     n: int,
     tol: float = 1e-3,
-    weightpattern=[0.3, 0.5, 0.8, 0.95],
+    weightpattern=(0.3, 0.5, 0.8, 0.95),
 ) -> tuple[np.ndarray, np.ndarray]:
     """Select n points based on their values and distances to candidates.
 
@@ -305,7 +305,7 @@ class CoordinatePerturbation(AcquisitionFunction):
         self,
         maxeval: int,
         sampler: NormalSampler = NormalSampler(1, 1),
-        weightpattern=[0.2, 0.4, 0.6, 0.9, 0.95, 1],
+        weightpattern=(0.2, 0.4, 0.6, 0.9, 0.95, 1),
         reltol: float = 0.01,
     ) -> None:
         self.neval = 0
@@ -320,7 +320,7 @@ class CoordinatePerturbation(AcquisitionFunction):
         bounds,
         n: int = 1,
         *,
-        xbest: np.ndarray = np.array([0]),
+        xbest=None,
         coord=(),
         **kwargs,
     ) -> np.ndarray:
@@ -334,8 +334,8 @@ class CoordinatePerturbation(AcquisitionFunction):
             Bounds of the search space.
         n : int, optional
             Number of points to be acquired. The default is 1.
-        xbest : numpy.ndarray, optional
-            Best point so far. The default is np.array([0]).
+        xbest : array-like, optional
+            Best point so far.
         coord : tuple, optional
             Coordinates of the input space that will vary. The default is (),
             which means that all coordinates will vary.
@@ -600,10 +600,11 @@ class TargetValueAcquisition(AcquisitionFunction):
                 if sampleStage >= 0
                 else np.random.choice(self.cycleLength + 2)
             )
+            print(sample_stage)
             if sample_stage == 0:  # InfStep - minimize Mu_n
                 LDLt = ldl(surrogateModel.get_RBFmatrix())
                 problem = ProblemWithConstraint(
-                    lambda x: surrogateModel.mu_measure(x, np.array([]), LDLt),
+                    lambda x: surrogateModel.mu_measure(x, LDLt=LDLt),
                     lambda x: self.tol
                     - tree.query((x - xlow) / (xup - xlow))[0],
                     bounds,
@@ -996,13 +997,17 @@ class ParetoFront(AcquisitionFunction):
 
     def __init__(
         self,
-        mooptimizer=MixedVariableGA(survival=RankAndCrowding()),
+        mooptimizer=None,
         nGens: int = 100,
-        oldTV: np.ndarray = np.array([]),
+        oldTV=(),
     ) -> None:
-        self.mooptimizer = mooptimizer
+        self.mooptimizer = (
+            MixedVariableGA(survival=RankAndCrowding())
+            if mooptimizer is None
+            else mooptimizer
+        )
         self.nGens = nGens
-        self.oldTV = oldTV
+        self.oldTV = np.array(oldTV)
 
     def pareto_front_target(self, paretoFront: np.ndarray) -> np.ndarray:
         """Find a target value that should fill a gap in the Pareto front.
@@ -1059,7 +1064,7 @@ class ParetoFront(AcquisitionFunction):
         bounds,
         n: int = 1,
         *,
-        paretoFront: np.ndarray = np.array([]),
+        paretoFront=(),
         **kwargs,
     ) -> np.ndarray:
         """Acquire n points.
@@ -1072,8 +1077,8 @@ class ParetoFront(AcquisitionFunction):
             Bounds of the search space.
         n : int, optional
             Number of points to be acquired. The default is 1.
-        paretoFront : numpy.ndarray, optional
-            Pareto front in the objective space. The default is an empty array.
+        paretoFront : array-like, optional
+            Pareto front in the objective space. The default is an empty tuple.
 
         Returns
         -------
@@ -1091,7 +1096,7 @@ class ParetoFront(AcquisitionFunction):
         xselected = np.empty((0, dim))
         for i in range(n):
             # Find a target value tau in the Pareto front
-            tau = self.pareto_front_target(paretoFront)
+            tau = self.pareto_front_target(np.asarray(paretoFront))
             self.oldTV = np.concatenate(
                 (self.oldTV.reshape(-1, objdim), [tau]), axis=0
             )
@@ -1135,10 +1140,8 @@ class EndPointsParetoFront(AcquisitionFunction):
         already sampled points.
     """
 
-    def __init__(
-        self, optimizer=MixedVariableGA(), nGens: int = 100, tol=1e-3
-    ) -> None:
-        self.optimizer = optimizer
+    def __init__(self, optimizer=None, nGens: int = 100, tol=1e-3) -> None:
+        self.optimizer = MixedVariableGA() if optimizer is None else optimizer
         self.nGens = nGens
         self.tol = tol
 
@@ -1254,13 +1257,12 @@ class MinimizeMOSurrogate(AcquisitionFunction):
         already sampled points. Default is 1e-3.
     """
 
-    def __init__(
-        self,
-        mooptimizer=MixedVariableGA(survival=RankAndCrowding()),
-        nGens=100,
-        tol=1e-3,
-    ) -> None:
-        self.mooptimizer = mooptimizer
+    def __init__(self, mooptimizer=None, nGens=100, tol=1e-3) -> None:
+        self.mooptimizer = (
+            MixedVariableGA(survival=RankAndCrowding())
+            if mooptimizer is None
+            else mooptimizer
+        )
         self.nGens = nGens
         self.tol = tol
 
@@ -1362,8 +1364,8 @@ class CoordinatePerturbationOverNondominated(AcquisitionFunction):
         bounds,
         n: int = 1,
         *,
-        nondominated: np.ndarray = np.array([]),
-        paretoFront: np.ndarray = np.array([]),
+        nondominated=(),
+        paretoFront=(),
         **kwargs,
     ) -> np.ndarray:
         """Acquire n points.
@@ -1376,11 +1378,11 @@ class CoordinatePerturbationOverNondominated(AcquisitionFunction):
             Bounds of the search space.
         n : int
             Maximum number of points to be acquired. The default is 1.
-        nondominated : numpy.ndarray, optional
+        nondominated : array-like, optional
             Nondominated set in the objective space. The default is an empty
-            array.
-        paretoFront : numpy.ndarray, optional
-            Pareto front in the objective space. The default is an empty array.
+            tuple.
+        paretoFront : array-like, optional
+            Pareto front in the objective space. The default is an empty tuple.
         """
         dim = len(bounds)
         tol = self.acquisitionFunc.tol(bounds)
@@ -1463,14 +1465,10 @@ class GosacSample(AcquisitionFunction):
     """
 
     def __init__(
-        self,
-        fun,
-        optimizer=MixedVariableGA(),
-        nGens: int = 100,
-        tol: float = 1e-3,
+        self, fun, optimizer=None, nGens: int = 100, tol: float = 1e-3
     ):
         self.fun = fun
-        self.optimizer = optimizer
+        self.optimizer = MixedVariableGA() if optimizer is None else optimizer
         self.nGens = nGens
         self.tol = tol
 

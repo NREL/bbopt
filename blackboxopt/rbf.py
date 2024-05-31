@@ -112,11 +112,11 @@ class RbfModel:
         self,
         rbf_type: RbfType = RbfType.CUBIC,
         iindex: tuple[int, ...] = (),
-        filter: RbfFilter = RbfFilter(),
+        filter: Optional[RbfFilter] = None,
     ):
         self.type = rbf_type
         self.iindex = iindex
-        self.filter = filter
+        self.filter = RbfFilter() if filter is None else filter
 
         self._valid_coefficients = True
         self._m = 0
@@ -590,18 +590,14 @@ class RbfModel:
             )
         self._valid_coefficients = True
 
-    def update_samples(
-        self,
-        xNew: np.ndarray,
-        distNew: np.ndarray = np.array([]),
-    ) -> None:
+    def update_samples(self, xNew: np.ndarray, distNew=None) -> None:
         """Updates the RBF model with new points.
 
         Parameters
         ----------
         xNew : np.ndarray
             m-by-d matrix with m point coordinates in a d-dimensional space.
-        distNew : np.ndarray, optional
+        distNew : array-like, optional
             m-by-(self.nsamples() + m) matrix with distances between points in
             xNew and points in (self.samples(), xNew). If not provided, the
             distances are computed.
@@ -617,7 +613,7 @@ class RbfModel:
             return
 
         # Compute distances between new points and sampled points
-        if distNew.size == 0:
+        if distNew is None:
             if oldm == 0:
                 distNew = cdist(xNew, xNew)
             else:
@@ -769,12 +765,7 @@ class RbfModel:
         """
         return self.samples()[i, :]
 
-    def mu_measure(
-        self,
-        x: np.ndarray,
-        xdist: np.ndarray = np.array([]),
-        LDLt=tuple(),
-    ) -> float:
+    def mu_measure(self, x: np.ndarray, xdist=None, LDLt=()) -> float:
         """Compute the value of abs(mu) in the inf step of the target value
         sampling strategy. See [#]_ for more details.
 
@@ -782,7 +773,7 @@ class RbfModel:
         ----------
         x : np.ndarray
             Possible point to be added to the surrogate model.
-        xdist : np.ndarray, optional
+        xdist : array-like, optional
             Distances between x and the sampled points. If not provided, the
             distances are computed.
         LDLt : (lu,d,perm), optional
@@ -801,7 +792,7 @@ class RbfModel:
             https://doi.org/10.1023/A:1011255519438
         """
         # compute rbf value of the new point x
-        if xdist.size == 0:
+        if xdist is None:
             xdist = cdist(x.reshape(1, -1), self.samples())
         newRow = np.concatenate(
             (np.asarray(self.phi(xdist)).flatten(), self.pbasis(x).flatten())
@@ -882,12 +873,7 @@ class RbfModel:
         else:
             return mu
 
-    def bumpiness_measure(
-        self,
-        x: np.ndarray,
-        target,
-        LDLt=tuple(),
-    ) -> float:
+    def bumpiness_measure(self, x: np.ndarray, target, LDLt=()) -> float:
         """Compute the bumpiness of the surrogate model for a potential sample
         point x as defined in [#]_.
 

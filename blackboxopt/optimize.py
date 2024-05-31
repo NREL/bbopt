@@ -98,10 +98,10 @@ def initialize_surrogate(
     bounds,
     mineval: int,
     maxeval: int,
-    x0y0: tuple = (),
+    x0y0=(),
     *,
-    surrogateModel=RbfModel(),
-    samples: np.ndarray = np.array([]),
+    surrogateModel=None,
+    samples: Optional[np.ndarray] = None,
 ) -> OptimizeResult:
     """Initialize the surrogate model and the output of the optimization.
 
@@ -116,7 +116,7 @@ def initialize_surrogate(
         Minimum number of function evaluations to build the surrogate model.
     maxeval : int
         Maximum number of function evaluations.
-    x0y0 : tuple, optional
+    x0y0 : tuple-like, optional
         Initial guess for the solution and the value of the objective function
         at the initial guess.
     surrogateModel : surrogate model, optional
@@ -132,6 +132,12 @@ def initialize_surrogate(
     """
     dim = len(bounds)  # Dimension of the problem
     assert dim > 0
+
+    # Initialize optional variables
+    if surrogateModel is None:
+        surrogateModel = RbfModel()
+    if samples is None:
+        samples = np.array([])
 
     # Initialize output
     out = OptimizeResult(
@@ -201,7 +207,7 @@ def initialize_surrogate(
             out.fx = out.fsamples[iBest].item()
 
     # If initial guess is provided, consider it in the output
-    if len(x0y0) == 2:
+    if len(x0y0) >= 2:
         if x0y0[1] < out.fx:
             out.x[:] = x0y0[0]
             out.fx = x0y0[1]
@@ -221,7 +227,7 @@ def initialize_moo_surrogate(
     maxeval: int,
     *,
     surrogateModels=(RbfModel(),),
-    samples: np.ndarray = np.array([]),
+    samples: Optional[np.ndarray] = None,
 ) -> OptimizeResult:
     """Initialize the surrogate model and the output of the optimization.
 
@@ -250,6 +256,10 @@ def initialize_moo_surrogate(
     dim = len(bounds)  # Dimension of the problem
     objdim = len(surrogateModels)  # Dimension of the objective function
     assert dim > 0 and objdim > 0
+
+    # Initialize optional variables
+    if samples is None:
+        samples = np.array([])
 
     # Initialize output
     out = OptimizeResult(
@@ -340,7 +350,7 @@ def initialize_surrogate_constraints(
     maxeval: int,
     *,
     surrogateModels=(RbfModel(),),
-    samples: np.ndarray = np.array([]),
+    samples: Optional[np.ndarray] = None,
 ) -> OptimizeResult:
     """Initialize the surrogate models for the constraints.
 
@@ -373,6 +383,10 @@ def initialize_surrogate_constraints(
     dim = len(bounds)  # Dimension of the problem
     gdim = len(surrogateModels)  # Number of constraints
     assert dim > 0 and gdim > 0
+
+    # Initialize optional variables
+    if samples is None:
+        samples = np.array([])
 
     # Initialize output
     out = OptimizeResult(
@@ -453,11 +467,11 @@ def stochastic_response_surface(
     fun,
     bounds,
     maxeval: int,
-    x0y0: tuple = (),
+    x0y0=(),
     *,
-    surrogateModel=RbfModel(),
-    acquisitionFunc: CoordinatePerturbation = CoordinatePerturbation(0),
-    samples: np.ndarray = np.array([]),
+    surrogateModel=None,
+    acquisitionFunc: Optional[CoordinatePerturbation] = None,
+    samples: Optional[np.ndarray] = None,
     newSamplesPerIteration: int = 1,
     expectedRelativeImprovement: float = 1e-3,
     failtolerance: int = 5,
@@ -479,14 +493,14 @@ def stochastic_response_surface(
         elements, corresponding to the lower and upper bound for the variable.
     maxeval : int
         Maximum number of function evaluations.
-    x0y0 : tuple, optional
+    x0y0 : tuple-like, optional
         Initial guess for the solution and the value of the objective function
         at the initial guess.
     surrogateModel : surrogate model, optional
         Surrogate model to be used. The default is RbfModel().
-        On exit, the surrogate model is updated to represent the one used in the
-        last iteration.
-    acquisitionFunc : CoordinatePerturbation
+        On exit, if provided, the surrogate model is updated to represent the
+        one used in the last iteration.
+    acquisitionFunc : CoordinatePerturbation, optional
         Acquisition function to be used.
     samples : np.ndarray, optional
         Initial samples to be added to the surrogate model. The default is an
@@ -525,6 +539,14 @@ def stochastic_response_surface(
     """
     dim = len(bounds)  # Dimension of the problem
     assert dim > 0
+
+    # Initialize optional variables
+    if surrogateModel is None:
+        surrogateModel = RbfModel()
+    if samples is None:
+        samples = np.array([])
+    if acquisitionFunc is None:
+        acquisitionFunc = CoordinatePerturbation(0)
 
     # Use a number of candidates that is greater than 1
     if acquisitionFunc.sampler.n <= 1:
@@ -681,8 +703,8 @@ def multistart_stochastic_response_surface(
     bounds,
     maxeval: int,
     *,
-    surrogateModel=RbfModel(),
-    acquisitionFunc: CoordinatePerturbation = CoordinatePerturbation(0),
+    surrogateModel=None,
+    acquisitionFunc: Optional[CoordinatePerturbation] = None,
     newSamplesPerIteration: int = 1,
     performContinuousSearch: bool = True,
     disp: bool = False,
@@ -769,7 +791,8 @@ def multistart_stochastic_response_surface(
         out.nit = out.nit + 1
 
         # Update surrogate model and sampler for next iteration
-        surrogateModel0.reset()
+        if surrogateModel0 is not None:
+            surrogateModel0.reset()
         acquisitionFunc0 = deepcopy(acquisitionFunc)
 
     return out
@@ -779,11 +802,11 @@ def target_value_optimization(
     fun,
     bounds,
     maxeval: int,
-    x0y0: tuple = (),
+    x0y0=(),
     *,
-    surrogateModel=RbfModel(),
-    acquisitionFunc: AcquisitionFunction = TargetValueAcquisition(),
-    samples: np.ndarray = np.array([]),
+    surrogateModel=None,
+    acquisitionFunc: Optional[AcquisitionFunction] = None,
+    samples: Optional[np.ndarray] = None,
     newSamplesPerIteration: int = 1,
     expectedRelativeImprovement: float = 1e-3,
     failtolerance: int = -1,
@@ -802,15 +825,15 @@ def target_value_optimization(
         elements, corresponding to the lower and upper bound for the variable.
     maxeval : int
         Maximum number of function evaluations.
-    x0y0 : tuple, optional
+    x0y0 : tuple-like, optional
         Initial guess for the solution and the value of the objective function
         at the initial guess.
     surrogateModel : surrogate model, optional
         Surrogate model to be used. The default is RbfModel().
-        On exit, the surrogate model is updated to represent the one used in the
-        last iteration.
+        On exit, if provided, the surrogate model is updated to represent the
+        one used in the last iteration.
     acquisitionFunc : AcquisitionFunction, optional
-        Acquisition function to be used.
+        Acquisition function to be used. The default is TargetValueAcquisition().
     samples : np.ndarray, optional
         Initial samples to be added to the surrogate model. The default is an
         empty array.
@@ -847,6 +870,14 @@ def target_value_optimization(
     dim = len(bounds)  # Dimension of the problem
     assert dim > 0
 
+    # Initialize optional variables
+    if surrogateModel is None:
+        surrogateModel = RbfModel()
+    if samples is None:
+        samples = np.array([])
+    if acquisitionFunc is None:
+        acquisitionFunc = TargetValueAcquisition()
+
     # Reserve space for the surrogate model to avoid repeated allocations
     surrogateModel.reserve(surrogateModel.nsamples() + maxeval, dim)
 
@@ -872,7 +903,7 @@ def target_value_optimization(
         maxf = -np.Inf
     if out.nfev > 0:
         maxf = max(np.max(out.fsamples[0 : out.nfev]).item(), maxf)
-    if len(x0y0) == 2:
+    if len(x0y0) >= 2:
         maxf = max(maxf, x0y0[1])
 
     # counters
@@ -961,8 +992,8 @@ def cptv(
     bounds,
     maxeval: int,
     *,
-    surrogateModel=RbfModel(),
-    acquisitionFunc: CoordinatePerturbation = CoordinatePerturbation(0),
+    surrogateModel=None,
+    acquisitionFunc: Optional[CoordinatePerturbation] = None,
     expectedRelativeImprovement: float = 1e-3,
     failtolerance: int = 5,
     consecutiveQuickFailuresTol: int = 0,
@@ -985,7 +1016,8 @@ def cptv(
     surrogateModel : surrogate model, optional
         Surrogate model. The default is RbfModel().
     acquisitionFunc : CoordinatePerturbation, optional
-        Acquisition function to be used in the CP step.
+        Acquisition function to be used in the CP step. The default is
+        CoordinatePerturbation(0).
     expectedRelativeImprovement : float, optional
         Expected relative improvement with respect to the current best value.
         An improvement is considered significant if it is greater than
@@ -1021,6 +1053,12 @@ def cptv(
     """
     dim = len(bounds)  # Dimension of the problem
     assert dim > 0
+
+    # Initialize optional variables
+    if surrogateModel is None:
+        surrogateModel = RbfModel()
+    if acquisitionFunc is None:
+        acquisitionFunc = CoordinatePerturbation(0)
 
     # xup and xlow
     xup = np.array([b[1] for b in bounds])
@@ -1219,8 +1257,8 @@ def cptvl(
     bounds,
     maxeval: int,
     *,
-    surrogateModel=RbfModel(),
-    acquisitionFunc: CoordinatePerturbation = CoordinatePerturbation(0),
+    surrogateModel=None,
+    acquisitionFunc: Optional[CoordinatePerturbation] = None,
     expectedRelativeImprovement: float = 1e-3,
     failtolerance: int = 5,
     consecutiveQuickFailuresTol: int = 0,
@@ -1249,9 +1287,9 @@ def socemo(
     maxeval: int,
     *,
     surrogateModels=(RbfModel(),),
-    acquisitionFunc: CoordinatePerturbation = CoordinatePerturbation(0),
-    acquisitionFuncGlobal: UniformAcquisition = UniformAcquisition(0),
-    samples: np.ndarray = np.array([]),
+    acquisitionFunc: Optional[CoordinatePerturbation] = None,
+    acquisitionFuncGlobal: Optional[UniformAcquisition] = None,
+    samples: Optional[np.ndarray] = None,
     disp: bool = False,
     callback: Optional[Callable[[OptimizeResult], None]] = None,
 ):
@@ -1269,9 +1307,11 @@ def socemo(
     surrogateModels : tuple, optional
         Surrogate models to be used. The default is (RbfModel(),).
     acquisitionFunc : CoordinatePerturbation, optional
-        Acquisition function to be used in the CP step.
+        Acquisition function to be used in the CP step. The default is
+        CoordinatePerturbation(0).
     acquisitionFuncGlobal : UniformAcquisition, optional
-        Acquisition function to be used in the global step.
+        Acquisition function to be used in the global step. The default is
+        UniformAcquisition(0).
     samples : np.ndarray, optional
         Initial samples to be added to the surrogate model. The default is an
         empty array.
@@ -1297,6 +1337,14 @@ def socemo(
     dim = len(bounds)  # Dimension of the problem
     objdim = len(surrogateModels)  # Number of objective functions
     assert dim > 0 and objdim > 1
+
+    # Initialize optional variables
+    if samples is None:
+        samples = np.array([])
+    if acquisitionFunc is None:
+        acquisitionFunc = CoordinatePerturbation(0)
+    if acquisitionFuncGlobal is None:
+        acquisitionFuncGlobal = UniformAcquisition(0)
 
     # xup and xlow
     xup = np.array([b[1] for b in bounds])
@@ -1506,7 +1554,7 @@ def gosac(
     maxeval: int,
     *,
     surrogateModels=(RbfModel(),),
-    samples: np.ndarray = np.array([]),
+    samples: Optional[np.ndarray] = None,
     disp: bool = False,
     callback: Optional[Callable[[OptimizeResult], None]] = None,
 ):
@@ -1549,6 +1597,10 @@ def gosac(
     dim = len(bounds)  # Dimension of the problem
     gdim = len(surrogateModels)  # Number of constraints
     assert dim > 0 and gdim > 0
+
+    # Initialize optional variables
+    if samples is None:
+        samples = np.array([])
 
     # Reserve space for the surrogate model to avoid repeated allocations
     for s in surrogateModels:
