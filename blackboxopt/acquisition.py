@@ -31,7 +31,7 @@ __credits__ = [
     "Haoyu Jia",
     "Weslley S. Pereira",
 ]
-__version__ = "0.3.2"
+__version__ = "0.3.3"
 __deprecated__ = False
 
 import numpy as np
