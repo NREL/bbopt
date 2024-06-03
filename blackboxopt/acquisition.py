@@ -304,13 +304,13 @@ class CoordinatePerturbation(AcquisitionFunction):
     def __init__(
         self,
         maxeval: int,
-        sampler: NormalSampler = NormalSampler(1, 1),
+        sampler=None,
         weightpattern=(0.2, 0.4, 0.6, 0.9, 0.95, 1),
         reltol: float = 0.01,
     ) -> None:
         self.neval = 0
         self.maxeval = maxeval
-        self.sampler = sampler
+        self.sampler = NormalSampler(1, 1) if sampler is None else sampler
         self.weightpattern = list(weightpattern)
         self.reltol = reltol
 
@@ -600,7 +600,6 @@ class TargetValueAcquisition(AcquisitionFunction):
                 if sampleStage >= 0
                 else np.random.choice(self.cycleLength + 2)
             )
-            print(sample_stage)
             if sample_stage == 0:  # InfStep - minimize Mu_n
                 LDLt = ldl(surrogateModel.get_RBFmatrix())
                 problem = ProblemWithConstraint(

@@ -70,3 +70,44 @@ def test_callback(minimize):
         maxeval=10,
         callback=callback,
     )
+
+
+@pytest.mark.parametrize(
+    "minimize",
+    [
+        stochastic_response_surface,
+        multistart_stochastic_response_surface,
+        target_value_optimization,
+        cptv,
+        cptvl,
+    ],
+)
+def test_multiple_calls(minimize):
+    def ackley(x, n: int = 2):
+        from math import exp, sqrt, pi
+        import numpy as np
+
+        a = 20
+        b = 0.2
+        c = 2 * pi
+        return (
+            -a * exp(-b * sqrt(np.dot(x, x) / n))
+            - exp(np.sum(np.cos(c * np.asarray(x))) / n)
+            + a
+            + exp(1)
+        )
+
+    bounds = [[-32.768, 32.768], [-32.768, 32.768]]
+
+    np.random.seed(3)
+    res0 = minimize(lambda x: [ackley(x[0], 2)], bounds, maxeval=200)
+
+    np.random.seed(3)
+    res1 = minimize(lambda x: [ackley(x[0], 2)], bounds, maxeval=200)
+
+    assert np.all(res0.x == res1.x)
+    assert np.all(res0.fx == res1.fx)
+    assert res0.nit == res1.nit
+    assert res0.nfev == res1.nfev
+    assert np.all(res0.samples == res1.samples)
+    assert np.all(res0.fsamples == res1.fsamples)

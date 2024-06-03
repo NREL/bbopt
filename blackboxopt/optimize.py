@@ -897,8 +897,8 @@ def target_value_optimization(
         callback(out)
 
     # max value of f
-    if surrogateModel.nsamples() > 0:
-        maxf = np.max(surrogateModel.get_fsamples()).item()
+    if surrogateModel.nsamples() - out.nfev > 0:
+        maxf = np.max(surrogateModel.get_fsamples()[: -out.nfev]).item()
     else:
         maxf = -np.Inf
     if out.nfev > 0:
@@ -1081,7 +1081,7 @@ def cptv(
 
     # Initialize output
     out = OptimizeResult(
-        x=np.zeros(dim),
+        x=np.nan * np.ones(dim),
         fx=np.inf,
         nit=0,
         nfev=0,
