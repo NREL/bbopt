@@ -1623,7 +1623,7 @@ def gosac(
     popsize1 = 15
     nGens2 = 100
     popsize2 = 15
-    tol = 1e-6
+    tol = 1e-3
 
     # Objects needed for the iterations
     mooptimizer = MixedVariableGA(

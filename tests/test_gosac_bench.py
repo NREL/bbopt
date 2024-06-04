@@ -23,7 +23,7 @@ def test_gosac(problem: gosacbmk.Problem) -> None:
         problem.bounds,
         maxeval,
         surrogateModels=s,
-        disp=True,
+        disp=False,
     )
     assert isinstance(res.fx, np.ndarray)
 

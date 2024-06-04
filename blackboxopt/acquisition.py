@@ -1499,6 +1499,12 @@ class GosacSample(AcquisitionFunction):
         iindex = surrogateModels[0].iindex
         assert n == 1
 
+        # Create scaled samples and KDTree with those
+        xlow = np.array([bounds[i][0] for i in range(dim)])
+        xup = np.array([bounds[i][1] for i in range(dim)])
+        ssamples = (surrogateModels[0].samples() - xlow) / (xup - xlow)
+        tree = KDTree(ssamples)
+
         cheapProblem = ProblemWithConstraint(
             self.fun,
             lambda x: np.transpose(
@@ -1515,18 +1521,24 @@ class GosacSample(AcquisitionFunction):
             seed=surrogateModels[0].nsamples(),
             verbose=False,
         )
-        assert res.X is not None
-        xnew = np.asarray([[res.X[i] for i in range(dim)]])
 
-        # Create scaled samples and KDTree with those
-        xlow = np.array([bounds[i][0] for i in range(dim)])
-        xup = np.array([bounds[i][1] for i in range(dim)])
-        ssamples = (surrogateModels[0].samples() - xlow) / (xup - xlow)
-        tree = KDTree(ssamples)
+        # If either no feasible solution was found or the solution found is too
+        # close to already sampled points, we then
+        # consider the whole variable domain and sample at the point that
+        # maximizes the minimum distance of samples
+        isGoodCandidate = True
+        if res.X is None:
+            isGoodCandidate = False
+        else:
+            xnew = np.asarray([[res.X[i] for i in range(dim)]])
+            if tree.query((xnew - xlow) / (xup - xlow))[0] < self.tol:
+                isGoodCandidate = False
 
-        if tree.query((xnew - xlow) / (xup - xlow))[0] < self.tol:
+        if not isGoodCandidate:
             minimumPointProblem = ProblemNoConstraint(
-                lambda x: -tree.query(x)[0], bounds, iindex
+                lambda x: -tree.query((x - xlow) / (xup - xlow))[0],
+                bounds,
+                iindex,
             )
             res = pymoo_minimize(
                 minimumPointProblem,
@@ -1536,6 +1548,6 @@ class GosacSample(AcquisitionFunction):
                 verbose=False,
             )
             assert res.X is not None
-            xnew[0, :] = [res.X[i] for i in range(dim)]
+            xnew = np.asarray([[res.X[i] for i in range(dim)]])
 
         return xnew
