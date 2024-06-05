@@ -255,14 +255,14 @@ gosac_p.append(
     Problem(
         lambda x: (x[:, 0] - 10) ** 2
         + 5 * (x[:, 1] - 12) ** 2
-        + x[:, 3] ** 2
+        + x[:, 2] ** 4
         + 3 * (x[:, 3] - 11) ** 2
-        + 10 * x[:, 5] ** 2
-        + 7 * x[:, 2] ** 2
-        + x[:, 4] ** 2
-        - 4 * x[:, 2] * x[:, 3]
-        - 10 * x[:, 2]
-        - 8 * x[:, 3],
+        + 10 * x[:, 4] ** 6
+        + 7 * x[:, 5] ** 2
+        + x[:, 6] ** 4
+        - 4 * x[:, 5] * x[:, 6]
+        - 10 * x[:, 5]
+        - 8 * x[:, 6],
         lambda x: np.transpose(
             [
                 2 * x[:, 0] ** 2
@@ -326,7 +326,7 @@ gosac_p.append(
             -11.0945,
             -11.0874,
         ),
-        -121.3460,
+        121.3460,
     )
 )
 
@@ -619,7 +619,34 @@ gosac_p[-1].iindex = tuple(range(5))
 # Problem 21
 gosac_p.append(copy(gosac_p[4]))
 gosac_p[-1].iindex = tuple(range(25))
-gosac_p[-1].xmin = (8, 3, 3, 3, 3)
+gosac_p[-1].xmin = (
+    8,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+    3,
+)
 gosac_p[-1].fmin = -0.4218
 
 # Problem 22
@@ -649,17 +676,14 @@ gosac_p.append(
     Problem(
         # Weierstrass test function
         lambda x: np.sum(
-            np.sum(
+            sum(
                 [
-                    2 ** (-k) * np.cos(2 * np.pi * 3**k * (x + 0.5))
+                    (2 ** (-k)) * np.cos(2 * np.pi * (3**k) * (x + 0.5))
                     for k in range(21)
-                ],
-                axis=0,
+                ]
             )
             - 10
-            * np.sum(
-                [2 ** (-k) * np.cos(np.pi * 3**k) for k in range(21)], axis=0
-            ),
+            * sum([(2 ** (-k)) * np.cos(np.pi * (3**k)) for k in range(21)]),
             axis=1,
         ),
         # Vicent test function
@@ -697,4 +721,4 @@ gosac_p[-1].xmin = (
     -12,
     -11,
 )
-gosac_p[-1].fmin = -219.8758
+gosac_p[-1].fmin = 219.8758

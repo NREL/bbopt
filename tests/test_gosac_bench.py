@@ -52,6 +52,24 @@ def test_gosac(problem: gosacbmk.Problem) -> None:
             assert (res.fx[0] - problem.fmin) <= 1e-6
 
 
+@pytest.mark.parametrize("problem", gosacbmk.gosac_p)
+def test_benchmark(problem: gosacbmk.Problem) -> None:
+    print(problem.fmin)
+    print(problem.objf(np.asarray([problem.xmin]))[0])
+    print(problem.gfun(np.asarray([problem.xmin]))[0])
+
+    if problem.fmin is not None and problem.fmin != 0:
+        assert (
+            abs(problem.objf(np.asarray([problem.xmin]))[0] - problem.fmin)
+            / abs(problem.fmin)
+            <= 1e-3
+        )
+    else:
+        assert problem.objf(np.asarray([problem.xmin]))[0] == problem.fmin
+
+    assert np.all(problem.gfun(np.asarray([problem.xmin]))[0] <= 0)
+
+
 if __name__ == "__main__":
     np.random.seed(3)
     test_gosac(gosacbmk.gosac_p[1])
