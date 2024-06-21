@@ -54,6 +54,7 @@ def test_gosac(problem: gosacbmk.Problem) -> None:
 
 @pytest.mark.parametrize("problem", gosacbmk.gosac_p)
 def test_benchmark(problem: gosacbmk.Problem) -> None:
+    print(problem.xmin)
     print(problem.fmin)
     print(problem.objf(np.asarray([problem.xmin]))[0])
     print(problem.gfun(np.asarray([problem.xmin]))[0])

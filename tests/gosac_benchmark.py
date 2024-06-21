@@ -4,6 +4,38 @@ from dataclasses import dataclass
 from typing import Callable, Optional
 
 
+def fRana(x: np.ndarray) -> np.ndarray:
+    # Source: http://infinity77.net/global_optimization/test_functions_nd_R.html#go_benchmark.Rana
+    x1 = x[:, 0]
+    return np.sum(
+        x.T
+        * np.sin(np.sqrt(np.abs(x1 - x.T + 1)))
+        * np.cos(np.sqrt(np.abs(x1 + x.T + 1)))
+        + (x1 + 1)
+        * np.sin(np.sqrt(np.abs(x1 + x.T + 1)))
+        * np.cos(np.sqrt(np.abs(x1 - x.T + 1))),
+        axis=0,
+    )
+
+
+def fWeierstrass(x: np.ndarray) -> np.ndarray:
+    # Source: http://infinity77.net/global_optimization/test_functions_nd_W.html#go_benchmark.Weierstrass
+    n = x.shape[1]
+    kmax = 20
+    a = 0.5
+    b = 3
+    return np.sum(
+        sum(
+            [
+                (a**k) * np.cos(2 * np.pi * (b**k) * (x + 0.5))
+                for k in range(kmax + 1)
+            ]
+        )
+        - n * sum([(a**k) * np.cos(np.pi * (b**k)) for k in range(10 + 1)]),
+        axis=1,
+    )
+
+
 @dataclass
 class Problem:
     """A class to represent a problem for the GOSAC benchmark.
@@ -384,19 +416,7 @@ gosac_p.append(
         + np.exp((1 - np.sin(x[:, 0])) ** 2) * np.cos(x[:, 1])
         + np.exp((1 - np.cos(x[:, 1])) ** 2) * np.sin(x[:, 0]),
         # Rana test function
-        lambda x: np.reshape(
-            np.sum(
-                x.T
-                * np.sin(np.sqrt(np.abs(x[:, 0] - x.T + 1)))
-                * np.cos(np.sqrt(np.abs(x[:, 0] + x.T + 1)))
-                + (x[:, 0] + 1)
-                * np.sin(np.sqrt(np.abs(x[:, 0] + x.T + 1)))
-                * np.cos(np.sqrt(np.abs(x[:, 0] - x.T + 1))),
-                axis=0,
-            )
-            - 5,
-            (-1, 1),
-        ),
+        lambda x: np.reshape(fRana(x) - 5, (-1, 1)),
         (0,),
         ((-9, 9), (-3 * np.pi, 3 * np.pi)),
         (-8, -9.4142),
@@ -675,21 +695,11 @@ gosac_p[-1].iindex = tuple(range(5))
 gosac_p.append(
     Problem(
         # Weierstrass test function
-        lambda x: np.sum(
-            sum(
-                [
-                    (2 ** (-k)) * np.cos(2 * np.pi * (3**k) * (x + 0.5))
-                    for k in range(21)
-                ]
-            )
-            - 10
-            * sum([(2 ** (-k)) * np.cos(np.pi * (3**k)) for k in range(21)]),
-            axis=1,
-        ),
+        fWeierstrass,
         # Vicent test function
         lambda x: np.reshape(-np.sum(np.sin(10 * np.log(x)), axis=1), (-1, 1)),
-        tuple(range(10)),
-        ((1, 3),) * 10,
+        (),
+        ((0.25, np.pi),) * 10,
         (3, 2, 3, 2, 3, 2, 3, 3, 1, 2),
         1.1783,
     )
