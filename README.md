@@ -23,3 +23,7 @@ Please, read the [contributing guidelines](CONTRIBUTING.md) before contributing 
 ## License
 
 This project is licensed under the GPL-3.0 License. See the [LICENSE](LICENSE) file for details.
+
+---
+
+_NREL Software Record number: SWR-24-57_
