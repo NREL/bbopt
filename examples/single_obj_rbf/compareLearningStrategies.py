@@ -1,6 +1,6 @@
 """Compare different learning strategies for RBF surrogate optimization."""
 
-# Copyright (C) 2024 National Renewable Energy Laboratory
+# Copyright (c) 2024 Alliance for Sustainable Energy, LLC
 
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by

@@ -1,6 +1,6 @@
 """Data class for the Hartman3 problem definition."""
 
-# Copyright (C) 2024 National Renewable Energy Laboratory
+# Copyright (c) 2024 Alliance for Sustainable Energy, LLC
 # Copyright (C) 2013 Cornell University
 
 # This program is free software: you can redistribute it and/or modify
