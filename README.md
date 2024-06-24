@@ -10,7 +10,7 @@ This project uses [pdm](https://pdm-project.org/en/stable/) as its package manag
 
 ## Documentation
 
-This project uses [Sphinx](https://www.sphinx-doc.org/en/master/) to generate the documentation. The latest documentation is available at https://pages.github.nrel.gov/wdasilv/Black-box-Opt/. To generate the documentation locally, run `make html` in the `docs` directory. The homepage of the documentation is `docs/_build/html/index.html`.
+This project uses [Sphinx](https://www.sphinx-doc.org/en/master/) to generate the documentation. The latest documentation is available at https://nrel.github.io/bbopt. To generate the documentation locally, run `make html` in the `docs` directory. The homepage of the documentation is `docs/_build/html/index.html`.
 
 ## Testing
 
