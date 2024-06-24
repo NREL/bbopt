@@ -26,7 +26,7 @@ __credits__ = [
     "Haoyu Jia",
     "Weslley S. Pereira",
 ]
-__version__ = "0.4.0"
+__version__ = "0.4.1"
 __deprecated__ = False
 
 from dataclasses import dataclass
