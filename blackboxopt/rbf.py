@@ -130,10 +130,12 @@ class RbfModel:
 
     def __init__(
         self,
+        smoothing: float = 0.0,
         kernel: RbfKernel = RbfKernel.CUBIC,
         iindex: tuple[int, ...] = (),
         filter: Optional[RbfFilter] = None,
     ):
+        self.smoothing = smoothing
         self.iindex = iindex
         self.filter = RbfFilter() if filter is None else filter
 
@@ -588,7 +590,11 @@ class RbfModel:
         pdim = self.pdim()
         return np.block(
             [
-                [self._PHI[0 : self._m, 0 : self._m], self.get_matrixP()],
+                [
+                    self._PHI[0 : self._m, 0 : self._m]
+                    + self.smoothing * np.eye(self._m),
+                    self.get_matrixP(),
+                ],
                 [self.get_matrixP().T, np.zeros((pdim, pdim))],
             ]
         )
