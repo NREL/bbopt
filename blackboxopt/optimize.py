@@ -898,7 +898,11 @@ def target_value_optimization(
 
     # max value of f
     if surrogateModel.nsamples() - out.nfev > 0:
-        maxf = np.max(surrogateModel.get_fsamples()[: -out.nfev]).item()
+        maxf = np.max(
+            surrogateModel.get_fsamples()[
+                0 : surrogateModel.nsamples() - out.nfev
+            ]
+        ).item()
     else:
         maxf = -np.Inf
     if out.nfev > 0:
