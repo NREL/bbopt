@@ -1681,7 +1681,7 @@ def gosac(
         # Evaluate the surrogate at the best candidates
         sCandidates = np.empty((len(bestCandidates), gdim))
         for i in range(gdim):
-            sCandidates[:, i], _ = surrogateModels[i].eval(bestCandidates)
+            sCandidates[:, i], _ = surrogateModels[i](bestCandidates)
 
         # Find the minimum number of constraint violations
         constraintViolation = [

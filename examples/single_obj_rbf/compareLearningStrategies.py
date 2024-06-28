@@ -45,7 +45,7 @@ def read_and_run(
     maxeval: int = 0,
     Ntrials: int = 0,
     NumberNewSamples: int = 0,
-    rbf_type: rbf.RbfType = rbf.RbfType.CUBIC,
+    rbf_type: rbf.RbfKernel = rbf.RbfKernel.CUBIC,
     filter: rbf.RbfFilter = rbf.RbfFilter(),
     optim_func=optimize.multistart_stochastic_response_surface,
 ) -> list[optimize.OptimizeResult]:
@@ -69,7 +69,7 @@ def read_and_run(
         Number of trials.
     NumberNewSamples : int, optional
         Number of new samples per step of the optimization algorithm.
-    rbf_type : rbf.RbfType, optional
+    rbf_type : rbf.RbfKernel, optional
         Type of RBF to be used.
 
     Returns
@@ -334,7 +334,7 @@ if __name__ == "__main__":
             maxeval=100,
             Ntrials=3,
             NumberNewSamples=1,
-            rbf_type=rbf.RbfType.THINPLATE,
+            rbf_type=rbf.RbfKernel.THINPLATE,
         )
     if 4 in comparisonList:
         optresList[4] = read_and_run(
@@ -354,7 +354,7 @@ if __name__ == "__main__":
             maxeval=100,
             Ntrials=3,
             NumberNewSamples=1,
-            rbf_type=rbf.RbfType.THINPLATE,
+            rbf_type=rbf.RbfKernel.THINPLATE,
             optim_func=optimize.stochastic_response_surface,
         )
     if 5 in comparisonList:
@@ -366,7 +366,7 @@ if __name__ == "__main__":
             maxeval=100,
             Ntrials=3,
             NumberNewSamples=1,
-            rbf_type=rbf.RbfType.THINPLATE,
+            rbf_type=rbf.RbfKernel.THINPLATE,
             optim_func=optimize.target_value_optimization,
         )
     if 6 in comparisonList:
@@ -388,7 +388,7 @@ if __name__ == "__main__":
             maxeval=100,
             Ntrials=3,
             NumberNewSamples=1,
-            rbf_type=rbf.RbfType.THINPLATE,
+            rbf_type=rbf.RbfKernel.THINPLATE,
             optim_func=optimize.cptv,
         )
     if 7 in comparisonList:
@@ -410,7 +410,7 @@ if __name__ == "__main__":
             maxeval=100,
             Ntrials=3,
             NumberNewSamples=1,
-            rbf_type=rbf.RbfType.THINPLATE,
+            rbf_type=rbf.RbfKernel.THINPLATE,
             optim_func=optimize.cptvl,
         )
     if 8 in comparisonList:
@@ -422,7 +422,7 @@ if __name__ == "__main__":
             maxeval=100,
             Ntrials=3,
             NumberNewSamples=10,
-            rbf_type=rbf.RbfType.THINPLATE,
+            rbf_type=rbf.RbfKernel.THINPLATE,
             optim_func=optimize.target_value_optimization,
         )
 

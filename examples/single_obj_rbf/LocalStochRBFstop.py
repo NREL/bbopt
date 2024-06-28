@@ -30,7 +30,7 @@ __version__ = "0.4.1"
 __deprecated__ = False
 
 from optprogram1 import read_check_data_file
-from blackboxopt.rbf import RbfType, RbfModel, MedianLpfFilter
+from blackboxopt.rbf import RbfKernel, RbfModel, MedianLpfFilter
 from blackboxopt.optimize import stochastic_response_surface
 from blackboxopt.sampling import NormalSampler, Sampler, SamplingStrategy
 from blackboxopt.acquisition import CoordinatePerturbation
@@ -48,7 +48,7 @@ if __name__ == "__main__":
     NumberNewSamples = 2
     data = read_check_data_file(data_file)
     nCand = 500 * data.dim
-    phifunction = RbfType.CUBIC
+    phifunction = RbfKernel.CUBIC
     m = 2 * (data.dim + 1)
     numstart = (
         0  # collect all objective function values of the current trial here

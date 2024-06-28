@@ -57,7 +57,7 @@ def read_and_run(
     maxeval: int = 0,
     Ntrials: int = 0,
     NumberNewSamples: int = 0,
-    rbf_type: rbf.RbfType = rbf.RbfType.CUBIC,
+    rbf_type: rbf.RbfKernel = rbf.RbfKernel.CUBIC,
     filter: rbf.RbfFilter = rbf.RbfFilter(),
     PlotResult: bool = True,
     optim_func=optimize.multistart_stochastic_response_surface,
@@ -82,7 +82,7 @@ def read_and_run(
         Number of trials.
     NumberNewSamples : int, optional
         Number of new samples per step of the optimization algorithm.
-    rbf_type : rbf.RbfType, optional
+    rbf_type : rbf.RbfKernel, optional
         Type of RBF to be used.
     PlotResult : bool, optional
         Plot the results.
@@ -366,7 +366,7 @@ def main(args):
             maxeval=100,
             Ntrials=3,
             NumberNewSamples=1,
-            rbf_type=rbf.RbfType.THINPLATE,
+            rbf_type=rbf.RbfKernel.THINPLATE,
             PlotResult=True,
         )
     elif args.config == 4:
@@ -387,7 +387,7 @@ def main(args):
             maxeval=100,
             Ntrials=3,
             NumberNewSamples=1,
-            rbf_type=rbf.RbfType.THINPLATE,
+            rbf_type=rbf.RbfKernel.THINPLATE,
             PlotResult=True,
             optim_func=optimize.stochastic_response_surface,
         )
@@ -399,7 +399,7 @@ def main(args):
             maxeval=100,
             Ntrials=3,
             NumberNewSamples=1,
-            rbf_type=rbf.RbfType.THINPLATE,
+            rbf_type=rbf.RbfKernel.THINPLATE,
             PlotResult=True,
             optim_func=optimize.target_value_optimization,
         )
@@ -421,7 +421,7 @@ def main(args):
             maxeval=100,
             Ntrials=3,
             NumberNewSamples=1,
-            rbf_type=rbf.RbfType.THINPLATE,
+            rbf_type=rbf.RbfKernel.THINPLATE,
             PlotResult=True,
             optim_func=optimize.cptv,
         )
@@ -443,7 +443,7 @@ def main(args):
             maxeval=100,
             Ntrials=3,
             NumberNewSamples=1,
-            rbf_type=rbf.RbfType.THINPLATE,
+            rbf_type=rbf.RbfKernel.THINPLATE,
             PlotResult=True,
             optim_func=optimize.cptvl,
         )
@@ -455,7 +455,7 @@ def main(args):
             maxeval=100,
             Ntrials=3,
             NumberNewSamples=10,
-            rbf_type=rbf.RbfType.THINPLATE,
+            rbf_type=rbf.RbfKernel.THINPLATE,
             PlotResult=True,
             optim_func=optimize.target_value_optimization,
         )
