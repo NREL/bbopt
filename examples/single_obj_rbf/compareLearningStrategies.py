@@ -88,7 +88,9 @@ def read_and_run(
     optres = []
     for j in range(Ntrials):
         # Create empty RBF model
-        rbfModel = rbf.RbfModel(rbf_type, data.iindex, filter=filter)
+        rbfModel = rbf.RbfModel(
+            kernel=rbf_type, iindex=data.iindex, filter=filter
+        )
         acquisitionFuncIter = deepcopy(acquisitionFunc)
 
         # # Uncomment to compare with Surrogates.jl

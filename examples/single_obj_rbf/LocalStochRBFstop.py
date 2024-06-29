@@ -94,7 +94,7 @@ if __name__ == "__main__":
     print(samples)
     print("LocalStochRBFstop Start")
 
-    rbfModel = RbfModel(phifunction, filter=MedianLpfFilter())
+    rbfModel = RbfModel(kernel=phifunction, filter=MedianLpfFilter())
 
     optres = stochastic_response_surface(
         data.objfunction,

@@ -1015,7 +1015,7 @@ class ParetoFront(AcquisitionFunction):
         assert objdim > 1
 
         # Create a surrogate model for the Pareto front in the objective space
-        paretoModel = RbfModel(RbfKernel.LINEAR)
+        paretoModel = RbfModel(kernel=RbfKernel.LINEAR)
         k = np.random.choice(objdim)
         paretoModel.update_samples(
             np.array([paretoFront[:, i] for i in range(objdim) if i != k]).T
