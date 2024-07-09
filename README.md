@@ -2,8 +2,6 @@
 
 Surrogate models and active learning for scientific applications.
 
-__This repository was moved to https://github.com/NREL/bbopt__
-
 ## Building
 
 This project uses [pdm](https://pdm-project.org/en/stable/) as its package manager. With pdm installed, run `pdm install` at the root of this repository to install the dependencies. The file [pyproject.toml](pyproject.toml) has the list of dependencies and configurations for the project. Use `pdm build` to build the project. The build artifacts will be in the `dist` directory. Please, find more information about pdm in its website.
