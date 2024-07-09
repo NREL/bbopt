@@ -119,8 +119,18 @@ class RbfModel:
 
     Attributes
     ----------
-    type : RbfKernel, optional
-        Defines the function phi used in the RBF model. The options are listed in the RbfKernel enum.
+    smoothing : float, optional
+        Smoothing parameter. The interpolant perfectly fits the data when this
+        is set to 0. For large values, the interpolant approaches a least
+        squares fit of a polynomial with the specified degree. Default is 0.
+    kernel : RbfKernel, optional
+        Defines the function phi used in the RBF model. The options are listed
+        in the RbfKernel enum.
+    epsilon : float, optional
+        Shape parameter that scales the input to the RBF. If `kernel` is
+        'linear', 'thin_plate_spline', 'cubic', or 'quintic', this defaults to
+        1 and can be ignored because it has the same effect as scaling the
+        smoothing parameter. Defaults to 1.
     iindex : tuple, optional
         Indices of the input space that are integer. The default is ().
     filter : RbfFilter, optional
@@ -133,12 +143,14 @@ class RbfModel:
         *,
         smoothing: float = 0.0,
         kernel: RbfKernel = RbfKernel.CUBIC,
+        epsilon: float = 1.0,
         iindex: tuple[int, ...] = (),
         filter: Optional[RbfFilter] = None,
     ):
         self.smoothing = smoothing
         self.iindex = iindex
         self.filter = RbfFilter() if filter is None else filter
+        self.epsilon = epsilon
 
         # Set kernel and the degree of the polynomial tail
         self._kernel = kernel
@@ -350,7 +362,7 @@ class RbfModel:
         sscaled = (self.samples() - self._avg) / self._scale
 
         # compute pairwise distances between candidates and sampled points
-        D = cdist(xscaled, sscaled)
+        D = cdist(xscaled, sscaled) * self.epsilon
 
         Px = self.pbasis(xscaled)
         y = np.matmul(phi(D), self._coef[0 : self._m]) + np.dot(
@@ -510,7 +522,7 @@ class RbfModel:
             self.reserve(m, dim)
 
             # Update matrices _PHI and _P
-            self._PHI[oldm:m, 0:m] = phi(distNew)
+            self._PHI[oldm:m, 0:m] = phi(distNew * self.epsilon)
             self._PHI[0:oldm, oldm:m] = self._PHI[oldm:m, 0:oldm].T
             self._P[oldm:m, :] = self.pbasis(xscaled)
         else:
@@ -526,7 +538,7 @@ class RbfModel:
             distNew = cdist(xscaled, xscaled)
 
             # Update matrices _PHI and _P
-            self._PHI[0:m, 0:m] = phi(distNew)
+            self._PHI[0:m, 0:m] = phi(distNew * self.epsilon)
             self._P[0:m, :] = self.pbasis(xscaled)
 
         # Update x
@@ -594,7 +606,7 @@ class RbfModel:
 
         # Set matrices _PHI and _P
         phi = KERNEL_FUNC[self._kernel]
-        self._PHI[0:m, 0:m] = phi(distNew)
+        self._PHI[0:m, 0:m] = phi(distNew * self.epsilon)
         self._P[0:m, :] = self.pbasis(xscaled)
 
         # Coefficients are not valid
@@ -713,7 +725,10 @@ class RbfModel:
         if xdist is None:
             xdist = cdist(xscaled.reshape(1, -1), sscaled)
         newRow = np.concatenate(
-            (np.asarray(phi(xdist)).flatten(), self.pbasis(xscaled).flatten())
+            (
+                np.asarray(phi(xdist * self.epsilon)).flatten(),
+                self.pbasis(xscaled).flatten(),
+            )
         )
 
         if LDLt:
