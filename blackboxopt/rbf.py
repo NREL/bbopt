@@ -405,8 +405,13 @@ class RbfModel:
         d = cdist(xscaled, sscaled).flatten()
 
         A = np.matmul(
-            np.array([dphiOverR(d[i]) * xscaled for i in range(d.size)]),
-            np.diag(1 / self._scale),
+            np.array(
+                [
+                    dphiOverR(d[i] * self.epsilon) * xscaled
+                    for i in range(d.size)
+                ]
+            ),
+            np.diag(self.epsilon / self._scale),
         )
         B = np.matmul(np.diag(1 / self._scale), self.dpbasis(xscaled))
 
@@ -656,20 +661,30 @@ class RbfModel:
         """
         return self._P[0 : self._m, :]
 
-    def get_RBFmatrix(self) -> np.ndarray:
+    def get_RBFmatrix(
+        self, *, smoothing: Optional[float] = None
+    ) -> np.ndarray:
         """Get the matrix used to compute the RBF weights.
+
+        Parameters
+        ----------
+        smoothing : float, optional
+            Smoothing parameter, if different from the one used in the model.
 
         Returns
         -------
         out: np.ndarray
             (m+pdim)-by-(m+pdim) matrix used to compute the RBF weights.
         """
+        if smoothing is None:
+            smoothing = self.smoothing
+
         pdim = self.pdim()
         return np.block(
             [
                 [
                     self._PHI[0 : self._m, 0 : self._m]
-                    + self.smoothing * np.eye(self._m),
+                    + smoothing * np.eye(self._m),
                     self.get_matrixP(),
                 ],
                 [self.get_matrixP().T, np.zeros((pdim, pdim))],
@@ -773,7 +788,7 @@ class RbfModel:
             # set up matrices for solving the linear system
             A_aug = np.block(
                 [
-                    [self.get_RBFmatrix(), newRow.reshape(-1, 1)],
+                    [self.get_RBFmatrix(smoothing=0), newRow.reshape(-1, 1)],
                     [newRow, phi(0)],
                 ]
             )

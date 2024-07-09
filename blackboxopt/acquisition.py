@@ -601,7 +601,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                 else np.random.choice(self.cycleLength + 2)
             )
             if sample_stage == 0:  # InfStep - minimize Mu_n
-                LDLt = ldl(surrogateModel.get_RBFmatrix())
+                LDLt = ldl(surrogateModel.get_RBFmatrix(smoothing=0))
                 problem = ProblemWithConstraint(
                     lambda x: surrogateModel.mu_measure(x, LDLt=LDLt),
                     lambda x: self.tol
@@ -657,7 +657,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                 )  # target for objective function value
 
                 # use GA method to minimize bumpiness measure
-                LDLt = ldl(surrogateModel.get_RBFmatrix())
+                LDLt = ldl(surrogateModel.get_RBFmatrix(smoothing=0))
                 problem = ProblemWithConstraint(
                     lambda x: surrogateModel.bumpiness_measure(
                         x, f_target, LDLt
@@ -723,7 +723,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                         fbounds[0]
                     )  # target value
                     # use GA method to minimize bumpiness measure
-                    LDLt = ldl(surrogateModel.get_RBFmatrix())
+                    LDLt = ldl(surrogateModel.get_RBFmatrix(smoothing=0))
                     problem = ProblemWithConstraint(
                         lambda x: surrogateModel.bumpiness_measure(
                             x, f_target, LDLt
