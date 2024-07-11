@@ -781,9 +781,9 @@ def multistart_stochastic_response_surface(
         if out_local.fx < out.fx:
             out.x[:] = out_local.x
             out.fx = out_local.fx
-        out.samples[out.nfev : out.nfev + out_local.nfev, :] = (
-            out_local.samples
-        )
+        out.samples[
+            out.nfev : out.nfev + out_local.nfev, :
+        ] = out_local.samples
         out.fsamples[out.nfev : out.nfev + out_local.nfev] = out_local.fsamples
         out.nfev = out.nfev + out_local.nfev
 
@@ -1117,7 +1117,7 @@ def cptv(
                 out_local.samples[out_local.nfev - 1, :].reshape(1, -1)
             )
             surrogateModel.update_coefficients(
-                out_local.fsamples[out_local.nfev - 1]
+                out_local.fsamples[out_local.nfev - 1 : out_local.nfev]
             )
 
             if out_local.nfev == failtolerance:
@@ -1162,7 +1162,7 @@ def cptv(
                 out_local.samples[out_local.nfev - 1, :].reshape(1, -1)
             )
             surrogateModel.update_coefficients(
-                out_local.fsamples[out_local.nfev - 1]
+                out_local.fsamples[out_local.nfev - 1 : out_local.nfev]
             )
 
             if out_local.nfev == failtolerance:

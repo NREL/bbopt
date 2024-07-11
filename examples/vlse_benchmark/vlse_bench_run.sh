@@ -12,11 +12,11 @@ if command -v module &> /dev/null; then
 fi
 
 if [ $# -eq 0 ]; then
-    python vlse_bench_plot.py
+    python vlse_bench.py
 elif [ $# -eq 1 ]; then
-    python vlse_bench_plot.py -a "$1"
+    python vlse_bench.py -a "$1"
 elif [ $# -eq 2 ]; then
-    python vlse_bench_plot.py -a "$1" -p "$2"
+    python vlse_bench.py -a "$1" -p "$2"
 else
-    python vlse_bench_plot.py -a "$1" -p "$2" --bounds ${@:3}
+    python vlse_bench.py -a "$1" -p "$2" --bounds ${@:3}
 fi
