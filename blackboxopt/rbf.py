@@ -422,21 +422,21 @@ class RbfModel:
         return y.flatten()
 
     def update_coefficients(
-        self, fx: np.ndarray, filter: Optional[RbfFilter] = None
+        self, fx, filter: Optional[RbfFilter] = None
     ) -> None:
         """Updates the coefficients of the RBF model.
 
         Parameters
         ----------
-        fx : np.ndarray
+        fx : array-like
             Function values on the sampled points.
         filter : RbfFilter | None, optional
             Filter used with the function values. The default is None, which
             means the filter used in the initialization of the RBF model is
             used.
         """
-        if fx.size <= self._m:
-            self.get_fsamples()[self._m - fx.size : self._m] = fx
+        if len(fx) <= self._m:
+            self._fx[self._m - len(fx) : self._m] = fx
         else:
             raise ValueError("Invalid number of function values")
         if filter is None:
