@@ -139,7 +139,7 @@ def run_optimizer(
 
     # Surrogate model with median low-pass filter
     rbfModel = rbf.RbfModel(
-        rbf.RbfType.CUBIC, iindex, filter=rbf.MedianLpfFilter()
+        kernel=rbf.RbfKernel.CUBIC, iindex=iindex, filter=rbf.MedianLpfFilter()
     )
 
     # Update acquisition strategy, using maxEval and nArgs for the problem
