@@ -29,6 +29,7 @@ import pickle
 import time
 from tests.test_vlse_bench import run_optimizer
 from blackboxopt import optimize, acquisition, sampling
+from pathlib import Path
 
 # Functions to be tested
 myRfuncs = (
@@ -198,9 +199,11 @@ if __name__ == "__main__":
     tf = time.time()
 
     # Save the results
+    folder = os.path.dirname(os.path.abspath(__file__)) + "/pickle"
+    Path(folder).mkdir(parents=True, exist_ok=True)
     filepath = (
-        os.path.dirname(os.path.abspath(__file__))
-        + "/pickle/vlse_bench_plot_"
+        folder
+        + "/"
         + args.problem
         + "_"
         + args.algorithm

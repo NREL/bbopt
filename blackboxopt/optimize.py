@@ -898,7 +898,11 @@ def target_value_optimization(
 
     # max value of f
     if surrogateModel.nsamples() - out.nfev > 0:
-        maxf = np.max(surrogateModel.get_fsamples()[: -out.nfev]).item()
+        maxf = np.max(
+            surrogateModel.get_fsamples()[
+                0 : surrogateModel.nsamples() - out.nfev
+            ]
+        ).item()
     else:
         maxf = -np.Inf
     if out.nfev > 0:
@@ -1218,7 +1222,7 @@ def cptv(
 
             if np.linalg.norm((out.x - out_local.x) / (xup - xlow)) >= tol:
                 surrogateModel.update_samples(out_local.x.reshape(1, -1))
-                surrogateModel.update_coefficients(np.asarray(out_local.fx))
+                surrogateModel.update_coefficients([out_local.fx])
 
             if disp:
                 print("Local step ended after ", out_local.nfev, "f evals.")
