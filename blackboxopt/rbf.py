@@ -188,6 +188,8 @@ class RbfModel:
         self._PHI = np.array([])
         self._P = np.array([])
 
+        # Scaling for better condition number
+        self._sx = np.array([])
         self._scale = np.array([])
         self._avg = np.array([])
         self._change_scale_factor = 2.0  # Change the scale factor when new scale is 2 times larger than the current one
@@ -210,10 +212,14 @@ class RbfModel:
 
         if self._x.size == 0:
             self._x = np.empty((maxeval, dim))
+            self._sx = np.empty((maxeval, dim))
         else:
             additional_rows = max(0, maxeval - self._x.shape[0])
             self._x = np.concatenate(
                 (self._x, np.empty((additional_rows, dim))), axis=0
+            )
+            self._sx = np.concatenate(
+                (self._sx, np.empty((additional_rows, dim))), axis=0
             )
 
         if self._fx.size == 0:
@@ -375,7 +381,7 @@ class RbfModel:
 
         # Scale x and samples
         xscaled = (x.reshape(-1, dim) - self._avg) / self._scale
-        sscaled = (self.samples() - self._avg) / self._scale
+        sscaled = self._sx[0 : self._m, :]
 
         # compute pairwise distances between candidates and sampled points
         D = cdist(xscaled, sscaled) * self._eps
@@ -415,7 +421,7 @@ class RbfModel:
 
         # Scale x and samples
         xscaled = (x.reshape(-1, dim) - self._avg) / self._scale
-        sscaled = (self.samples() - self._avg) / self._scale
+        sscaled = self._sx[0 : self._m, :]
 
         # compute pairwise distances between candidates and sampled points
         d = cdist(xscaled, sscaled).flatten()
@@ -502,13 +508,16 @@ class RbfModel:
         if newm == 0:
             return
 
+        # Update x
+        self._x[oldm:m, :] = xNew
+
         # Compute new scaling factor
         if len(self._scale) > 0:
             xmax = np.max(
-                np.concatenate((xNew, self.samples()), axis=0), axis=0
+                np.concatenate((xNew, self._x[0:oldm, :]), axis=0), axis=0
             )
             xmin = np.min(
-                np.concatenate((xNew, self.samples()), axis=0), axis=0
+                np.concatenate((xNew, self._x[0:oldm, :]), axis=0), axis=0
             )
             new_scale = (xmax - xmin) / 2
             new_scale = np.where(new_scale == 0, 1, new_scale)
@@ -524,14 +533,15 @@ class RbfModel:
             new_scale < self._scale * self._change_scale_factor
         ):
             # Scale points
-            xscaled = (xNew - self._avg) / self._scale
+            xscaled = self._sx[oldm:m, :]
+            xscaled[:] = (xNew - self._avg) / self._scale
 
             # Compute distances between new points and sampled points
             if distNew is None:
                 if oldm == 0:
                     distNew = cdist(xscaled, xscaled)
                 else:
-                    sscaled = (self.samples() - self._avg) / self._scale
+                    sscaled = (self._x[0:oldm, :] - self._avg) / self._scale
                     distNew = cdist(
                         xscaled,
                         np.concatenate((sscaled, xscaled), axis=0),
@@ -549,8 +559,8 @@ class RbfModel:
             self._avg = (xmax + xmin) / 2
 
             # Scale points
-            xscaled = np.concatenate((self.samples(), xNew), axis=0)
-            xscaled = (xscaled - self._avg) / self._scale
+            xscaled = self._sx[0:m, :]
+            xscaled[:] = (self._x[0:m, :] - self._avg) / self._scale
 
             # Recompute distances between sampled points
             distNew = cdist(xscaled, xscaled)
@@ -558,9 +568,6 @@ class RbfModel:
             # Update matrices _PHI and _P
             self._PHI[0:m, 0:m] = phi(distNew * self._eps)
             self._P[0:m, :] = self.pbasis(xscaled)
-
-        # Update x
-        self._x[oldm:m, :] = xNew
 
         # Update m
         self._m = m
@@ -619,13 +626,13 @@ class RbfModel:
         self._avg = (xmax + xmin) / 2
 
         # Compute distances between new points and sampled points
-        xscaled = (self.samples() - self._avg) / self._scale
-        distNew = cdist(xscaled, xscaled)
+        self._sx[0:m, :] = (self.samples() - self._avg) / self._scale
+        distNew = cdist(self._sx[0:m, :], self._sx[0:m, :])
 
         # Set matrices _PHI and _P
         phi = KERNEL_FUNC[self._kernel]
         self._PHI[0:m, 0:m] = phi(distNew * self._eps)
-        self._P[0:m, :] = self.pbasis(xscaled)
+        self._P[0:m, :] = self.pbasis(self._sx[0:m, :])
 
         # Coefficients are not valid
         self._valid_coefficients = False
@@ -749,7 +756,7 @@ class RbfModel:
 
         # compute rbf value of the new point x
         xscaled = (x - self._avg) / self._scale
-        sscaled = (self.samples() - self._avg) / self._scale
+        sscaled = self._sx[0 : self._m, :]
         if xdist is None:
             xdist = cdist(xscaled.reshape(1, -1), sscaled)
         newRow = np.concatenate(
