@@ -31,7 +31,7 @@ __credits__ = [
     "Haoyu Jia",
     "Weslley S. Pereira",
 ]
-__version__ = "0.4.1"
+__version__ = "0.4.2"
 __deprecated__ = False
 
 from typing import Callable, Optional, Union
@@ -781,9 +781,9 @@ def multistart_stochastic_response_surface(
         if out_local.fx < out.fx:
             out.x[:] = out_local.x
             out.fx = out_local.fx
-        out.samples[
-            out.nfev : out.nfev + out_local.nfev, :
-        ] = out_local.samples
+        out.samples[out.nfev : out.nfev + out_local.nfev, :] = (
+            out_local.samples
+        )
         out.fsamples[out.nfev : out.nfev + out_local.nfev] = out_local.fsamples
         out.nfev = out.nfev + out_local.nfev
 
