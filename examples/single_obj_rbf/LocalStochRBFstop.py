@@ -26,7 +26,7 @@ __credits__ = [
     "Haoyu Jia",
     "Weslley S. Pereira",
 ]
-__version__ = "0.4.1"
+__version__ = "0.4.2"
 __deprecated__ = False
 
 from optprogram1 import read_check_data_file

@@ -20,7 +20,7 @@ __contact__ = "weslley.dasilvapereira@nrel.gov"
 __maintainer__ = "Weslley S. Pereira"
 __email__ = "weslley.dasilvapereira@nrel.gov"
 __credits__ = ["Weslley S. Pereira"]
-__version__ = "0.4.1"
+__version__ = "0.4.2"
 __deprecated__ = False
 
 from typing import Optional
