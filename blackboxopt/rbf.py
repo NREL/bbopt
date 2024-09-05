@@ -26,16 +26,40 @@ __deprecated__ = False
 from typing import Optional
 import warnings
 import numpy as np
-from enum import Enum
 
 # Scipy imports
 from scipy.spatial.distance import cdist
 from scipy.linalg import solve, solve_triangular
+from scipy.special import comb
 
 # Local imports
 from .sampling import Sampler
+from .rbf_kernel import RbfKernel, KERNEL_DERIVATIVE_OVER_R_FUNC, KERNEL_FUNC
 
-RbfType = Enum("RbfType", ["LINEAR", "CUBIC", "THINPLATE"])
+
+def _order2_monomials(x: np.ndarray) -> np.ndarray:
+    m = x.shape[0]
+    dim = x.shape[1]
+    out = np.zeros((m, (dim * (dim + 1)) // 2))
+    count = 0
+    for i in range(dim):
+        for j in range(i, dim):
+            out[:, count] = x[:, i] * x[:, j]
+            count += 1
+    return out
+
+
+def _d_order2_monomials(x: np.ndarray) -> np.ndarray:
+    dim = len(x)
+    assert x.ndim == 1
+    out = np.zeros((dim, (dim * (dim + 1)) // 2))
+    count = 0
+    for i in range(dim):
+        for j in range(i, dim):
+            out[i, count] += x[j]
+            out[j, count] += x[i]
+            count += 1
+    return out
 
 
 class RbfFilter:
@@ -95,12 +119,10 @@ class RbfModel:
 
     Attributes
     ----------
-    type : RbfType, optional
-        Defines the function phi used in the RBF model. The options are:
-
-        - RbfType.LINEAR: phi(r) = r.
-        - RbfType.CUBIC: phi(r) = r^3.
-        - RbfType.THINPLATE: phi(r) = r^2 * log(r).
+    smoothing : float, optional
+        Smoothing parameter. The interpolant perfectly fits the data when this
+        is set to 0. For large values, the interpolant approaches a least
+        squares fit of a polynomial with the specified degree. Default is 0.
     iindex : tuple, optional
         Indices of the input space that are integer. The default is ().
     filter : RbfFilter, optional
@@ -110,13 +132,53 @@ class RbfModel:
 
     def __init__(
         self,
-        rbf_type: RbfType = RbfType.CUBIC,
+        *,
+        smoothing: float = 0.0,
+        kernel: RbfKernel = RbfKernel.CUBIC,
+        epsilon: float = 1.0,
         iindex: tuple[int, ...] = (),
         filter: Optional[RbfFilter] = None,
     ):
-        self.type = rbf_type
+        """Initialize the RBF model
+
+        By default, the model uses a cubic kernel with no smoothing.
+
+        Parameters
+        ----------
+        smoothing : float, optional
+            Smoothing parameter. The interpolant perfectly fits the data when this
+            is set to 0. For large values, the interpolant approaches a least
+            squares fit of a polynomial with the specified degree. Default is 0.
+        kernel : RbfKernel
+            Defines the function phi used in the RBF model. The options are listed
+            in the RbfKernel enum.
+        epsilon : float, optional
+            Shape parameter that scales the input to the RBF. If `kernel` is
+            'linear', 'thin_plate_spline', 'cubic', or 'quintic', this defaults to
+            1 and can be ignored because it has the same effect as scaling the
+            smoothing parameter. Defaults to 1.
+        iindex : tuple, optional
+            Indices of the input space that are integer. The default is ().
+        filter : RbfFilter, optional
+            Filter used with the function values. The default is RbfFilter() which
+            is the identity function.
+        """
+
+        self.smoothing = smoothing
         self.iindex = iindex
         self.filter = RbfFilter() if filter is None else filter
+
+        # Set kernel and the degree of the polynomial tail
+        self._kernel = kernel
+        if kernel in (RbfKernel.LINEAR, RbfKernel.MULTIQUADRIC):
+            self._degree = 0
+        elif kernel in (RbfKernel.CUBIC, RbfKernel.THINPLATE):
+            self._degree = 1
+        elif kernel == RbfKernel.QUINTIC:
+            self._degree = 2
+        else:
+            self._degree = None
+        self._eps = epsilon
 
         self._valid_coefficients = True
         self._m = 0
@@ -125,6 +187,12 @@ class RbfModel:
         self._coef = np.array([])
         self._PHI = np.array([])
         self._P = np.array([])
+
+        # Scaling for better condition number
+        self._sx = np.array([])
+        self._scale = np.array([])
+        self._avg = np.array([])
+        self._change_scale_factor = 2.0  # Change the scale factor when new scale is 2 times larger than the current one
 
     def reserve(self, maxeval: int, dim: int) -> None:
         """Reserve space for the RBF model.
@@ -144,10 +212,14 @@ class RbfModel:
 
         if self._x.size == 0:
             self._x = np.empty((maxeval, dim))
+            self._sx = np.empty((maxeval, dim))
         else:
             additional_rows = max(0, maxeval - self._x.shape[0])
             self._x = np.concatenate(
                 (self._x, np.empty((additional_rows, dim))), axis=0
+            )
+            self._sx = np.concatenate(
+                (self._sx, np.empty((additional_rows, dim))), axis=0
             )
 
         if self._fx.size == 0:
@@ -221,137 +293,11 @@ class RbfModel:
             Dimension of the polynomial tail.
         """
         dim = self.dim()
-        if self.type == RbfType.LINEAR:
-            return 1
-        elif self.type in (RbfType.CUBIC, RbfType.THINPLATE):
-            return 1 + dim
+
+        if self._degree is not None:
+            return int(comb(dim + self._degree, dim, exact=True))
         else:
-            raise ValueError("Unknown RBF type")
-
-    def phi(self, r):
-        """Applies the function phi to the distance(s) r.
-
-        Parameters
-        ----------
-        r : array_like
-            Distance(s) between points.
-
-        Returns
-        -------
-        out: array_like
-            Phi-value of the distances provided on input.
-        """
-        if self.type == RbfType.LINEAR:
-            return r
-        elif self.type == RbfType.CUBIC:
-            return np.power(r, 3)
-        elif self.type == RbfType.THINPLATE:
-            if not hasattr(r, "__len__"):
-                if r > 0:
-                    return r**2 * np.log(r)
-                else:
-                    return 0
-            else:
-                ret = np.zeros_like(r)
-                ret[r > 0] = np.multiply(
-                    np.power(r[r > 0], 2), np.log(r[r > 0])
-                )
-                return ret
-        else:
-            raise ValueError("Unknown RBF type")
-
-    def dphi(self, r):
-        """Derivative of the function phi at the distance(s) r.
-
-        Parameters
-        ----------
-        r : array_like
-            Distance(s) between points.
-
-        Returns
-        -------
-        out: array_like
-            Derivative of the phi-value of the distances provided on input.
-        """
-        if self.type == RbfType.LINEAR:
-            return np.ones(r.shape)
-        elif self.type == RbfType.CUBIC:
-            return 3 * np.power(r, 2)
-        elif self.type == RbfType.THINPLATE:
-            if not hasattr(r, "__len__"):
-                if r > 0:
-                    return 2 * r * np.log(r) + r
-                else:
-                    return 0
-            else:
-                ret = np.zeros_like(r)
-                ret[r > 0] = (
-                    2 * np.multiply(r[r > 0], np.log(r[r > 0])) + r[r > 0]
-                )
-                return ret
-        else:
-            raise ValueError("Unknown RBF type")
-
-    def dphiOverR(self, r):
-        """Derivative of the function phi divided by r at the distance(s) r.
-
-        Parameters
-        ----------
-        r : array_like
-            Distance(s) between points.
-
-        Returns
-        -------
-        out: array_like
-            Derivative of the phi-value of the distances provided on input
-            divided by the distance.
-        """
-        if self.type == RbfType.LINEAR:
-            return np.ones(r.shape) / r
-        elif self.type == RbfType.CUBIC:
-            return 3 * r
-        elif self.type == RbfType.THINPLATE:
-            if not hasattr(r, "__len__"):
-                if r > 0:
-                    return 2 * np.log(r) + 1
-                else:
-                    return 0
-            else:
-                ret = np.zeros_like(r)
-                ret[r > 0] = 2 * np.log(r[r > 0]) + 1
-                return ret
-        else:
-            raise ValueError("Unknown RBF type")
-
-    def ddphi(self, r):
-        """Second derivative of the function phi at the distance(s) r.
-
-        Parameters
-        ----------
-        r : array_like
-            Distance(s) between points.
-
-        Returns
-        -------
-        out: array_like
-            Second derivative of the phi-value of the distances provided on input.
-        """
-        if self.type == RbfType.LINEAR:
-            return np.zeros(r.shape)
-        elif self.type == RbfType.CUBIC:
-            return 6 * r
-        elif self.type == RbfType.THINPLATE:
-            if not hasattr(r, "__len__"):
-                if r > 0:
-                    return 2 * np.log(r) + 3
-                else:
-                    return 0
-            else:
-                ret = np.zeros_like(r)
-                ret[r > 0] = 2 * np.log(r[r > 0]) + 3
-                return ret
-        else:
-            raise ValueError("Unknown RBF type")
+            return 0
 
     def pbasis(self, x: np.ndarray) -> np.ndarray:
         """Computes the polynomial tail matrix for a given set of points.
@@ -368,14 +314,20 @@ class RbfModel:
         """
         dim = self.dim()
         m = x.size // dim
+        assert self._degree is not None
 
         # Set up the polynomial tail matrix P
-        if self.type == RbfType.LINEAR:
-            return np.ones((m, 1))
-        elif self.type in (RbfType.CUBIC, RbfType.THINPLATE):
-            return np.concatenate((np.ones((m, 1)), x.reshape(m, -1)), axis=1)
-        else:
-            raise ValueError("Invalid polynomial tail")
+        out = np.ones((m, 1))
+        if self._degree >= 1:
+            out = np.concatenate((out, x.reshape(m, -1)), axis=1)
+        if self._degree >= 2:
+            out = np.concatenate(
+                (out, _order2_monomials(x.reshape(m, -1))), axis=1
+            )
+        if self._degree >= 3:
+            raise ValueError("Higher order polynomials are not supported")
+
+        return out
 
     def dpbasis(self, x: np.ndarray) -> np.ndarray:
         """Computes the derivative of the polynomial tail matrix for a given x.
@@ -391,41 +343,19 @@ class RbfModel:
             Derivative of the polynomial tail matrix for the input point.
         """
         dim = self.dim()
+        assert self._degree is not None
 
-        if self.type == RbfType.LINEAR:
-            return np.zeros((1, 1))
-        elif self.type in (RbfType.CUBIC, RbfType.THINPLATE):
-            return np.concatenate((np.zeros((1, dim)), np.eye(dim)), axis=0)
-        else:
-            raise ValueError("Invalid polynomial tail")
+        out = np.zeros((dim, 1))
+        if self._degree >= 1:
+            out = np.concatenate((out, np.eye(dim)), axis=1)
+        if self._degree >= 2:
+            out = np.concatenate((out, _d_order2_monomials(x).T), axis=1)
+        if self._degree >= 3:
+            raise ValueError("Higher order polynomials are not supported")
 
-    def ddpbasis(self, x: np.ndarray, p: np.ndarray) -> np.ndarray:
-        """Computes the second derivative of the polynomial tail matrix for a
-        given x and direction p.
+        return out
 
-        Parameters
-        ----------
-        x : numpy.ndarray
-            Point in a d-dimensional space.
-        p : numpy.ndarray
-            Direction in which the second derivative is evaluated.
-
-        Returns
-        -------
-        out: numpy.ndarray
-            Second derivative of the polynomial tail matrix for the input point
-            and direction.
-        """
-        dim = self.dim()
-
-        if self.type == RbfType.LINEAR:
-            return np.zeros((1, 1))
-        elif self.type in (RbfType.CUBIC, RbfType.THINPLATE):
-            return np.zeros((dim + 1, dim))
-        else:
-            raise ValueError("Invalid polynomial tail")
-
-    def eval(self, x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    def __call__(self, x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Evaluates the model at one or multiple points.
 
         Parameters
@@ -447,12 +377,17 @@ class RbfModel:
             )
 
         dim = self.dim()
+        phi = KERNEL_FUNC[self._kernel]
+
+        # Scale x and samples
+        xscaled = (x.reshape(-1, dim) - self._avg) / self._scale
+        sscaled = self._sx[0 : self._m, :]
 
         # compute pairwise distances between candidates and sampled points
-        D = cdist(x.reshape(-1, dim), self.samples())
+        D = cdist(xscaled, sscaled) * self._eps
 
-        Px = self.pbasis(x)
-        y = np.matmul(self.phi(D), self._coef[0 : self._m]) + np.dot(
+        Px = self.pbasis(xscaled)
+        y = np.matmul(phi(D), self._coef[0 : self._m]) + np.dot(
             Px, self._coef[self._m : self._m + Px.shape[1]]
         )
 
@@ -482,65 +417,25 @@ class RbfModel:
             )
 
         dim = self.dim()
+        dphiOverR = KERNEL_DERIVATIVE_OVER_R_FUNC[self._kernel]
+
+        # Scale x and samples
+        xscaled = (x.reshape(-1, dim) - self._avg) / self._scale
+        sscaled = self._sx[0 : self._m, :]
 
         # compute pairwise distances between candidates and sampled points
-        d = cdist(x.reshape(-1, dim), self.samples()).flatten()
+        d = cdist(xscaled, sscaled).flatten()
 
-        A = np.array([self.dphiOverR(d[i]) * x for i in range(d.size)])
-        B = self.dpbasis(x)
+        A = np.matmul(
+            np.array(
+                [dphiOverR(d[i] * self._eps) * xscaled for i in range(d.size)]
+            ),
+            np.diag(self._eps / self._scale),
+        )
+        B = np.matmul(np.diag(1 / self._scale), self.dpbasis(xscaled))
 
         y = np.matmul(A.T, self._coef[0 : self._m]) + np.matmul(
-            B.T, self._coef[self._m : self._m + B.shape[0]]
-        )
-
-        return y.flatten()
-
-    def hessp(self, x: np.ndarray, p: np.ndarray) -> np.ndarray:
-        r"""Evaluates the Hessian of the model at x in the direction of p.
-
-        .. math::
-
-            H(f)(x) v   = \sum_{i=1}^{m} \beta_i \left(
-                            \phi''(\|x - x_i\|)\frac{(x^Tv)x}{\|x - x_i\|^2} +
-                            \frac{\phi'(\|x - x_i\|)}{\|x - x_i\|}
-                            \left(v - \frac{(x^Tv)x}{\|x - x_i\|^2}\right)
-                        \right)
-                        + \sum_{i=1}^{n} \beta_{m+i} H(p_i)(x) v.
-
-        Parameters
-        ----------
-        x : np.ndarray
-            Point in a d-dimensional space.
-        p : np.ndarray
-            Direction in which the Hessian is evaluated.
-
-        Returns
-        -------
-        numpy.ndarray
-            Value for the Hessian of the RBF model at x in the direction of p.
-        """
-        if self._valid_coefficients is False:
-            raise RuntimeError(
-                "Invalid coefficients. Run update_coefficients() before evaluating the model."
-            )
-
-        dim = self.dim()
-
-        # compute pairwise distances between candidates and sampled points
-        d = cdist(x.reshape(-1, dim), self.samples()).flatten()
-
-        xxTp = np.dot(p, x) * x
-        A = np.array(
-            [
-                self.ddphi(d[i]) * (xxTp / (d[i] * d[i]))
-                + self.dphiOverR(d[i]) * (p - (xxTp / (d[i] * d[i])))
-                for i in range(d.size)
-            ]
-        )
-        B = self.ddpbasis(x, p)
-
-        y = np.matmul(A.T, self._coef[0 : self._m]) + np.matmul(
-            B.T, self._coef[self._m : self._m + B.shape[0]]
+            B, self._coef[self._m : self._m + B.shape[1]]
         )
 
         return y.flatten()
@@ -606,30 +501,73 @@ class RbfModel:
         newm = xNew.shape[0]
         dim = xNew.shape[1]
         m = oldm + newm
+        phi = KERNEL_FUNC[self._kernel]
 
         if oldm > 0:
             assert dim == self.dim()
         if newm == 0:
             return
 
-        # Compute distances between new points and sampled points
-        if distNew is None:
-            if oldm == 0:
-                distNew = cdist(xNew, xNew)
-            else:
-                distNew = cdist(
-                    xNew, np.concatenate((self.samples(), xNew), axis=0)
-                )
-
-        self.reserve(m, dim)
-
-        # Update matrices _PHI and _P
-        self._PHI[oldm:m, 0:m] = self.phi(distNew)
-        self._PHI[0:oldm, oldm:m] = self._PHI[oldm:m, 0:oldm].T
-        self._P[oldm:m, :] = self.pbasis(xNew)
-
         # Update x
         self._x[oldm:m, :] = xNew
+
+        # Compute new scaling factor
+        if len(self._scale) > 0:
+            xmax = np.max(
+                np.concatenate((xNew, self._x[0:oldm, :]), axis=0), axis=0
+            )
+            xmin = np.min(
+                np.concatenate((xNew, self._x[0:oldm, :]), axis=0), axis=0
+            )
+            new_scale = (xmax - xmin) / 2
+            new_scale = np.where(new_scale == 0, 1, new_scale)
+        else:
+            xmax = np.max(xNew, axis=0)
+            xmin = np.min(xNew, axis=0)
+            new_scale = (xmax - xmin) / 2
+            new_scale = np.where(new_scale == 0, 1, new_scale)
+            self._scale = new_scale
+            self._avg = (xmax + xmin) / 2
+
+        if len(self._scale) == 0 or np.all(
+            new_scale < self._scale * self._change_scale_factor
+        ):
+            # Scale points
+            xscaled = self._sx[oldm:m, :]
+            xscaled[:] = (xNew - self._avg) / self._scale
+
+            # Compute distances between new points and sampled points
+            if distNew is None:
+                if oldm == 0:
+                    distNew = cdist(xscaled, xscaled)
+                else:
+                    sscaled = (self._x[0:oldm, :] - self._avg) / self._scale
+                    distNew = cdist(
+                        xscaled,
+                        np.concatenate((sscaled, xscaled), axis=0),
+                    )
+
+            self.reserve(m, dim)
+
+            # Update matrices _PHI and _P
+            self._PHI[oldm:m, 0:m] = phi(distNew * self._eps)
+            self._PHI[0:oldm, oldm:m] = self._PHI[oldm:m, 0:oldm].T
+            self._P[oldm:m, :] = self.pbasis(xscaled)
+        else:
+            # Update scaling factor
+            self._scale = new_scale
+            self._avg = (xmax + xmin) / 2
+
+            # Scale points
+            xscaled = self._sx[0:m, :]
+            xscaled[:] = (self._x[0:m, :] - self._avg) / self._scale
+
+            # Recompute distances between sampled points
+            distNew = cdist(xscaled, xscaled)
+
+            # Update matrices _PHI and _P
+            self._PHI[0:m, 0:m] = phi(distNew * self._eps)
+            self._P[0:m, :] = self.pbasis(xscaled)
 
         # Update m
         self._m = m
@@ -680,12 +618,21 @@ class RbfModel:
             if count > 100:
                 raise RuntimeError("Cannot create valid initial design")
 
-        # Compute distances between new points and sampled points
-        distNew = cdist(self.samples(), self.samples())
+        # Compute scaling factor
+        xmax = np.max(self.samples(), axis=0)
+        xmin = np.min(self.samples(), axis=0)
+        self._scale = (xmax - xmin) / 2
+        self._scale = np.where(self._scale == 0, 1, self._scale)
+        self._avg = (xmax + xmin) / 2
 
-        # Set matrix _PHI
-        self._PHI[0:m, 0:m] = self.phi(distNew)
-        self._PHI[0:0, 0:m] = self._PHI[0:m, 0:0].T
+        # Compute distances between new points and sampled points
+        self._sx[0:m, :] = (self.samples() - self._avg) / self._scale
+        distNew = cdist(self._sx[0:m, :], self._sx[0:m, :])
+
+        # Set matrices _PHI and _P
+        phi = KERNEL_FUNC[self._kernel]
+        self._PHI[0:m, 0:m] = phi(distNew * self._eps)
+        self._P[0:m, :] = self.pbasis(self._sx[0:m, :])
 
         # Coefficients are not valid
         self._valid_coefficients = False
@@ -734,18 +681,32 @@ class RbfModel:
         """
         return self._P[0 : self._m, :]
 
-    def get_RBFmatrix(self) -> np.ndarray:
+    def get_RBFmatrix(
+        self, *, smoothing: Optional[float] = None
+    ) -> np.ndarray:
         """Get the matrix used to compute the RBF weights.
+
+        Parameters
+        ----------
+        smoothing : float, optional
+            Smoothing parameter, if different from the one used in the model.
 
         Returns
         -------
         out: np.ndarray
             (m+pdim)-by-(m+pdim) matrix used to compute the RBF weights.
         """
+        if smoothing is None:
+            smoothing = self.smoothing
+
         pdim = self.pdim()
         return np.block(
             [
-                [self._PHI[0 : self._m, 0 : self._m], self.get_matrixP()],
+                [
+                    self._PHI[0 : self._m, 0 : self._m]
+                    + smoothing * np.eye(self._m),
+                    self.get_matrixP(),
+                ],
                 [self.get_matrixP().T, np.zeros((pdim, pdim))],
             ]
         )
@@ -791,11 +752,18 @@ class RbfModel:
             Optimization. Journal of Global Optimization 19, 201–227 (2001).
             https://doi.org/10.1023/A:1011255519438
         """
+        phi = KERNEL_FUNC[self._kernel]
+
         # compute rbf value of the new point x
+        xscaled = (x - self._avg) / self._scale
+        sscaled = self._sx[0 : self._m, :]
         if xdist is None:
-            xdist = cdist(x.reshape(1, -1), self.samples())
+            xdist = cdist(xscaled.reshape(1, -1), sscaled)
         newRow = np.concatenate(
-            (np.asarray(self.phi(xdist)).flatten(), self.pbasis(x).flatten())
+            (
+                np.asarray(phi(xdist * self._eps)).flatten(),
+                self.pbasis(xscaled).flatten(),
+            )
         )
 
         if LDLt:
@@ -833,15 +801,15 @@ class RbfModel:
                 l01[i] /= d0[i, i]
 
             # 3. d = \phi(0) - l_{01}^T D_0 l_{01} and \mu = 1/d
-            d = self.phi(0) - np.dot(l01, D0l01)
+            d = phi(0) - np.dot(l01, D0l01)
             mu = 1 / d if d != 0 else np.inf
 
         if not LDLt or mu == np.inf:
             # set up matrices for solving the linear system
             A_aug = np.block(
                 [
-                    [self.get_RBFmatrix(), newRow.reshape(-1, 1)],
-                    [newRow, self.phi(0)],
+                    [self.get_RBFmatrix(smoothing=0), newRow.reshape(-1, 1)],
+                    [newRow, phi(0)],
                 ]
             )
 
@@ -857,16 +825,7 @@ class RbfModel:
                 # Return huge value, only occurs if the matrix is ill-conditioned
                 mu = np.inf
 
-        # Order of the polynomial tail
-        if self.type == RbfType.LINEAR:
-            m0 = 0
-        elif self.type in (RbfType.CUBIC, RbfType.THINPLATE):
-            m0 = 1
-        else:
-            raise ValueError("Unknown RBF type")
-
         # Get the absolute value of mu
-        mu *= (-1) ** (m0 + 1)
         if mu < 0:
             # Return huge value, only occurs if the matrix is ill-conditioned
             return np.inf
@@ -898,16 +857,16 @@ class RbfModel:
             Optimization. Journal of Global Optimization 19, 201–227 (2001).
             https://doi.org/10.1023/A:1011255519438
         """
-        absmu = self.mu_measure(x, LDLt=LDLt)
+        mu = self.mu_measure(x, LDLt=LDLt)
         assert (
-            absmu > 0
+            mu > 0
         )  # if absmu == 0, the linear system in the surrogate model singular
-        if absmu == np.inf:
+        if mu == np.inf:
             # Return huge value, only occurs if the matrix is ill-conditioned
             return np.inf
 
         # predict RBF value of x
-        yhat, _ = self.eval(x)
+        yhat, _ = self(x)
         assert yhat.size == 1  # sanity check
 
         # Compute the distance between the predicted value and the target
@@ -916,5 +875,5 @@ class RbfModel:
         #     dist = tol
 
         # use sqrt(gn) as the bumpiness measure to avoid underflow
-        sqrtgn = np.sqrt(absmu) * dist
+        sqrtgn = np.sqrt(mu) * dist
         return sqrtgn

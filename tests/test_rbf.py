@@ -24,39 +24,46 @@ __version__ = "0.4.2"
 __deprecated__ = False
 
 import numpy as np
-import sys
 import pytest
-from blackboxopt.rbf import MedianLpfFilter, RbfModel, RbfType
+from blackboxopt.rbf import MedianLpfFilter, RbfModel
+from blackboxopt.rbf_kernel import RbfKernel, KERNEL_FUNC
+
+
+@pytest.mark.parametrize("kernel", [k for k in RbfKernel])
+def test_kernel(kernel):
+    testInput = [1.0, 2.0, 3.0, 4.0]
+    testResults = {
+        RbfKernel.LINEAR: [-1.0, -2.0, -3.0, -4.0],
+        RbfKernel.CUBIC: [1.0, 8.0, 27.0, 64.0],
+        RbfKernel.THINPLATE: [0.0, 2.7725887, 9.88751, 22.18071],
+        RbfKernel.QUINTIC: [-1.0, -32.0, -243.0, -1024.0],
+        RbfKernel.MULTIQUADRIC: [
+            -1.4142135,
+            -2.236068,
+            -3.1622777,
+            -4.1231055,
+        ],
+        RbfKernel.INVERSE_MULTIQUADRIC: [
+            0.70710677,
+            0.4472136,
+            0.31622776,
+            0.24253562,
+        ],
+        RbfKernel.INVERSE_QUADRATIC: [0.5, 0.2, 0.1, 0.05882353],
+        RbfKernel.GAUSSIAN: [
+            3.67879450e-01,
+            1.83156393e-02,
+            1.23409802e-04,
+            1.12535176e-07,
+        ],
+    }
+    phi = KERNEL_FUNC[kernel]
+
+    np.testing.assert_array_almost_equal(phi(testInput), testResults[kernel])
 
 
 class TestRbfModel:
     rbf_model = RbfModel()
-
-    def test_phi(self):
-        self.rbf_model.type = RbfType.LINEAR
-        r_linear = np.array([1.0, 2.0, 3.0])
-        result_linear = self.rbf_model.phi(r_linear)
-        expected_linear = np.array([1.0, 2.0, 3.0])
-        np.testing.assert_array_equal(np.array(result_linear), expected_linear)
-        assert self.rbf_model.phi(4.0) == 4.0
-
-        self.rbf_model.type = RbfType.CUBIC
-        r_cubic = np.array([1.0, 2.0, 3.0])
-        result_cubic = self.rbf_model.phi(r_cubic)
-        expected_cubic = np.array([1.0, 8.0, 27.0])
-        np.testing.assert_array_equal(np.array(result_cubic), expected_cubic)
-        assert self.rbf_model.phi(4.0) == 64.0
-
-        self.rbf_model.type = RbfType.THINPLATE
-        r_thinplate = np.array([1.0, 2.0, 3.0])
-        result_thinplate = self.rbf_model.phi(r_thinplate)
-        expected_thinplate = np.array([0.0, 2.77258872, 9.8875106])
-        np.testing.assert_allclose(
-            np.array(result_thinplate), expected_thinplate
-        )
-        assert self.rbf_model.phi(4.0) == (
-            4 * 4 * np.log(4 + sys.float_info.min)
-        )
 
     def test_dim(self):
         assert self.rbf_model.dim() == 0
