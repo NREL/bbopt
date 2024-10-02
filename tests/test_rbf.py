@@ -26,28 +26,28 @@ __deprecated__ = False
 import numpy as np
 import sys
 import pytest
-from blackboxopt.rbf import MedianLpfFilter, RbfModel, RbfType
+from blackboxopt.rbf import MedianLpfFilter, RbfModel, RbfKernel
 
 
 class TestRbfModel:
     rbf_model = RbfModel()
 
     def test_phi(self):
-        self.rbf_model.type = RbfType.LINEAR
+        self.rbf_model.type = RbfKernel.LINEAR
         r_linear = np.array([1.0, 2.0, 3.0])
         result_linear = self.rbf_model.phi(r_linear)
         expected_linear = np.array([1.0, 2.0, 3.0])
         np.testing.assert_array_equal(np.array(result_linear), expected_linear)
         assert self.rbf_model.phi(4.0) == 4.0
 
-        self.rbf_model.type = RbfType.CUBIC
+        self.rbf_model.type = RbfKernel.CUBIC
         r_cubic = np.array([1.0, 2.0, 3.0])
         result_cubic = self.rbf_model.phi(r_cubic)
         expected_cubic = np.array([1.0, 8.0, 27.0])
         np.testing.assert_array_equal(np.array(result_cubic), expected_cubic)
         assert self.rbf_model.phi(4.0) == 64.0
 
-        self.rbf_model.type = RbfType.THINPLATE
+        self.rbf_model.type = RbfKernel.THINPLATE
         r_thinplate = np.array([1.0, 2.0, 3.0])
         result_thinplate = self.rbf_model.phi(r_thinplate)
         expected_thinplate = np.array([0.0, 2.77258872, 9.8875106])

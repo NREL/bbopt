@@ -53,7 +53,7 @@ from pymoo.core.problem import StarmapParallelization
 
 # Local imports
 from .sampling import NormalSampler, Sampler
-from .rbf import RbfModel, RbfType
+from .rbf import RbfModel, RbfKernel
 from .problem import (
     ProblemWithConstraint,
     ProblemNoConstraint,
@@ -376,13 +376,13 @@ class CoordinatePerturbation(AcquisitionFunction):
         # Evaluate candidates
         if not listOfSurrogates:
             samples = surrogateModel.samples()
-            fx, _ = surrogateModel.eval(x)
+            fx, _ = surrogateModel(x)
         else:
             samples = surrogateModel[0].samples()
             objdim = len(surrogateModel)
             fx = np.empty((nCand, objdim))
             for i in range(objdim):
-                fx[:, i], _ = surrogateModel[i].eval(x)
+                fx[:, i], _ = surrogateModel[i](x)
 
         # Create scaled x and scaled distx
         xlow = np.array([bounds[i][0] for i in range(dim)])
@@ -494,13 +494,13 @@ class UniformAcquisition(AcquisitionFunction):
         # Evaluate candidates
         if not listOfSurrogates:
             samples = surrogateModel.samples()
-            fx, _ = surrogateModel.eval(x)
+            fx, _ = surrogateModel(x)
         else:
             samples = surrogateModel[0].samples()
             objdim = len(surrogateModel)
             fx = np.empty((nCand, objdim))
             for i in range(objdim):
-                fx[:, i], _ = surrogateModel[i].eval(x)
+                fx[:, i], _ = surrogateModel[i](x)
 
         # Create scaled x and scaled distx
         xlow = np.array([bounds[i][0] for i in range(dim)])
@@ -636,7 +636,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                 assert len(fbounds) == 2
                 # find min of surrogate model
                 problem = ProblemNoConstraint(
-                    lambda x: surrogateModel.eval(x)[0],
+                    lambda x: surrogateModel(x)[0],
                     bounds,
                     surrogateModel.iindex,
                 )
@@ -691,7 +691,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                 assert len(fbounds) == 2
                 # find the minimum of RBF surface
                 problem = ProblemNoConstraint(
-                    lambda x: surrogateModel.eval(x)[0],
+                    lambda x: surrogateModel(x)[0],
                     bounds,
                     surrogateModel.iindex,
                 )
@@ -871,9 +871,7 @@ class MinimizeSurrogate(AcquisitionFunction):
             ].T
 
             # Evaluate the surrogate model on the candidate points and sort them
-            fcand[iStart:iEnd], _ = surrogateModel.eval(
-                candidates[iStart:iEnd, :]
-            )
+            fcand[iStart:iEnd], _ = surrogateModel(candidates[iStart:iEnd, :])
             ids = np.argsort(fcand[0:iEnd])
             remevals -= iEnd - iStart
 
@@ -899,7 +897,7 @@ class MinimizeSurrogate(AcquisitionFunction):
                 def func_continuous_search(x):
                     x_ = xi.copy()
                     x_[cindex] = x
-                    return surrogateModel.eval(x_)[0]
+                    return surrogateModel(x_)[0]
 
                 def dfunc_continuous_search(x):
                     x_ = xi.copy()
@@ -1025,7 +1023,7 @@ class ParetoFront(AcquisitionFunction):
         assert objdim > 1
 
         # Create a surrogate model for the Pareto front in the objective space
-        paretoModel = RbfModel(RbfType.LINEAR)
+        paretoModel = RbfModel(RbfKernel.LINEAR)
         k = np.random.choice(objdim)
         paretoModel.update_samples(
             np.array([paretoFront[:, i] for i in range(objdim) if i != k]).T
@@ -1046,13 +1044,13 @@ class ParetoFront(AcquisitionFunction):
         )
 
         def delta_f(tau):
-            tauk, _ = paretoModel.eval(tau)
+            tauk, _ = paretoModel(tau)
             _tau = np.concatenate((tau[0:k], tauk, tau[k:]))
             return -tree.query(_tau)[0]
 
         # Minimize delta_f
         res = differential_evolution(delta_f, boundsPareto)
-        tauk, _ = paretoModel.eval(res.x)
+        tauk, _ = paretoModel(res.x)
         tau = np.concatenate((res.x[0:k], tauk, res.x[k:]))
 
         return tau
@@ -1175,7 +1173,7 @@ class EndPointsParetoFront(AcquisitionFunction):
         endpoints = np.empty((objdim, dim))
         for i in range(objdim):
             minimumPointProblem = ProblemNoConstraint(
-                lambda x: surrogateModels[i].eval(x)[0], bounds, iindex
+                lambda x: surrogateModels[i](x)[0], bounds, iindex
             )
             res = pymoo_minimize(
                 minimumPointProblem,
@@ -1421,9 +1419,7 @@ class CoordinatePerturbationOverNondominated(AcquisitionFunction):
         fnondominatedAndBestCandidates = np.concatenate(
             (
                 paretoFront,
-                np.array(
-                    [s.eval(bestCandidates)[0] for s in surrogateModels]
-                ).T,
+                np.array([s(bestCandidates)[0] for s in surrogateModels]).T,
             ),
             axis=0,
         )
@@ -1508,7 +1504,7 @@ class GosacSample(AcquisitionFunction):
         cheapProblem = ProblemWithConstraint(
             self.fun,
             lambda x: np.transpose(
-                [surrogateModels[i].eval(x)[0] for i in range(gdim)]
+                [surrogateModels[i](x)[0] for i in range(gdim)]
             ),
             bounds,
             iindex,

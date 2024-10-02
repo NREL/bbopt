@@ -35,7 +35,7 @@ from scipy.linalg import solve, solve_triangular
 # Local imports
 from .sampling import Sampler
 
-RbfType = Enum("RbfType", ["LINEAR", "CUBIC", "THINPLATE"])
+RbfKernel = Enum("RbfKernel", ["LINEAR", "CUBIC", "THINPLATE"])
 
 
 class RbfFilter:
@@ -95,12 +95,12 @@ class RbfModel:
 
     Attributes
     ----------
-    type : RbfType, optional
+    type : RbfKernel, optional
         Defines the function phi used in the RBF model. The options are:
 
-        - RbfType.LINEAR: phi(r) = r.
-        - RbfType.CUBIC: phi(r) = r^3.
-        - RbfType.THINPLATE: phi(r) = r^2 * log(r).
+        - RbfKernel.LINEAR: phi(r) = r.
+        - RbfKernel.CUBIC: phi(r) = r^3.
+        - RbfKernel.THINPLATE: phi(r) = r^2 * log(r).
     iindex : tuple, optional
         Indices of the input space that are integer. The default is ().
     filter : RbfFilter, optional
@@ -110,7 +110,7 @@ class RbfModel:
 
     def __init__(
         self,
-        rbf_type: RbfType = RbfType.CUBIC,
+        rbf_type: RbfKernel = RbfKernel.CUBIC,
         iindex: tuple[int, ...] = (),
         filter: Optional[RbfFilter] = None,
     ):
@@ -221,9 +221,9 @@ class RbfModel:
             Dimension of the polynomial tail.
         """
         dim = self.dim()
-        if self.type == RbfType.LINEAR:
+        if self.type == RbfKernel.LINEAR:
             return 1
-        elif self.type in (RbfType.CUBIC, RbfType.THINPLATE):
+        elif self.type in (RbfKernel.CUBIC, RbfKernel.THINPLATE):
             return 1 + dim
         else:
             raise ValueError("Unknown RBF type")
@@ -241,11 +241,11 @@ class RbfModel:
         out: array_like
             Phi-value of the distances provided on input.
         """
-        if self.type == RbfType.LINEAR:
+        if self.type == RbfKernel.LINEAR:
             return r
-        elif self.type == RbfType.CUBIC:
+        elif self.type == RbfKernel.CUBIC:
             return np.power(r, 3)
-        elif self.type == RbfType.THINPLATE:
+        elif self.type == RbfKernel.THINPLATE:
             if not hasattr(r, "__len__"):
                 if r > 0:
                     return r**2 * np.log(r)
@@ -273,11 +273,11 @@ class RbfModel:
         out: array_like
             Derivative of the phi-value of the distances provided on input.
         """
-        if self.type == RbfType.LINEAR:
+        if self.type == RbfKernel.LINEAR:
             return np.ones(r.shape)
-        elif self.type == RbfType.CUBIC:
+        elif self.type == RbfKernel.CUBIC:
             return 3 * np.power(r, 2)
-        elif self.type == RbfType.THINPLATE:
+        elif self.type == RbfKernel.THINPLATE:
             if not hasattr(r, "__len__"):
                 if r > 0:
                     return 2 * r * np.log(r) + r
@@ -306,11 +306,11 @@ class RbfModel:
             Derivative of the phi-value of the distances provided on input
             divided by the distance.
         """
-        if self.type == RbfType.LINEAR:
+        if self.type == RbfKernel.LINEAR:
             return np.ones(r.shape) / r
-        elif self.type == RbfType.CUBIC:
+        elif self.type == RbfKernel.CUBIC:
             return 3 * r
-        elif self.type == RbfType.THINPLATE:
+        elif self.type == RbfKernel.THINPLATE:
             if not hasattr(r, "__len__"):
                 if r > 0:
                     return 2 * np.log(r) + 1
@@ -336,11 +336,11 @@ class RbfModel:
         out: array_like
             Second derivative of the phi-value of the distances provided on input.
         """
-        if self.type == RbfType.LINEAR:
+        if self.type == RbfKernel.LINEAR:
             return np.zeros(r.shape)
-        elif self.type == RbfType.CUBIC:
+        elif self.type == RbfKernel.CUBIC:
             return 6 * r
-        elif self.type == RbfType.THINPLATE:
+        elif self.type == RbfKernel.THINPLATE:
             if not hasattr(r, "__len__"):
                 if r > 0:
                     return 2 * np.log(r) + 3
@@ -370,9 +370,9 @@ class RbfModel:
         m = x.size // dim
 
         # Set up the polynomial tail matrix P
-        if self.type == RbfType.LINEAR:
+        if self.type == RbfKernel.LINEAR:
             return np.ones((m, 1))
-        elif self.type in (RbfType.CUBIC, RbfType.THINPLATE):
+        elif self.type in (RbfKernel.CUBIC, RbfKernel.THINPLATE):
             return np.concatenate((np.ones((m, 1)), x.reshape(m, -1)), axis=1)
         else:
             raise ValueError("Invalid polynomial tail")
@@ -392,9 +392,9 @@ class RbfModel:
         """
         dim = self.dim()
 
-        if self.type == RbfType.LINEAR:
+        if self.type == RbfKernel.LINEAR:
             return np.zeros((1, 1))
-        elif self.type in (RbfType.CUBIC, RbfType.THINPLATE):
+        elif self.type in (RbfKernel.CUBIC, RbfKernel.THINPLATE):
             return np.concatenate((np.zeros((1, dim)), np.eye(dim)), axis=0)
         else:
             raise ValueError("Invalid polynomial tail")
@@ -418,14 +418,14 @@ class RbfModel:
         """
         dim = self.dim()
 
-        if self.type == RbfType.LINEAR:
+        if self.type == RbfKernel.LINEAR:
             return np.zeros((1, 1))
-        elif self.type in (RbfType.CUBIC, RbfType.THINPLATE):
+        elif self.type in (RbfKernel.CUBIC, RbfKernel.THINPLATE):
             return np.zeros((dim + 1, dim))
         else:
             raise ValueError("Invalid polynomial tail")
 
-    def eval(self, x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    def __call__(self, x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Evaluates the model at one or multiple points.
 
         Parameters
@@ -858,9 +858,9 @@ class RbfModel:
                 mu = np.inf
 
         # Order of the polynomial tail
-        if self.type == RbfType.LINEAR:
+        if self.type == RbfKernel.LINEAR:
             m0 = 0
-        elif self.type in (RbfType.CUBIC, RbfType.THINPLATE):
+        elif self.type in (RbfKernel.CUBIC, RbfKernel.THINPLATE):
             m0 = 1
         else:
             raise ValueError("Unknown RBF type")
@@ -907,7 +907,7 @@ class RbfModel:
             return np.inf
 
         # predict RBF value of x
-        yhat, _ = self.eval(x)
+        yhat, _ = self(x)
         assert yhat.size == 1  # sanity check
 
         # Compute the distance between the predicted value and the target
