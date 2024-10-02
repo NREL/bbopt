@@ -1,7 +1,8 @@
 import numpy as np
 import pytest
-from blackboxopt.optimize import gosac
-from blackboxopt.rbf import RbfModel
+
+# from blackboxopt.optimize import gosac
+# from blackboxopt.rbf import RbfModel
 import tests.gosac_benchmark as gosacbmk
 
 
@@ -72,6 +73,6 @@ def test_benchmark(problem: gosacbmk.Problem) -> None:
         assert np.all(problem.gfun(np.asarray([problem.xmin]))[0] <= 1e-2)
 
 
-if __name__ == "__main__":
-    np.random.seed(3)
-    test_gosac(gosacbmk.gosac_p[1])
+# if __name__ == "__main__":
+#     np.random.seed(3)
+#     test_gosac(gosacbmk.gosac_p[1])

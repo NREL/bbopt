@@ -36,7 +36,7 @@ __deprecated__ = False
 
 import numpy as np
 from math import log
-from multiprocessing.pool import ThreadPool
+# from multiprocessing.pool import ThreadPool
 
 # Scipy imports
 from scipy.spatial.distance import cdist
@@ -49,7 +49,7 @@ from scipy.optimize import minimize, differential_evolution
 from pymoo.operators.survival.rank_and_crowding import RankAndCrowding
 from pymoo.core.mixed import MixedVariableGA, MixedVariableMating
 from pymoo.optimize import minimize as pymoo_minimize
-from pymoo.core.problem import StarmapParallelization
+# from pymoo.core.problem import StarmapParallelization
 
 # Local imports
 from .sampling import NormalSampler, Sampler
