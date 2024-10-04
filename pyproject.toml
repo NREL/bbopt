@@ -12,6 +12,7 @@ dependencies = [
     "numpy>=1.26.2,<2.0.0",
     "scipy>=1.11.4",
     "pymoo>=0.6.1.1",
+    "scikit-learn>=1.5.2",
 ]
 
 [build-system]

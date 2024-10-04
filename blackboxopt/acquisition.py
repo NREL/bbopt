@@ -42,7 +42,7 @@ from math import log
 from scipy.spatial.distance import cdist
 from scipy.spatial import KDTree
 from scipy.special import gamma
-from scipy.linalg import ldl
+from scipy.linalg import ldl, cholesky, solve_triangular
 from scipy.optimize import minimize, differential_evolution
 
 # Pymoo imports
@@ -52,8 +52,9 @@ from pymoo.optimize import minimize as pymoo_minimize
 # from pymoo.core.problem import StarmapParallelization
 
 # Local imports
-from .sampling import NormalSampler, Sampler
+from .sampling import NormalSampler, Sampler, Mitchel91Sampler
 from .rbf import RbfModel, RbfKernel
+from .gp import expected_improvement
 from .problem import (
     ProblemWithConstraint,
     ProblemNoConstraint,
@@ -1547,3 +1548,149 @@ class GosacSample(AcquisitionFunction):
             xnew = np.asarray([[res.X[i] for i in range(dim)]])
 
         return xnew
+
+
+class MaximizeEI(AcquisitionFunction):
+    """Acquisition by maximization of the expected improvement.
+
+    Attributes
+    ----------
+    sampler : Sampler
+        Sampler to generate candidate points.
+    avoid_clusters : pymoo.optimizer
+        When sampling in batch, penalize candidates that are close to already
+        chosen ones. Inspired in [#]_.
+
+    References
+    ----------
+    .. [#] Che Y, Müller J, Cheng C. Dispersion-enhanced sequential batch
+        sampling for adaptive contour estimation. Qual Reliab Eng Int. 2024;
+        40: 131–144. https://doi.org/10.1002/qre.3245
+    """
+
+    def __init__(self, sampler=None, avoid_clusters: bool = False) -> None:
+        super().__init__()
+        self.sampler = Mitchel91Sampler(100) if sampler is None else sampler
+        self.avoid_clusters = avoid_clusters
+
+    def acquire(
+        self, surrogateModel, bounds, n: int = 1, *, ybest=None
+    ) -> np.ndarray:
+        """Acquire n points.
+
+        Parameters
+        ----------
+        surrogateModel : Surrogate model
+            Surrogate model.
+        bounds
+            Bounds of the search space.
+        n : int, optional
+            Number of points to be acquired. The default is 1.
+        ybest : array-like, optional
+            Best point so far. If not provided, find the minimum value for
+            the surrogate.
+        """
+
+        if ybest is None:
+            # Compute an estimate for ybest using the surrogate.
+            res = differential_evolution(
+                lambda x: surrogateModel([x])[0], bounds
+            )
+            ybest = res.fun.eval()
+
+        # Use the point that maximizes the EI
+        res = differential_evolution(
+            lambda x: -expected_improvement(*surrogateModel([x]), ybest),
+            bounds,
+            # popsize=15,
+            # maxiter=100,
+            # polish=False,
+        )
+        xs = res.x.flatten()
+
+        # Generate the complete pool of candidates
+        current_samples = np.concatenate(
+            (surrogateModel.samples(), xs), axis=0
+        )
+        x = self.sampler.get_sample(bounds, current_samples=current_samples)
+        x = np.concatenate((xs, x), axis=0)
+        nCand = len(x)
+
+        # Create EI and kernel matrices
+        eiCand = np.array(
+            [expected_improvement(*surrogateModel([c]), ybest)[0] for c in x]
+        )
+
+        # If there is no need to avoid clustering return the maximum of EI
+        if not self.avoid_clusters:
+            return x[np.flip(np.argsort(eiCand)[-n:]), :]
+
+        # Rescale EI to [0,1] and create the kernel matrix with all candidates
+        eiCand = (eiCand - eiCand.min()) / (eiCand.max() - eiCand.min())
+        Kss = (surrogateModel.kernel())(x, x)
+
+        # Score to be maximized and vector with the indexes of the candidates
+        # chosen.
+        score = np.zeros(nCand)
+        iBest = np.empty(n, dtype=int)
+
+        # First iteration
+        j = 0
+        for i in range(nCand):
+            Ksi = Kss[:, i]
+            Kii = Kss[i, i]
+            score[i] = ((np.dot(Ksi, Ksi) / Kii) / nCand) * eiCand[i]
+        iBest[j] = np.argmax(score)
+
+        # Remaining iterations
+        for j in range(1, n):
+            currentBatch = iBest[0:j]
+
+            Ksb = Kss[:, currentBatch]
+            Kbb = Ksb[currentBatch, :]
+
+            # Cholesky factorization using points in the current batch
+            Lfactor = cholesky(Kbb, lower=True)
+
+            # Solve linear systems for KbbInvKbs
+            LInvKbs = solve_triangular(Lfactor, Ksb.T, lower=True)
+            KbbInvKbs = solve_triangular(
+                Lfactor, LInvKbs, lower=True, trans="T"
+            )
+
+            # Compute the b part of the score
+            scoreb = np.sum(np.multiply(Ksb, KbbInvKbs.T))
+
+            # Reserve memory to avoid excessive dynamic allocations
+            aux0 = np.empty(nCand)
+            aux1 = np.empty((j, nCand))
+
+            # Compute the final score
+            for i in range(nCand):
+                if i in currentBatch:
+                    score[i] = 0
+                else:
+                    # Compute the square of the diagonal term of the updated Cholesky factorization
+                    li = LInvKbs[:, i]
+                    d2 = Kss[i, i] - np.dot(li, li)
+
+                    # Solve the linear system Kii*aux = Ksi.T
+                    Ksi = Kss[:, i]
+                    aux0[:] = (Ksi.T - LInvKbs.T @ li) / d2
+                    aux1[:] = LInvKbs - np.outer(li, aux0)
+                    aux1[:] = solve_triangular(
+                        Lfactor, aux1, lower=True, trans="T", overwrite_b=True
+                    )
+
+                    # Local score computation
+                    scorei = np.sum(np.multiply(Ksb, aux1.T)) + np.dot(
+                        Ksi, aux0
+                    )
+
+                    # Final score
+                    score[i] = ((scorei - scoreb) / nCand) * eiCand[i]
+                    # assert(score[i] >= 0)
+
+            iBest[j] = np.argmax(score)
+
+        return x[iBest, :]

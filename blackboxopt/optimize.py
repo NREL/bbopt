@@ -1789,3 +1789,20 @@ def gosac(
             callback(out)
 
     return out
+
+
+# def bayesian_optimization(
+#     fun,
+#     bounds,
+#     maxeval: int,
+#     x0y0=(),
+#     *,
+#     surrogateModel=None,
+#     acquisitionFunc: Optional[AcquisitionFunction] = None,
+#     samples: Optional[np.ndarray] = None,
+#     newSamplesPerIteration: int = 1,
+#     expectedRelativeImprovement: float = 1e-3,
+#     failtolerance: int = -1,
+#     disp: bool = False,
+#     callback: Optional[Callable[[OptimizeResult], None]] = None,
+# ) -> OptimizeResult:
