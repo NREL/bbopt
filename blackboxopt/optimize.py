@@ -1392,7 +1392,7 @@ def socemo(
         ),
     )
     nGens = 100
-    tol = acquisitionFunc.tol(bounds)
+    tol = acquisitionFunc.compute_tol(dim)
 
     # Define acquisition functions
     step1acquisition = ParetoFront(mooptimizer, nGens)
