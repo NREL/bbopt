@@ -54,6 +54,7 @@ from .acquisition import (
     CoordinatePerturbationOverNondominated,
     EndPointsParetoFront,
     GosacSample,
+    MaximizeEI,
     MinimizeMOSurrogate,
     ParetoFront,
     TargetValueAcquisition,
@@ -63,6 +64,8 @@ from .acquisition import (
 )
 from .rbf import RbfModel
 from .problem import BBOptDuplicateElimination
+from .gp import GaussianProcess
+from .sampling import Sampler
 
 
 @dataclass
@@ -85,12 +88,97 @@ class OptimizeResult:
         All objective function values on sampled points.
     """
 
-    x: np.ndarray
-    fx: Union[float, np.ndarray]
-    nit: int
-    nfev: int
-    samples: np.ndarray
-    fsamples: np.ndarray
+    x: np.ndarray = np.array([])
+    fx: Union[float, np.ndarray] = np.inf
+    nit: int = 0
+    nfev: int = 0
+    samples: np.ndarray = np.array([])
+    fsamples: np.ndarray = np.array([])
+
+    def init(
+        self,
+        fun,
+        bounds,
+        mineval: int,
+        maxeval: int,
+        x0y0=(),
+        *,
+        surrogateModel=None,
+        samples: Optional[np.ndarray] = None,
+    ) -> None:
+        dim = len(bounds)  # Dimension of the problem
+        assert dim > 0
+
+        # Initialize optional variables
+        if surrogateModel is None:
+            surrogateModel = RbfModel()
+        if samples is None:
+            samples = np.zeros((0, dim))
+
+        # Initialize arrays in this object
+        self.samples = np.zeros((maxeval, dim))
+        self.fsamples = np.zeros(maxeval)
+
+        # Number of initial samples in the surrogate and provided through the API
+        m0 = surrogateModel.nsamples()
+        m = min(len(samples), maxeval)
+        m_for_surrogate = surrogateModel.min_design_space_size(dim)
+
+        # Initialize self.x and self.fx
+        if m0 > 0:
+            iBest = np.argmin(surrogateModel.get_fsamples()).item()
+            self.x = surrogateModel.sample(iBest).copy()
+            self.fx = surrogateModel.get_fsamples()[iBest].item()
+        else:
+            self.x = np.array(
+                [(bounds[i][0] + bounds[i][1]) / 2 for i in range(dim)]
+            )
+            self.fx = np.Inf
+
+        # If the surrogate is empty and no initial samples were given
+        if m == 0 and m0 == 0:
+            # Create new samples with SLHD
+            m = min(maxeval, max(mineval, m_for_surrogate))
+            self.samples[0:m, :] = Sampler(m).get_slhd_sample(bounds)
+            if m >= m_for_surrogate:
+                count = 0
+                while not surrogateModel.check_initial_design(
+                    self.samples[0:m, :]
+                ):
+                    self.samples[0:m, :] = Sampler(m).get_slhd_sample(bounds)
+                    count += 1
+                    if count > 100:
+                        raise RuntimeError(
+                            "Cannot create valid initial design"
+                        )
+        # If samples were provided, check they are a initial designn for the
+        # surrogate
+        elif m >= m_for_surrogate:
+            self.samples[0:m, :] = samples
+            assert surrogateModel.check_initial_design(self.samples[0:m, :])
+
+        # Evaluate initial samples and update self.ut
+        if m > 0:
+            # Compute f(samples)
+            self.fsamples[0:m] = fun(self.samples[0:m, :])
+            self.nfev = m
+
+            # Update output variables
+            iBest = np.argmin(self.fsamples[0:m]).item()
+            if self.fsamples[iBest] < self.fx:
+                self.x[:] = self.samples[iBest, :]
+                self.fx = self.fsamples[iBest].item()
+
+        # If initial guess is provided, consider it in the output
+        if len(x0y0) >= 2:
+            if x0y0[1] < self.fx:
+                self.x[:] = x0y0[0]
+                self.fx = x0y0[1]
+
+        if self.fx == np.inf:
+            raise ValueError(
+                "Provide feasible initial samples or an initial guess"
+            )
 
 
 def initialize_surrogate(
@@ -1791,18 +1879,99 @@ def gosac(
     return out
 
 
-# def bayesian_optimization(
-#     fun,
-#     bounds,
-#     maxeval: int,
-#     x0y0=(),
-#     *,
-#     surrogateModel=None,
-#     acquisitionFunc: Optional[AcquisitionFunction] = None,
-#     samples: Optional[np.ndarray] = None,
-#     newSamplesPerIteration: int = 1,
-#     expectedRelativeImprovement: float = 1e-3,
-#     failtolerance: int = -1,
-#     disp: bool = False,
-#     callback: Optional[Callable[[OptimizeResult], None]] = None,
-# ) -> OptimizeResult:
+def bayesian_optimization(
+    fun,
+    bounds,
+    maxeval: int,
+    x0y0=(),
+    *,
+    surrogateModel=None,
+    acquisitionFunc: Optional[MaximizeEI] = None,
+    samples: Optional[np.ndarray] = None,
+    newSamplesPerIteration: int = 1,
+    disp: bool = False,
+    callback: Optional[Callable[[OptimizeResult], None]] = None,
+) -> OptimizeResult:
+    dim = len(bounds)  # Dimension of the problem
+    assert dim > 0
+
+    # Initialize optional variables
+    if surrogateModel is None:
+        surrogateModel = GaussianProcess()
+    if samples is None:
+        samples = np.empty((0, dim))
+    if acquisitionFunc is None:
+        acquisitionFunc = MaximizeEI()
+    if acquisitionFunc.sampler.n <= 1:
+        acquisitionFunc.sampler.n = min(500 * dim, 5000)
+
+    # Initialize output
+    out = OptimizeResult()
+    out.init(
+        fun,
+        bounds,
+        newSamplesPerIteration,
+        maxeval,
+        x0y0,
+        surrogateModel=surrogateModel,
+        samples=samples,
+    )
+
+    # Call the callback function
+    if callback is not None:
+        callback(out)
+
+    # do until max number of f-evals reached or local min found
+    xselected = np.copy(out.samples[0 : out.nfev, :])
+    ySelected = np.copy(out.fsamples[0 : out.nfev])
+    while out.nfev < maxeval:
+        if disp:
+            print("Iteration: %d" % out.nit)
+            print("fEvals: %d" % out.nfev)
+            print("Best value: %f" % out.fx)
+
+        # number of new samples in an iteration
+        NumberNewSamples = min(newSamplesPerIteration, maxeval - out.nfev)
+
+        # Update surrogate model
+        t0 = time.time()
+        surrogateModel.update(xselected, ySelected)
+        tf = time.time()
+        if disp:
+            print("Time to update surrogate model: %f s" % (tf - t0))
+
+        # Acquire new samples
+        t0 = time.time()
+        xselected = acquisitionFunc.acquire(
+            surrogateModel, bounds, NumberNewSamples, ybest=out.fx
+        )
+        tf = time.time()
+        if disp:
+            print("Time to acquire new samples: %f s" % (tf - t0))
+
+        # Compute f(xselected)
+        NumberNewSamples = xselected.shape[0]
+        ySelected = np.asarray(fun(xselected))
+
+        # Update best point found so far if necessary
+        iSelectedBest = np.argmin(ySelected).item()
+        fxSelectedBest = ySelected[iSelectedBest]
+        if fxSelectedBest < out.fx:
+            out.x[:] = xselected[iSelectedBest, :]
+            out.fx = fxSelectedBest
+
+        # Update remaining output variables
+        out.samples[out.nfev : out.nfev + NumberNewSamples, :] = xselected
+        out.fsamples[out.nfev : out.nfev + NumberNewSamples] = ySelected
+        out.nfev = out.nfev + NumberNewSamples
+        out.nit = out.nit + 1
+
+        # Call the callback function
+        if callback is not None:
+            callback(out)
+
+    # Update output
+    out.samples.resize(out.nfev, dim)
+    out.fsamples.resize(out.nfev)
+
+    return out

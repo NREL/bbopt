@@ -27,6 +27,7 @@ __credits__ = [
 __version__ = "0.4.2"
 __deprecated__ = False
 
+import copy
 import numpy as np
 from sklearn.gaussian_process import GaussianProcessRegressor
 
@@ -79,12 +80,44 @@ class GaussianProcess(GaussianProcessRegressor):
             n_targets=n_targets,
             random_state=random_state,
         )
+        self.X_train_ = np.array([])
+        self._y_train_mean = np.array([])
+        self._y_train_std = np.array([])
 
     def __call__(self, x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-        self.predict([x], return_std=True, return_cov=False)
+        return self.predict(x, return_std=True, return_cov=False)
 
     def samples(self) -> np.ndarray:
         return self.X_train_
 
     def kernel(self):
         return self.kernel_
+
+    def min_design_space_size(self, dim: int) -> int:
+        return 1 if dim > 0 else 0
+
+    def check_initial_design(self, samples: np.ndarray) -> bool:
+        if samples.ndim != 2 or len(samples) < 1:
+            return False
+        try:
+            copy.deepcopy(self).fit(samples, np.ones(len(samples)))
+            return True
+        except np.linalg.LinAlgError:
+            return False
+
+    def update(self, Xnew, ynew) -> None:
+        if self.nsamples() > 0:
+            X = np.concatenate((self.samples(), Xnew), axis=0)
+            y = np.concatenate(
+                (
+                    (self._y_train_mean + self.y_train_ * self._y_train_std),
+                    ynew,
+                )
+            )
+        else:
+            X = Xnew
+            y = ynew
+        self.fit(X, y)
+
+    def nsamples(self) -> int:
+        return len(self.samples())

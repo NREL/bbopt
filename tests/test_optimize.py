@@ -27,6 +27,7 @@ import numpy as np
 import pytest
 from blackboxopt.optimize import (
     OptimizeResult,
+    bayesian_optimization,
     multistart_stochastic_response_surface,
     stochastic_response_surface,
     target_value_optimization,
@@ -43,6 +44,7 @@ from blackboxopt.optimize import (
         target_value_optimization,
         cptv,
         cptvl,
+        bayesian_optimization,
     ],
 )
 def test_callback(minimize):
@@ -66,7 +68,7 @@ def test_callback(minimize):
 
     minimize(
         lambda x: np.sum(x**2, axis=1),
-        ((-1, 1), (-1, 1)),
+        ((-10, 3), (-1, 1)),
         maxeval=10,
         callback=callback,
     )
@@ -80,6 +82,7 @@ def test_callback(minimize):
         target_value_optimization,
         cptv,
         cptvl,
+        bayesian_optimization,
     ],
 )
 def test_multiple_calls(minimize):
@@ -97,7 +100,7 @@ def test_multiple_calls(minimize):
             + exp(1)
         )
 
-    bounds = [[-32.768, 32.768], [-32.768, 32.768]]
+    bounds = [[-32.768, 20], [-32.768, 32.768]]
 
     np.random.seed(3)
     res0 = minimize(lambda x: [ackley(x[0], 2)], bounds, maxeval=200)

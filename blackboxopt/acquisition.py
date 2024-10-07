@@ -1592,15 +1592,21 @@ class MaximizeEI(AcquisitionFunction):
             # maxiter=100,
             # polish=False,
         )
-        xs = res.x.flatten()
+        xs = res.x
 
         # Generate the complete pool of candidates
-        current_samples = np.concatenate(
-            (surrogateModel.samples(), xs), axis=0
-        )
-        x = self.sampler.get_sample(bounds, current_samples=current_samples)
-        x = np.concatenate((xs, x), axis=0)
-        nCand = len(x)
+        if isinstance(self.sampler, Mitchel91Sampler):
+            current_samples = np.concatenate(
+                (surrogateModel.samples(), [xs]), axis=0
+            )
+            x = self.sampler.get_sample(
+                bounds, current_samples=current_samples
+            )
+            x = np.concatenate(([xs], x), axis=0)
+            nCand = len(x)
+        else:
+            x = self.sampler.get_sample(bounds)
+            nCand = len(x)
 
         # Create EI and kernel matrices
         eiCand = np.array(
