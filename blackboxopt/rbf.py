@@ -220,13 +220,7 @@ class RbfModel:
         out: int
             Dimension of the polynomial tail.
         """
-        dim = self.dim()
-        if self.type == RbfKernel.LINEAR:
-            return 1
-        elif self.type in (RbfKernel.CUBIC, RbfKernel.THINPLATE):
-            return 1 + dim
-        else:
-            raise ValueError("Unknown RBF type")
+        return self.min_design_space_size(self.dim())
 
     def phi(self, r):
         """Applies the function phi to the distance(s) r.
@@ -366,14 +360,13 @@ class RbfModel:
         out: numpy.ndarray
             Site matrix, needed for determining parameters of the polynomial tail.
         """
-        dim = self.dim()
-        m = x.size // dim
+        m = len(x)
 
         # Set up the polynomial tail matrix P
         if self.type == RbfKernel.LINEAR:
             return np.ones((m, 1))
         elif self.type in (RbfKernel.CUBIC, RbfKernel.THINPLATE):
-            return np.concatenate((np.ones((m, 1)), x.reshape(m, -1)), axis=1)
+            return np.concatenate((np.ones((m, 1)), x), axis=1)
         else:
             raise ValueError("Invalid polynomial tail")
 
@@ -451,7 +444,7 @@ class RbfModel:
         # compute pairwise distances between candidates and sampled points
         D = cdist(x.reshape(-1, dim), self.samples())
 
-        Px = self.pbasis(x)
+        Px = self.pbasis(x.reshape(-1, dim))
         y = np.matmul(self.phi(D), self._coef[0 : self._m]) + np.dot(
             Px, self._coef[self._m : self._m + Px.shape[1]]
         )
@@ -637,6 +630,10 @@ class RbfModel:
         # Coefficients are not valid anymore
         self._valid_coefficients = False
 
+    def update(self, Xnew, ynew) -> None:
+        self.update_samples(Xnew)
+        self.update_coefficients(ynew)
+
     def create_initial_design(
         self, dim: int, bounds, minm: int = 0, maxm: int = 0
     ) -> None:
@@ -795,7 +792,10 @@ class RbfModel:
         if xdist is None:
             xdist = cdist(x.reshape(1, -1), self.samples())
         newRow = np.concatenate(
-            (np.asarray(self.phi(xdist)).flatten(), self.pbasis(x).flatten())
+            (
+                np.asarray(self.phi(xdist)).flatten(),
+                self.pbasis(x.reshape(1, -1)).flatten(),
+            )
         )
 
         if LDLt:
@@ -918,3 +918,17 @@ class RbfModel:
         # use sqrt(gn) as the bumpiness measure to avoid underflow
         sqrtgn = np.sqrt(absmu) * dist
         return sqrtgn
+
+    def min_design_space_size(self, dim: int) -> int:
+        if self.type == RbfKernel.LINEAR:
+            return 1
+        elif self.type in (RbfKernel.CUBIC, RbfKernel.THINPLATE):
+            return 1 + dim
+        else:
+            raise ValueError("Unknown RBF type")
+
+    def check_initial_design(self, samples: np.ndarray) -> bool:
+        if samples.ndim != 2 or len(samples) < 1:
+            return False
+        P = self.pbasis(samples)
+        return np.linalg.matrix_rank(P) == P.shape[1]

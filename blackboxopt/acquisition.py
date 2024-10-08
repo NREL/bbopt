@@ -1012,10 +1012,10 @@ class ParetoFront(AcquisitionFunction):
         # Create a surrogate model for the Pareto front in the objective space
         paretoModel = RbfModel(RbfKernel.LINEAR)
         k = np.random.choice(objdim)
-        paretoModel.update_samples(
-            np.array([paretoFront[:, i] for i in range(objdim) if i != k]).T
+        paretoModel.update(
+            np.array([paretoFront[:, i] for i in range(objdim) if i != k]).T,
+            paretoFront[:, k],
         )
-        paretoModel.update_coefficients(paretoFront[:, k])
         dim = paretoModel.dim()
 
         # Bounds in the pareto samples

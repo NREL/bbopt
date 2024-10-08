@@ -686,8 +686,7 @@ def stochastic_response_surface(
 
         # Update surrogate model
         t0 = time.time()
-        surrogateModel.update_samples(xselected)
-        surrogateModel.update_coefficients(ySelected)
+        surrogateModel.update(xselected, ySelected)
         tf = time.time()
         if disp:
             print("Time to update surrogate model: %f s" % (tf - t0))
@@ -1024,8 +1023,7 @@ def target_value_optimization(
 
         # Update surrogate model
         t0 = time.time()
-        surrogateModel.update_samples(xselected)
-        surrogateModel.update_coefficients(ySelected)
+        surrogateModel.update(xselected, ySelected)
         tf = time.time()
         if disp:
             print("Time to update surrogate model: %f s" % (tf - t0))
@@ -1208,11 +1206,9 @@ def cptv(
                 callback=callback,
             )
 
-            surrogateModel.update_samples(
-                out_local.samples[out_local.nfev - 1, :].reshape(1, -1)
-            )
-            surrogateModel.update_coefficients(
-                out_local.fsamples[out_local.nfev - 1 : out_local.nfev]
+            surrogateModel.update(
+                out_local.samples[out_local.nfev - 1, :].reshape(1, -1),
+                out_local.fsamples[out_local.nfev - 1 : out_local.nfev],
             )
 
             if out_local.nfev == failtolerance:
@@ -1253,11 +1249,9 @@ def cptv(
                 callback=callback,
             )
 
-            surrogateModel.update_samples(
-                out_local.samples[out_local.nfev - 1, :].reshape(1, -1)
-            )
-            surrogateModel.update_coefficients(
-                out_local.fsamples[out_local.nfev - 1 : out_local.nfev]
+            surrogateModel.update(
+                out_local.samples[out_local.nfev - 1, :].reshape(1, -1),
+                out_local.fsamples[out_local.nfev - 1 : out_local.nfev],
             )
 
             if out_local.nfev == failtolerance:
@@ -1312,8 +1306,9 @@ def cptv(
                 callback(out_local)
 
             if np.linalg.norm((out.x - out_local.x) / (xup - xlow)) >= tol:
-                surrogateModel.update_samples(out_local.x.reshape(1, -1))
-                surrogateModel.update_coefficients([out_local.fx])
+                surrogateModel.update(
+                    out_local.x.reshape(1, -1), [out_local.fx]
+                )
 
             if disp:
                 print("Local step ended after ", out_local.nfev, "f evals.")
@@ -1504,8 +1499,7 @@ def socemo(
         t0 = time.time()
         if out.nfev > 0:
             for i in range(objdim):
-                surrogateModels[i].update_samples(xselected)
-                surrogateModels[i].update_coefficients(ySelected[:, i])
+                surrogateModels[i].update(xselected, ySelected[:, i])
         tf = time.time()
         if disp:
             print("Time to update surrogate model: %f s" % (tf - t0))
@@ -1755,8 +1749,7 @@ def gosac(
         t0 = time.time()
         if out.nfev > 0:
             for i in range(gdim):
-                surrogateModels[i].update_samples(xselected)
-                surrogateModels[i].update_coefficients(ySelected[:, i])
+                surrogateModels[i].update(xselected, ySelected[:, i])
         tf = time.time()
         if disp:
             print("Time to update surrogate model: %f s" % (tf - t0))
@@ -1837,8 +1830,7 @@ def gosac(
         t0 = time.time()
         if out.nfev > 0:
             for i in range(gdim):
-                surrogateModels[i].update_samples(xselected)
-                surrogateModels[i].update_coefficients(ySelected[:, i])
+                surrogateModels[i].update(xselected, ySelected[:, i])
         tf = time.time()
         if disp:
             print("Time to update surrogate model: %f s" % (tf - t0))
