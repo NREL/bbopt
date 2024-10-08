@@ -91,12 +91,12 @@ class OptimizeResult:
         All objective function values on sampled points.
     """
 
-    x: np.ndarray = np.array([])
+    x: Optional[np.ndarray] = None
     fx: Union[float, np.ndarray] = np.inf
     nit: int = 0
     nfev: int = 0
-    samples: np.ndarray = np.array([])
-    fsamples: np.ndarray = np.array([])
+    samples: Optional[np.ndarray] = None
+    fsamples: Optional[np.ndarray] = None
 
     def init(
         self,
