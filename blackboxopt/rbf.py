@@ -110,11 +110,11 @@ class RbfModel:
 
     def __init__(
         self,
-        rbf_type: RbfKernel = RbfKernel.CUBIC,
+        kernel: RbfKernel = RbfKernel.CUBIC,
         iindex: tuple[int, ...] = (),
         filter: Optional[RbfFilter] = None,
     ):
-        self.type = rbf_type
+        self.type = kernel
         self.iindex = iindex
         self.filter = RbfFilter() if filter is None else filter
 

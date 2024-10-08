@@ -1556,7 +1556,7 @@ class MaximizeEI(AcquisitionFunction):
 
     def __init__(self, sampler=None, avoid_clusters: bool = False) -> None:
         super().__init__()
-        self.sampler = Mitchel91Sampler(100) if sampler is None else sampler
+        self.sampler = Sampler(1) if sampler is None else sampler
         self.avoid_clusters = avoid_clusters
 
     def acquire(
@@ -1602,11 +1602,10 @@ class MaximizeEI(AcquisitionFunction):
             x = self.sampler.get_sample(
                 bounds, current_samples=current_samples
             )
-            x = np.concatenate(([xs], x), axis=0)
-            nCand = len(x)
         else:
             x = self.sampler.get_sample(bounds)
-            nCand = len(x)
+        x = np.concatenate(([xs], x), axis=0)
+        nCand = len(x)
 
         # Create EI and kernel matrices
         eiCand = np.array(
@@ -1618,8 +1617,11 @@ class MaximizeEI(AcquisitionFunction):
             return x[np.flip(np.argsort(eiCand)[-n:]), :]
 
         # Rescale EI to [0,1] and create the kernel matrix with all candidates
-        eiCand = (eiCand - eiCand.min()) / (eiCand.max() - eiCand.min())
-        Kss = (surrogateModel.kernel())(x, x)
+        if eiCand.max() > eiCand.min():
+            eiCand = (eiCand - eiCand.min()) / (eiCand.max() - eiCand.min())
+        else:
+            eiCand = np.ones_like(eiCand)
+        Kss = (surrogateModel.get_kernel())(x, x)
 
         # Score to be maximized and vector with the indexes of the candidates
         # chosen.

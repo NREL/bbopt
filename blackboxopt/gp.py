@@ -90,7 +90,7 @@ class GaussianProcess(GaussianProcessRegressor):
     def samples(self) -> np.ndarray:
         return self.X_train_
 
-    def kernel(self):
+    def get_kernel(self):
         return self.kernel_
 
     def min_design_space_size(self, dim: int) -> int:

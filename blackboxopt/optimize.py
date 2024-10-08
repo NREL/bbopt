@@ -48,6 +48,9 @@ from scipy.spatial.distance import cdist
 from pymoo.operators.survival.rank_and_crowding import RankAndCrowding
 from pymoo.core.mixed import MixedVariableGA, MixedVariableMating
 
+# Scikit-Learn imports
+from sklearn.gaussian_process.kernels import RBF as GPkernelRBF
+
 # Local imports
 from .acquisition import (
     CoordinatePerturbation,
@@ -1897,7 +1900,9 @@ def bayesian_optimization(
 
     # Initialize optional variables
     if surrogateModel is None:
-        surrogateModel = GaussianProcess()
+        surrogateModel = GaussianProcess(
+            kernel=GPkernelRBF(), n_restarts_optimizer=20, normalize_y=True
+        )
     if samples is None:
         samples = np.empty((0, dim))
     if acquisitionFunc is None:
@@ -1950,7 +1955,7 @@ def bayesian_optimization(
             print("Time to acquire new samples: %f s" % (tf - t0))
 
         # Compute f(xselected)
-        NumberNewSamples = xselected.shape[0]
+        NumberNewSamples = len(xselected)
         ySelected = np.asarray(fun(xselected))
 
         # Update best point found so far if necessary
