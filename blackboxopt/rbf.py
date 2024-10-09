@@ -932,3 +932,6 @@ class RbfModel:
             return False
         P = self.pbasis(samples)
         return np.linalg.matrix_rank(P) == P.shape[1]
+
+    def get_iindex(self) -> tuple[int, ...]:
+        return self.iindex

@@ -121,3 +121,6 @@ class GaussianProcess(GaussianProcessRegressor):
 
     def nsamples(self) -> int:
         return len(self.samples())
+
+    def get_iindex(self) -> tuple[int, ...]:
+        return ()

@@ -109,6 +109,28 @@ class OptimizeResult:
         surrogateModel=None,
         samples: Optional[np.ndarray] = None,
     ) -> None:
+        """Initialize the output of the optimization.
+
+        Parameters
+        ----------
+        fun : callable
+            The objective function to be minimized.
+        bounds
+            Bounds for variables. Each element of the tuple must be a tuple with two
+            elements, corresponding to the lower and upper bound for the variable.
+        mineval : int
+            Minimum number of function evaluations to build the surrogate model.
+        maxeval : int
+            Maximum number of function evaluations.
+        x0y0 : tuple-like, optional
+            Initial guess for the solution and the value of the objective function
+            at the initial guess.
+        surrogateModel : surrogate model, optional
+            Surrogate model to be used. The default is RbfModel().
+        samples : np.ndarray, optional
+            Initial samples to be added to the surrogate model. The default is an
+            empty array.
+        """
         dim = len(bounds)  # Dimension of the problem
         assert dim > 0
 
@@ -126,6 +148,7 @@ class OptimizeResult:
         m0 = surrogateModel.nsamples()
         m = min(len(samples), maxeval)
         m_for_surrogate = surrogateModel.min_design_space_size(dim)
+        iindex = surrogateModel.get_iindex()
 
         # Initialize self.x and self.fx
         if m0 > 0:
@@ -133,32 +156,45 @@ class OptimizeResult:
             self.x = surrogateModel.sample(iBest).copy()
             self.fx = surrogateModel.get_fsamples()[iBest].item()
         else:
-            self.x = np.array(
-                [(bounds[i][0] + bounds[i][1]) / 2 for i in range(dim)]
-            )
+            self.x = Sampler(1).get_slhd_sample(bounds, iindex=iindex)[0]
             self.fx = np.Inf
 
         # If the surrogate is empty and no initial samples were given
         if m == 0 and m0 == 0:
             # Create new samples with SLHD
-            m = min(maxeval, max(mineval, m_for_surrogate))
-            self.samples[0:m, :] = Sampler(m).get_slhd_sample(bounds)
+            m = min(maxeval, max(mineval, 2 * m_for_surrogate))
+            self.samples[0:m, :] = Sampler(m).get_slhd_sample(
+                bounds, iindex=iindex
+            )
             if m >= m_for_surrogate:
                 count = 0
                 while not surrogateModel.check_initial_design(
                     self.samples[0:m, :]
                 ):
-                    self.samples[0:m, :] = Sampler(m).get_slhd_sample(bounds)
+                    self.samples[0:m, :] = Sampler(m).get_slhd_sample(
+                        bounds, iindex=iindex
+                    )
                     count += 1
                     if count > 100:
                         raise RuntimeError(
                             "Cannot create valid initial design"
                         )
-        # If samples were provided, check they are a initial designn for the
-        # surrogate
-        elif m >= m_for_surrogate:
+        # If samples were provided, use them
+        elif m > 0:
             self.samples[0:m, :] = samples
-            assert surrogateModel.check_initial_design(self.samples[0:m, :])
+
+            # check they have integer values for integer variables
+            if iindex:
+                if any(samples[:, iindex] != np.round(samples[:, iindex])):
+                    raise ValueError(
+                        "Initial samples must be integer values for integer variables"
+                    )
+
+            # check they are a initial design for the surrogate
+            if m >= m_for_surrogate:
+                assert surrogateModel.check_initial_design(
+                    self.samples[0:m, :]
+                )
 
         # Evaluate initial samples and update self.ut
         if m > 0:
@@ -182,133 +218,6 @@ class OptimizeResult:
             raise ValueError(
                 "Provide feasible initial samples or an initial guess"
             )
-
-
-def initialize_surrogate(
-    fun,
-    bounds,
-    mineval: int,
-    maxeval: int,
-    x0y0=(),
-    *,
-    surrogateModel=None,
-    samples: Optional[np.ndarray] = None,
-) -> OptimizeResult:
-    """Initialize the surrogate model and the output of the optimization.
-
-    Parameters
-    ----------
-    fun : callable
-        The objective function to be minimized.
-    bounds
-        Bounds for variables. Each element of the tuple must be a tuple with two
-        elements, corresponding to the lower and upper bound for the variable.
-    mineval : int
-        Minimum number of function evaluations to build the surrogate model.
-    maxeval : int
-        Maximum number of function evaluations.
-    x0y0 : tuple-like, optional
-        Initial guess for the solution and the value of the objective function
-        at the initial guess.
-    surrogateModel : surrogate model, optional
-        Surrogate model to be used. The default is RbfModel().
-    samples : np.ndarray, optional
-        Initial samples to be added to the surrogate model. The default is an
-        empty array.
-
-    Returns
-    -------
-    OptimizeResult
-        The optimization result.
-    """
-    dim = len(bounds)  # Dimension of the problem
-    assert dim > 0
-
-    # Initialize optional variables
-    if surrogateModel is None:
-        surrogateModel = RbfModel()
-    if samples is None:
-        samples = np.array([])
-
-    # Initialize output
-    out = OptimizeResult(
-        x=np.array([]),
-        fx=np.inf,
-        nit=0,
-        nfev=0,
-        samples=np.zeros((maxeval, dim)),
-        fsamples=np.zeros(maxeval),
-    )
-
-    # Number of initial samples
-    m0 = surrogateModel.nsamples()
-    m = min(samples.shape[0], maxeval)
-
-    # Initialize out.x and out.fx
-    if m0 > 0:
-        iBest = np.argmin(surrogateModel.get_fsamples()).item()
-        out.x = surrogateModel.sample(iBest).copy()
-        out.fx = surrogateModel.get_fsamples()[iBest].item()
-    else:
-        out.x = np.array(
-            [(bounds[i][0] + bounds[i][1]) / 2 for i in range(dim)]
-        )
-        out.fx = np.Inf
-
-    # Add new samples to the surrogate model
-    if m == 0 and surrogateModel.nsamples() == 0:
-        # Initialize surrogate model
-        surrogateModel.create_initial_design(dim, bounds, mineval, maxeval)
-        m = surrogateModel.nsamples()
-    else:
-        # Add samples to the surrogate model
-        if m > 0:
-            surrogateModel.update_samples(samples)
-        # Check if samples are integer values for integer variables
-        if surrogateModel.iindex:
-            if any(
-                surrogateModel.samples()[:, surrogateModel.iindex]
-                != np.round(surrogateModel.samples()[:, surrogateModel.iindex])
-            ):
-                raise ValueError(
-                    "Initial samples must be integer values for integer variables"
-                )
-        # Check if samples are sufficient to build the surrogate model
-        if (
-            np.linalg.matrix_rank(surrogateModel.get_matrixP())
-            != surrogateModel.pdim()
-        ):
-            raise ValueError(
-                "Initial samples are not sufficient to build the surrogate model"
-            )
-
-    # Evaluate initial samples and update output
-    if m > 0:
-        # Add new samples to the output
-        out.samples[0:m, :] = surrogateModel.samples()[m0:, :]
-
-        # Compute f(samples)
-        out.fsamples[0:m] = fun(out.samples[0:m, :])
-        out.nfev = m
-
-        # Update output variables
-        iBest = np.argmin(out.fsamples[0:m]).item()
-        if out.fsamples[iBest] < out.fx:
-            out.x[:] = out.samples[iBest, :]
-            out.fx = out.fsamples[iBest].item()
-
-    # If initial guess is provided, consider it in the output
-    if len(x0y0) >= 2:
-        if x0y0[1] < out.fx:
-            out.x[:] = x0y0[0]
-            out.fx = x0y0[1]
-
-    if out.fx == np.inf:
-        raise ValueError(
-            "Provide feasible initial samples or an initial guess"
-        )
-
-    return out
 
 
 def initialize_moo_surrogate(
@@ -647,7 +556,8 @@ def stochastic_response_surface(
     surrogateModel.reserve(surrogateModel.nsamples() + maxeval, dim)
 
     # Initialize output
-    out = initialize_surrogate(
+    out = OptimizeResult()
+    out.init(
         fun,
         bounds,
         newSamplesPerIteration,
@@ -673,7 +583,7 @@ def stochastic_response_surface(
     succtolerance = 3  # Number of consecutive significant improvements before the algorithm modifies the sampler
 
     # do until max number of f-evals reached or local min found
-    xselected = np.empty((0, dim))
+    xselected = np.copy(out.samples[0 : out.nfev, :])
     ySelected = np.copy(out.fsamples[0 : out.nfev])
     while out.nfev < maxeval:
         if disp:
@@ -972,7 +882,8 @@ def target_value_optimization(
     surrogateModel.reserve(surrogateModel.nsamples() + maxeval, dim)
 
     # Initialize output
-    out = initialize_surrogate(
+    out = OptimizeResult()
+    out.init(
         fun,
         bounds,
         newSamplesPerIteration,
@@ -987,12 +898,8 @@ def target_value_optimization(
         callback(out)
 
     # max value of f
-    if surrogateModel.nsamples() - out.nfev > 0:
-        maxf = np.max(
-            surrogateModel.get_fsamples()[
-                0 : surrogateModel.nsamples() - out.nfev
-            ]
-        ).item()
+    if surrogateModel.nsamples() > 0:
+        maxf = np.max(surrogateModel.get_fsamples()).item()
     else:
         maxf = -np.Inf
     if out.nfev > 0:
@@ -1010,7 +917,7 @@ def target_value_optimization(
         failtolerance = max(failtolerance, dim)  # must be at least dim
 
     # do until max number of f-evals reached or local min found
-    xselected = np.empty((0, dim))
+    xselected = np.copy(out.samples[0 : out.nfev, :])
     ySelected = np.copy(out.fsamples[0 : out.nfev])
     while out.nfev < maxeval:
         if disp:
