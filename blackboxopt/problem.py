@@ -40,7 +40,7 @@ def _get_vars(bounds, iindex=()) -> dict:
     ----------
     bounds : tuple or list
         Bounds for the variables.
-    iindex : list-like, optional
+    iindex : sequence, optional
         Index of the integer variables, by default ().
         If empty, all variables are real.
 

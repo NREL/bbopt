@@ -25,7 +25,12 @@ __deprecated__ = False
 
 import numpy as np
 import pytest
-from blackboxopt.sampling import NormalSampler, Sampler, SamplingStrategy
+from blackboxopt.sampling import (
+    Mitchel91Sampler,
+    NormalSampler,
+    Sampler,
+    SamplingStrategy,
+)
 
 
 @pytest.mark.parametrize("dim", [1, 2, 3, 10])
@@ -91,11 +96,29 @@ def test_normal_sampler(dim: int, strategy: SamplingStrategy):
             assert np.all(sample[:, j] >= -1)
             assert np.all(sample[:, j] <= 1)
 
-        # Check that the values do not repeat in the slhd case
-        if strategy == SamplingStrategy.SLHD:
-            for j in range(dim):
-                u, c = np.unique(sample[:, j], return_counts=True)
-                assert u[c > 1].size == 0
+
+@pytest.mark.parametrize("dim", [1, 2, 3, 10])
+@pytest.mark.parametrize("n0", [0, 1, 10])
+def test_mitchel91_sampler(dim: int, n0: int):
+    n = 2 * (dim + 1)
+    bounds = [(-1, 1)] * dim
+    samples0 = np.random.rand(n0, dim)
+
+    # Set seed to 5 for reproducibility
+    np.random.seed(5)
+
+    for i in range(3):
+        sample = Mitchel91Sampler(n).get_sample(
+            bounds, current_samples=samples0
+        )
+
+        # Check if the shape is correct
+        assert sample.shape == (n, dim)
+
+        # Check if the values are within the bounds
+        for j in range(dim):
+            assert np.all(sample[:, j] >= -1)
+            assert np.all(sample[:, j] <= 1)
 
 
 @pytest.mark.parametrize("boundx", [(0, 1), (-1, 1), (-6, 5)])
@@ -156,3 +179,26 @@ def test_slhd(boundx):
             for i in range(dim):
                 u, c = np.unique(sample[:, i], return_counts=True)
                 assert u[c > 1].size == 0
+
+
+@pytest.mark.parametrize("boundx", [(0, 1), (-1, 1), (-6, 5)])
+@pytest.mark.parametrize("n0", [0, 1, 10])
+def test_iindex_mitchel91_sampler(boundx, n0: int):
+    dim = 10
+    n = 2 * (dim + 1)
+    bounds = [boundx] * dim
+    samples0 = np.random.rand(n0, dim)
+
+    # Set seed to 5 for reproducibility
+    np.random.seed(5)
+
+    for i in range(3):
+        iindex = np.random.choice(dim, size=dim // 2)
+
+        sample = Mitchel91Sampler(n).get_sample(
+            bounds, iindex=iindex, current_samples=samples0
+        )
+
+        # Check if the sample has integer values in the iindex
+        for i in iindex:
+            assert np.all(sample[:, i] - np.round(sample[:, i]) == 0)

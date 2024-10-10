@@ -37,6 +37,9 @@ __deprecated__ = False
 import numpy as np
 from enum import Enum
 
+from scipy.spatial.distance import cdist
+from scipy.spatial import KDTree
+
 
 class SamplingStrategy(Enum):
     NORMAL = 1  # normal distribution
@@ -44,6 +47,7 @@ class SamplingStrategy(Enum):
     UNIFORM = 3  # uniform distribution
     DDS_UNIFORM = 4  # sample half DDS, then half uniform distribution
     SLHD = 5  # Symmetric Latin Hypercube Design
+    MITCHEL91 = 6  # Cover empty regions in the search space
 
 
 class Sampler:
@@ -72,9 +76,8 @@ class Sampler:
 
         Parameters
         ----------
-        bounds
-            Bounds for variables. Each element of the tuple must be a tuple with two elements,
-            corresponding to the lower and upper bound for the variable.
+        bounds : sequence
+            List with the limits [x_min,x_max] of each direction x in the space.
         iindex : tuple, optional
             Indices of the input space that are integer. The default is ().
 
@@ -106,9 +109,8 @@ class Sampler:
 
         Parameters
         ----------
-        bounds
-            Bounds for variables. Each element of the tuple must be a tuple with two elements,
-            corresponding to the lower and upper bound for the variable.
+        bounds : sequence
+            List with the limits [x_min,x_max] of each direction x in the space.
         iindex : tuple, optional
             Indices of the input space that are integer. The default is ().
 
@@ -152,7 +154,7 @@ class Sampler:
 
                 for i in range(k):
                     # Use numpy functions for better performance
-                    if np.random.random() < 0.5:
+                    if np.random.rand() < 0.5:
                         P[m - 1 - i, j] = m - 1 - P[i, j]
                     else:
                         P[m - 1 - i, j] = P[i, j]
@@ -171,9 +173,8 @@ class Sampler:
 
         Parameters
         ----------
-        bounds
-            Bounds for variables. Each element of the tuple must be a tuple with two elements,
-            corresponding to the lower and upper bound for the variable.
+        bounds : sequence
+            List with the limits [x_min,x_max] of each direction x in the space.
         iindex : tuple, optional
             Indices of the input space that are integer. The default is ().
         """
@@ -230,9 +231,8 @@ class NormalSampler(Sampler):
 
         Parameters
         ----------
-        bounds
-            Bounds for variables. Each element of the tuple must be a tuple with two elements,
-            corresponding to the lower and upper bound for the variable.
+        bounds : sequence
+            List with the limits [x_min,x_max] of each direction x in the space.
         iindex : tuple, optional
             Indices of the input space that are integer. The default is ().
         mu : array-like, optional
@@ -281,9 +281,8 @@ class NormalSampler(Sampler):
 
         Parameters
         ----------
-        bounds
-            Bounds for variables. Each element of the tuple must be a tuple with two elements,
-            corresponding to the lower and upper bound for the variable.
+        bounds : sequence
+            List with the limits [x_min,x_max] of each direction x in the space.
         probability : float
             Perturbation probability.
         iindex : tuple, optional
@@ -359,9 +358,8 @@ class NormalSampler(Sampler):
 
         Parameters
         ----------
-        bounds
-            Bounds for variables. Each element of the tuple must be a tuple with two elements,
-            corresponding to the lower and upper bound for the variable.
+        bounds : sequence
+            List with the limits [x_min,x_max] of each direction x in the space.
         iindex : tuple, optional
             Indices of the input space that are integer. The default is ().
         mu : array-like, optional
@@ -404,4 +402,95 @@ class NormalSampler(Sampler):
             return np.concatenate((sample0, sample1), axis=0)
         else:
             assert coord == ()
+            return super().get_sample(bounds, iindex=iindex)
+
+
+class Mitchel91Sampler(Sampler):
+    """Best candidate algorithm from [#]_.
+
+    Attributes
+    ----------
+    maxCand : int | None
+        The maximum number of random candidate samples, from which each new
+        sample is selected. Defaults to 10*n
+    scale : float
+        A scale factor. The bigger it is, the more candidate samples in each
+        iteration. Defaults to 2.0
+
+    References
+    ----------
+    .. [#] Mitchell, D. P. (1991). Spectrally optimal sampling for distribution
+        ray tracing. Computer Graphics, 25, 157–164.
+    """
+
+    def __init__(
+        self,
+        n: int,
+        strategy: SamplingStrategy = SamplingStrategy.MITCHEL91,
+        *,
+        maxCand: int = 0,
+        scale: float = 2.0,
+    ) -> None:
+        super().__init__(n, strategy)
+        self.maxCand = maxCand if maxCand > 0 else 10 * n
+        self.scale = scale
+
+    def get_sample(
+        self, bounds, *, iindex: tuple[int, ...] = (), current_samples=[]
+    ) -> np.ndarray:
+        """Generate a set of samples that aims to fill gaps in the search space.
+
+        Parameters
+        ----------
+        bounds : sequence
+            List with the limits [x_min,x_max] of each direction x in the space.
+        iindex : tuple, optional
+            Indices of the input space that are integer. The default is ().
+        current_samples
+            Samples already used.
+
+        References
+        ----------
+        .. [#] Mitchell, D. P. (1991). Spectrally optimal sampling for distribution
+            ray tracing. Computer Graphics, 25, 157–164.
+        """
+        if self.strategy == SamplingStrategy.MITCHEL91:
+            dim = len(bounds)
+            ncurrent = len(current_samples)
+            cand = np.empty((self.n, dim))
+
+            if ncurrent == 0:
+                # Select the first sample randomly in the domain
+                cand[0, :] = self.get_uniform_sample(bounds, iindex=iindex)[0]
+                i0 = 1
+            else:
+                i0 = 0
+
+            if ncurrent > 0:
+                tree = KDTree(current_samples)
+
+            # Choose candidates that are far from samples and from each other
+            for i in range(i0, self.n):
+                npool = int(min(self.scale * (i + ncurrent), self.maxCand))
+
+                # Pool of candidates in iteration i
+                candPool = Sampler(npool).get_uniform_sample(
+                    bounds, iindex=iindex
+                )
+
+                # Compute distance to current samples
+                minDist = tree.query(candPool)[0] if ncurrent > 0 else 0
+
+                # Now, consider distance to candidates selected up to iteration i-1
+                if i > 0:
+                    minDist = np.minimum(
+                        minDist, np.min(cdist(candPool, cand[0:i, :]), axis=1)
+                    )
+
+                # Choose the farthest point
+                cand[i, :] = candPool[np.argmax(minDist), :]
+
+            return cand
+        else:
+            assert len(current_samples) == 0
             return super().get_sample(bounds, iindex=iindex)
