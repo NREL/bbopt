@@ -81,6 +81,7 @@ class GaussianProcess(GaussianProcessRegressor):
             random_state=random_state,
         )
         self.X_train_ = np.array([])
+        self.y_train_ = np.array([])
         self._y_train_mean = np.array([])
         self._y_train_std = np.array([])
 
@@ -108,12 +109,7 @@ class GaussianProcess(GaussianProcessRegressor):
     def update(self, Xnew, ynew) -> None:
         if self.nsamples() > 0:
             X = np.concatenate((self.samples(), Xnew), axis=0)
-            y = np.concatenate(
-                (
-                    (self._y_train_mean + self.y_train_ * self._y_train_std),
-                    ynew,
-                )
-            )
+            y = np.concatenate((self.get_fsamples(), ynew), axis=0)
         else:
             X = Xnew
             y = ynew
@@ -124,3 +120,13 @@ class GaussianProcess(GaussianProcessRegressor):
 
     def get_iindex(self) -> tuple[int, ...]:
         return ()
+
+    def get_fsamples(self) -> np.ndarray:
+        """Get f(x) for the sampled points.
+
+        Returns
+        -------
+        out: np.ndarray
+            m vector with the function values.
+        """
+        return self._y_train_mean + self.y_train_ * self._y_train_std

@@ -1635,6 +1635,7 @@ class MaximizeEI(AcquisitionFunction):
             Kii = Kss[i, i]
             score[i] = ((np.dot(Ksi, Ksi) / Kii) / nCand) * eiCand[i]
         iBest[j] = np.argmax(score)
+        eiCand[iBest[j]] = 0.0  # Remove this candidate expectancy
 
         # Remaining iterations
         for j in range(1, n):
@@ -1658,6 +1659,11 @@ class MaximizeEI(AcquisitionFunction):
             # Reserve memory to avoid excessive dynamic allocations
             aux0 = np.empty(nCand)
             aux1 = np.empty((j, nCand))
+
+            # If the remaining candidates are not expected to improve the
+            # solution, choose sample based on the distance criterion only.
+            if np.max(eiCand) == 0.0:
+                eiCand[:] = 1.0
 
             # Compute the final score
             for i in range(nCand):
@@ -1686,5 +1692,6 @@ class MaximizeEI(AcquisitionFunction):
                     # assert(score[i] >= 0)
 
             iBest[j] = np.argmax(score)
+            eiCand[iBest[j]] = 0.0  # Remove this candidate expectancy
 
         return x[iBest, :]

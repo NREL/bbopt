@@ -34,6 +34,8 @@ from blackboxopt.optimize import (
     cptv,
     cptvl,
 )
+from blackboxopt.sampling import Sampler
+from blackboxopt.acquisition import MaximizeEI
 
 
 @pytest.mark.parametrize(
@@ -114,3 +116,30 @@ def test_multiple_calls(minimize):
     assert res0.nfev == res1.nfev
     assert np.all(res0.samples == res1.samples)
     assert np.all(res0.fsamples == res1.fsamples)
+
+
+def test_batched_sampling():
+    def ackley(x, n: int = 2):
+        from math import exp, sqrt, pi
+        import numpy as np
+
+        a = 20
+        b = 0.2
+        c = 2 * pi
+        return (
+            -a * exp(-b * sqrt(np.dot(x, x) / n))
+            - exp(np.sum(np.cos(c * np.asarray(x))) / n)
+            + a
+            + exp(1)
+        )
+
+    bounds = [[-32.768, 20], [-32.768, 32.768]]
+
+    out = bayesian_optimization(
+        lambda x: [ackley(xi - 3.14) for xi in x],
+        bounds=bounds,
+        maxeval=100,
+        newSamplesPerIteration=10,
+        acquisitionFunc=MaximizeEI(Sampler(1000), avoid_clusters=True),
+    )
+    assert out.nfev == 100
