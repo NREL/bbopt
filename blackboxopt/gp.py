@@ -33,7 +33,9 @@ from sklearn.gaussian_process import GaussianProcessRegressor
 
 
 def expected_improvement(mu, sigma, ybest):
-    """Expected Improvement function from [#]_.
+    """Expected Improvement function for the Gaussian Process from [#]_.
+
+    This is
 
     Parameters
     ----------
@@ -42,7 +44,7 @@ def expected_improvement(mu, sigma, ybest):
     sigma : float
         The standard deviation associated to the same variable.
     ybest : float
-        The best known value.
+        The best (smallest) known value in the current Gaussian Process.
 
     References
     ----------
@@ -56,7 +58,11 @@ def expected_improvement(mu, sigma, ybest):
 
 
 class GaussianProcess(GaussianProcessRegressor):
-    """Gaussian Process model."""
+    """Gaussian Process model.
+
+    Check or attributes and parameters in GaussianProcessRegressor from
+    Scikit-Learn, e.g., https://scikit-learn.org/dev/modules/generated/sklearn.gaussian_process.GaussianProcessRegressor.html.
+    """
 
     def __init__(
         self,
@@ -86,18 +92,44 @@ class GaussianProcess(GaussianProcessRegressor):
         self._y_train_std = np.array([])
 
     def __call__(self, x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Evaluates the model at one or multiple points.
+
+        Parameters
+        ----------
+        x : np.ndarray
+            m-by-d matrix with m point coordinates in a d-dimensional space.
+
+        Returns
+        -------
+        numpy.ndarray
+            Mean value predicted by the GP model on each of the input points.
+        numpy.ndarray
+            Std value predicted by the GP model on each of the input points.
+        """
         return self.predict(x, return_std=True, return_cov=False)
 
     def samples(self) -> np.ndarray:
+        """Get the sampled points.
+
+        Returns
+        -------
+        out: np.ndarray
+            m-by-d matrix with m point coordinates in a d-dimensional space.
+        """
         return self.X_train_
 
     def get_kernel(self):
+        """Get the kernel used for prediction. The structure of the kernel is
+        the same as the one passed as parameter but with optimized
+        hyperparameters."""
         return self.kernel_
 
     def min_design_space_size(self, dim: int) -> int:
+        """Return the minimum design space size for a given space dimension."""
         return 1 if dim > 0 else 0
 
     def check_initial_design(self, samples: np.ndarray) -> bool:
+        """Check if the set of samples is able to generate a valid surrogate."""
         if samples.ndim != 2 or len(samples) < 1:
             return False
         try:
@@ -107,6 +139,15 @@ class GaussianProcess(GaussianProcessRegressor):
             return False
 
     def update(self, Xnew, ynew) -> None:
+        """Updates the model with new pairs of data (x,y).
+
+        Parameters
+        ----------
+        Xnew : array-like
+            m-by-d matrix with m point coordinates in a d-dimensional space.
+        ynew : array-like
+            Function values on the sampled points.
+        """
         if self.nsamples() > 0:
             X = np.concatenate((self.samples(), Xnew), axis=0)
             y = np.concatenate((self.get_fsamples(), ynew), axis=0)
@@ -116,9 +157,17 @@ class GaussianProcess(GaussianProcessRegressor):
         self.fit(X, y)
 
     def nsamples(self) -> int:
+        """Get the number of sampled points.
+
+        Returns
+        -------
+        out: int
+            Number of sampled points.
+        """
         return len(self.samples())
 
     def get_iindex(self) -> tuple[int, ...]:
+        """Return iindex, the sequence of integer variable indexes."""
         return ()
 
     def get_fsamples(self) -> np.ndarray:

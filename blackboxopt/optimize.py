@@ -114,9 +114,9 @@ class OptimizeResult:
         ----------
         fun : callable
             The objective function to be minimized.
-        bounds
-            Bounds for variables. Each element of the tuple must be a tuple with two
-            elements, corresponding to the lower and upper bound for the variable.
+        bounds : sequence
+            List with the limits [x_min,x_max] of each direction x in the search
+            space.
         mineval : int
             Minimum number of function evaluations to build the surrogate model.
         maxeval : int
@@ -229,9 +229,9 @@ def initialize_moo_surrogate(
     ----------
     fun : callable
         The objective function to be minimized.
-    bounds
-        Bounds for variables. Each element of the tuple must be a tuple with two
-        elements, corresponding to the lower and upper bound for the variable.
+    bounds : sequence
+        List with the limits [x_min,x_max] of each direction x in the search
+        space.
     mineval : int
         Minimum number of function evaluations to build the surrogate model.
     maxeval : int
@@ -326,10 +326,7 @@ def initialize_moo_surrogate(
         ),
         axis=0,
     )
-    iPareto = find_pareto_front(
-        surrogateModels[0].samples(),
-        fallsamples,
-    )
+    iPareto = find_pareto_front(fallsamples)
     out.x = surrogateModels[0].samples()[iPareto, :].copy()
     out.fx = fallsamples[iPareto, :]
 
@@ -356,9 +353,9 @@ def initialize_surrogate_constraints(
         The constraint functions. Each constraint function must return a scalar
         value. If the constraint function returns a value greater than zero, it
         is considered a violation of the constraint.
-    bounds
-        Bounds for variables. Each element of the tuple must be a tuple with two
-        elements, corresponding to the lower and upper bound for the variable.
+    bounds : sequence
+        List with the limits [x_min,x_max] of each direction x in the search
+        space.
     mineval : int
         Minimum number of function evaluations to build the surrogate model.
     maxeval : int
@@ -482,9 +479,9 @@ def stochastic_response_surface(
     ----------
     fun : callable
         The objective function to be minimized.
-    bounds
-        Bounds for variables. Each element of the tuple must be a tuple with two
-        elements, corresponding to the lower and upper bound for the variable.
+    bounds : sequence
+        List with the limits [x_min,x_max] of each direction x in the search
+        space.
     maxeval : int
         Maximum number of function evaluations.
     x0y0 : tuple-like, optional
@@ -711,13 +708,15 @@ def multistart_stochastic_response_surface(
     """Minimize a scalar function of one or more variables using a surrogate
     model.
 
+    This method is based on [#]_.
+
     Parameters
     ----------
     fun : callable
         The objective function to be minimized.
-    bounds
-        Bounds for variables. Each element of the tuple must be a tuple with two
-        elements, corresponding to the lower and upper bound for the variable.
+    bounds : sequence
+        List with the limits [x_min,x_max] of each direction x in the search
+        space.
     maxeval : int
         Maximum number of function evaluations.
     surrogateModel : surrogate model, optional
@@ -742,6 +741,13 @@ def multistart_stochastic_response_surface(
     -------
     OptimizeResult
         The optimization result.
+
+    References
+    ----------
+
+    .. [#] Rommel G Regis and Christine A Shoemaker. A stochastic radial basis
+        function method for the global optimization of expensive functions.
+        INFORMS Journal on Computing, 19(4):497–509, 2007.
     """
     dim = len(bounds)  # Dimension of the problem
     assert dim > 0
@@ -818,9 +824,9 @@ def target_value_optimization(
     ----------
     fun : callable
         The objective function to be minimized.
-    bounds
-        Bounds for variables. Each element of the tuple must be a tuple with two
-        elements, corresponding to the lower and upper bound for the variable.
+    bounds : sequence
+        List with the limits [x_min,x_max] of each direction x in the search
+        space.
     maxeval : int
         Maximum number of function evaluations.
     x0y0 : tuple-like, optional
@@ -1006,13 +1012,15 @@ def cptv(
     """Minimize a scalar function of one or more variables using the coordinate
     perturbation and target value strategy.
 
+    This method is based on [#]_.
+
     Parameters
     ----------
     fun : callable
         The objective function to be minimized.
-    bounds
-        Bounds for variables. Each element of the tuple must be a tuple with two
-        elements, corresponding to the lower and upper bound for the variable.
+    bounds : sequence
+        List with the limits [x_min,x_max] of each direction x in the search
+        space.
     maxeval : int
         Maximum number of function evaluations.
     surrogateModel : surrogate model, optional
@@ -1052,6 +1060,12 @@ def cptv(
     -------
     OptimizeResult
         The optimization result.
+
+    References
+    ----------
+
+    .. [#] Müller, J. MISO: mixed-integer surrogate optimization framework.
+        Optim Eng 17, 177–203 (2016). https://doi.org/10.1007/s11081-015-9281-2
     """
     dim = len(bounds)  # Dimension of the problem
     assert dim > 0
@@ -1264,7 +1278,7 @@ def cptvl(
     disp: bool = False,
     callback: Optional[Callable[[OptimizeResult], None]] = None,
 ) -> OptimizeResult:
-    """Wrapper to cptv. See cptv."""
+    """Wrapper to cptv. See :meth:`blackboxopt.optimize.cptv`."""
     return cptv(
         fun,
         bounds,
@@ -1292,15 +1306,16 @@ def socemo(
     disp: bool = False,
     callback: Optional[Callable[[OptimizeResult], None]] = None,
 ):
-    """Minimize a multiobjective function using the surrogate model approach from [#]_.
+    """Minimize a multiobjective function using the surrogate model approach
+    from [#]_.
 
     Parameters
     ----------
     fun : callable
         The objective function to be minimized.
-    bounds
-        Bounds for variables. Each element of the tuple must be a tuple with two
-        elements, corresponding to the lower and upper bound for the variable.
+    bounds : sequence
+        List with the limits [x_min,x_max] of each direction x in the search
+        space.
     maxeval : int
         Maximum number of function evaluations.
     surrogateModels : tuple, optional
@@ -1522,7 +1537,7 @@ def socemo(
         # Update the Pareto front
         out.x = np.concatenate((out.x, xselected), axis=0)
         out.fx = np.concatenate((out.fx, ySelected), axis=0)
-        iPareto = find_pareto_front(out.x, out.fx)
+        iPareto = find_pareto_front(out.fx)
         out.x = out.x[iPareto, :]
         out.fx = out.fx[iPareto, :]
 
@@ -1563,6 +1578,8 @@ def gosac(
     function is assumed to be cheap to evaluate, while the constraints are
     assumed to be expensive to evaluate.
 
+    This method is based on [#]_.
+
     Parameters
     ----------
     fun : callable
@@ -1570,9 +1587,9 @@ def gosac(
     gfun : callable
         The constraint function to be minimized. The constraints must be
         formulated as g(x) <= 0.
-    bounds
-        Bounds for variables. Each element of the tuple must be a tuple with two
-        elements, corresponding to the lower and upper bound for the variable.
+    bounds : sequence
+        List with the limits [x_min,x_max] of each direction x in the search
+        space.
     maxeval : int
         Maximum number of function evaluations.
     surrogateModels : tuple, optional
@@ -1591,6 +1608,13 @@ def gosac(
     -------
     OptimizeResult
         The optimization result.
+
+    References
+    ----------
+    .. [#] Juliane Müller and Joshua D. Woodbury. 2017. GOSAC: global
+        optimization with surrogate approximation of constraints. J. of Global
+        Optimization 69, 1 (September 2017), 117–136.
+        https://doi.org/10.1007/s10898-017-0496-y
     """
     dim = len(bounds)  # Dimension of the problem
     gdim = len(surrogateModels)  # Number of constraints
@@ -1796,6 +1820,52 @@ def bayesian_optimization(
     disp: bool = False,
     callback: Optional[Callable[[OptimizeResult], None]] = None,
 ) -> OptimizeResult:
+    """Minimize a scalar function of one or more variables via active learning
+    of a Gaussian Process model.
+
+    See [#]_ for details.
+
+    Parameters
+    ----------
+    fun : callable
+        The objective function to be minimized.
+    bounds : sequence
+        List with the limits [x_min,x_max] of each direction x in the search
+        space.
+    maxeval : int
+        Maximum number of function evaluations.
+    x0y0 : tuple-like, optional
+        Initial guess for the solution and the value of the objective function
+        at the initial guess.
+    surrogateModel : surrogate model, optional
+        Gaussian Process surrogate model. The default is GaussianProcess().
+        On exit, if provided, the surrogate model is updated to represent the
+        one used in the last iteration.
+    acquisitionFunc : MaximizeEI, optional
+        Acquisition function to be used.
+    samples : np.ndarray, optional
+        Initial samples to be added to the surrogate model. The default is an
+        empty array.
+    newSamplesPerIteration : int, optional
+        Number of new samples to be generated per iteration. The default is 1.
+    disp : bool, optional
+        If True, print information about the optimization process. The default
+        is False.
+    callback : callable, optional
+        If provided, the callback function will be called after each iteration
+        with the current optimization result. The default is None.
+
+    Returns
+    -------
+    OptimizeResult
+        The optimization result.
+
+    References
+    ----------
+    .. [#] Che Y, Müller J, Cheng C. Dispersion-enhanced sequential batch
+        sampling for adaptive contour estimation. Qual Reliab Eng Int. 2024;
+        40: 131–144. https://doi.org/10.1002/qre.3245
+    """
     dim = len(bounds)  # Dimension of the problem
     assert dim > 0
 

@@ -631,6 +631,15 @@ class RbfModel:
         self._valid_coefficients = False
 
     def update(self, Xnew, ynew) -> None:
+        """Updates the model with new pairs of data (x,y).
+
+        Parameters
+        ----------
+        Xnew : array-like
+            m-by-d matrix with m point coordinates in a d-dimensional space.
+        ynew : array-like
+            Function values on the sampled points.
+        """
         self.update_samples(Xnew)
         self.update_coefficients(ynew)
 
@@ -645,8 +654,8 @@ class RbfModel:
         ----------
         dim : int
             Dimension of the domain space.
-        bounds
-            Tuple of lower and upper bounds for each dimension of the domain
+        bounds : sequence
+            List with the limits [x_min,x_max] of each direction x in the domain
             space.
         minm : int, optional
             Minimum number of points to generate. If not provided, the initial
@@ -920,6 +929,7 @@ class RbfModel:
         return sqrtgn
 
     def min_design_space_size(self, dim: int) -> int:
+        """Return the minimum design space size for a given space dimension."""
         if self.type == RbfKernel.LINEAR:
             return 1
         elif self.type in (RbfKernel.CUBIC, RbfKernel.THINPLATE):
@@ -928,10 +938,12 @@ class RbfModel:
             raise ValueError("Unknown RBF type")
 
     def check_initial_design(self, samples: np.ndarray) -> bool:
+        """Check if the set of samples is able to generate a valid surrogate."""
         if samples.ndim != 2 or len(samples) < 1:
             return False
         P = self.pbasis(samples)
         return np.linalg.matrix_rank(P) == P.shape[1]
 
     def get_iindex(self) -> tuple[int, ...]:
+        """Return iindex, the sequence of integer variable indexes."""
         return self.iindex

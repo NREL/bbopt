@@ -65,13 +65,11 @@ from .problem import (
 )
 
 
-def find_pareto_front(x, fx, iStart=0) -> list:
+def find_pareto_front(fx, iStart=0) -> list:
     """Find the Pareto front given a set of points and their values.
 
     Parameters
     ----------
-    x : numpy.ndarray
-        n-by-d matrix with n samples in a d-dimensional space.
     fx : numpy.ndarray
         n-by-m matrix with the values of the objective function on the samples.
     iStart : int, optional
@@ -83,8 +81,8 @@ def find_pareto_front(x, fx, iStart=0) -> list:
     list
         Indices of the points that are in the Pareto front.
     """
-    pareto = [True] * len(x)
-    for i in range(iStart, len(x)):
+    pareto = [True] * len(fx)
+    for i in range(iStart, len(fx)):
         for j in range(i):
             if pareto[j]:
                 if all(fx[i] <= fx[j]) and any(fx[i] < fx[j]):
@@ -96,11 +94,18 @@ def find_pareto_front(x, fx, iStart=0) -> list:
                     # iteration was not a balid Pareto front
                     pareto[i] = False
                     break
-    return [i for i in range(len(x)) if pareto[i]]
+    return [i for i in range(len(fx)) if pareto[i]]
 
 
 class AcquisitionFunction:
-    """Base class for acquisition functions."""
+    """Base class for acquisition functions.
+
+    Acquisition functions are strategies to propose new sample points to a
+    surrogate. The acquisition functions here are modeled as objects with the
+    goals of adding states to the learning process. Moreover, this design
+    enables the definition of the acquire() method with a similar API when we
+    compare different acquisition strategies.
+    """
 
     def __init__(self) -> None:
         pass
@@ -112,14 +117,15 @@ class AcquisitionFunction:
         n: int = 1,
         **kwargs,
     ) -> np.ndarray:
-        """Acquire n points.
+        """Propose a maximum of n new samples to improve the surrogate.
 
         Parameters
         ----------
         surrogateModel : Surrogate model
             Surrogate model.
-        bounds
-            Bounds of the search space.
+        bounds : sequence
+            List with the limits [x_min,x_max] of each direction x in the search
+            space.
         n : int, optional
             Number of points to be acquired, or maximum requested number.
             The default is 1.
@@ -136,13 +142,16 @@ class WeightedAcquisition(AcquisitionFunction):
     """Acquisition based on the weighted average of function value and distance
     to previous samples.
 
+    This an abstract class. Subclasses must implement the method acquire().
+
     Attributes
     ----------
     tol : float
-        Tolerance value for excluding candidate points that are too close to already sampled points. The default is 1e-3.
-    weightpattern: list-like, optional
-        Weight(s) `w` to be used in the score given in a circular list.
-        The default is [0.2, 0.4, 0.6, 0.9, 0.95, 1].
+        Tolerance value for excluding candidates that are too close to already
+        sampled points. The default is 1e-3.
+    weightpattern: sequence, optional
+        Weight(s) `w` to be used in the score given as a circular list.
+        The default is (0.2, 0.4, 0.6, 0.9, 0.95, 1).
     """
 
     def __init__(
@@ -295,7 +304,7 @@ class WeightedAcquisition(AcquisitionFunction):
 
 
 class CoordinatePerturbation(WeightedAcquisition):
-    """Coordinate perturbation acquisition function.
+    """Acquisition function by coordinate perturbation.
 
     Attributes
     ----------
@@ -339,8 +348,9 @@ class CoordinatePerturbation(WeightedAcquisition):
         ----------
         surrogateModel : Surrogate model
             Surrogate model.
-        bounds
-            Bounds of the search space.
+        bounds : sequence
+            List with the limits [x_min,x_max] of each direction x in the search
+            space.
         n : int, optional
             Number of points to be acquired. The default is 1.
         xbest : array-like, optional
@@ -461,8 +471,9 @@ class UniformAcquisition(WeightedAcquisition):
         ----------
         surrogateModel : Surrogate model
             Surrogate model.
-        bounds
-            Bounds of the search space.
+        bounds : sequence
+            List with the limits [x_min,x_max] of each direction x in the search
+            space.
         n : int, optional
             Number of points to be acquired. The default is 1.
 
@@ -554,8 +565,9 @@ class TargetValueAcquisition(AcquisitionFunction):
         ----------
         surrogateModel : Surrogate model
             Surrogate model.
-        bounds
-            Bounds of the search space.
+        bounds : sequence
+            List with the limits [x_min,x_max] of each direction x in the search
+            space.
         n : int, optional
             Number of points to be acquired. The default is 1.
         sampleStage : int, optional
@@ -787,8 +799,9 @@ class MinimizeSurrogate(AcquisitionFunction):
         ----------
         surrogateModel : Surrogate model
             Surrogate model.
-        bounds
-            Bounds of the search space.
+        bounds : sequence
+            List with the limits [x_min,x_max] of each direction x in the search
+            space.
         n : int, optional
             Max number of points to be acquired. The default is 1.
 
@@ -1057,8 +1070,9 @@ class ParetoFront(AcquisitionFunction):
         ----------
         surrogateModels : list
             List of surrogate models.
-        bounds
-            Bounds of the search space.
+        bounds : sequence
+            List with the limits [x_min,x_max] of each direction x in the search
+            space.
         n : int, optional
             Number of points to be acquired. The default is 1.
         paretoFront : array-like, optional
@@ -1142,8 +1156,9 @@ class EndPointsParetoFront(AcquisitionFunction):
         ----------
         surrogateModels : list
             List of surrogate models.
-        bounds
-            Bounds of the search space.
+        bounds : sequence
+            List with the limits [x_min,x_max] of each direction x in the search
+            space.
         n : int, optional
             Maximum number of points to be acquired. The default is 1.
 
@@ -1263,8 +1278,9 @@ class MinimizeMOSurrogate(AcquisitionFunction):
         ----------
         surrogateModels : list
             List of surrogate models.
-        bounds
-            Bounds of the search space.
+        bounds : sequence
+            List with the limits [x_min,x_max] of each direction x in the search
+            space.
         n : int, optional
             Maximum number of points to be acquired. The default is 1.
 
@@ -1358,8 +1374,9 @@ class CoordinatePerturbationOverNondominated(AcquisitionFunction):
         ----------
         surrogateModels : list
             List of surrogate models.
-        bounds
-            Bounds of the search space.
+        bounds : sequence
+            List with the limits [x_min,x_max] of each direction x in the search
+            space.
         n : int
             Maximum number of points to be acquired. The default is 1.
         nondominated : array-like, optional
@@ -1411,7 +1428,6 @@ class CoordinatePerturbationOverNondominated(AcquisitionFunction):
             axis=0,
         )
         idxPredictedPareto = find_pareto_front(
-            nondominatedAndBestCandidates,
             fnondominatedAndBestCandidates,
             iStart=len(nondominated),
         )
@@ -1467,8 +1483,9 @@ class GosacSample(AcquisitionFunction):
         ----------
         surrogateModels : list
             List of surrogate models for the constraints.
-        bounds
-            Bounds of the search space.
+        bounds : sequence
+            List with the limits [x_min,x_max] of each direction x in the search
+            space.
         n : int, optional
             Number of points to be acquired. The default is 1.
 
@@ -1543,9 +1560,9 @@ class MaximizeEI(AcquisitionFunction):
     ----------
     sampler : Sampler
         Sampler to generate candidate points.
-    avoid_clusters : pymoo.optimizer
+    avoid_clusters : bool
         When sampling in batch, penalize candidates that are close to already
-        chosen ones. Inspired in [#]_.
+        chosen ones. Inspired in [#]_. Default is False.
 
     References
     ----------
@@ -1568,8 +1585,9 @@ class MaximizeEI(AcquisitionFunction):
         ----------
         surrogateModel : Surrogate model
             Surrogate model.
-        bounds
-            Bounds of the search space.
+        bounds : sequence
+            List with the limits [x_min,x_max] of each direction x in the search
+            space.
         n : int, optional
             Number of points to be acquired. The default is 1.
         ybest : array-like, optional

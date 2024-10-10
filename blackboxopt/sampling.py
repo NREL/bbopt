@@ -76,9 +76,8 @@ class Sampler:
 
         Parameters
         ----------
-        bounds
-            Bounds for variables. Each element of the tuple must be a tuple with two elements,
-            corresponding to the lower and upper bound for the variable.
+        bounds : sequence
+            List with the limits [x_min,x_max] of each direction x in the space.
         iindex : tuple, optional
             Indices of the input space that are integer. The default is ().
 
@@ -110,9 +109,8 @@ class Sampler:
 
         Parameters
         ----------
-        bounds
-            Bounds for variables. Each element of the tuple must be a tuple with two elements,
-            corresponding to the lower and upper bound for the variable.
+        bounds : sequence
+            List with the limits [x_min,x_max] of each direction x in the space.
         iindex : tuple, optional
             Indices of the input space that are integer. The default is ().
 
@@ -175,9 +173,8 @@ class Sampler:
 
         Parameters
         ----------
-        bounds
-            Bounds for variables. Each element of the tuple must be a tuple with two elements,
-            corresponding to the lower and upper bound for the variable.
+        bounds : sequence
+            List with the limits [x_min,x_max] of each direction x in the space.
         iindex : tuple, optional
             Indices of the input space that are integer. The default is ().
         """
@@ -234,9 +231,8 @@ class NormalSampler(Sampler):
 
         Parameters
         ----------
-        bounds
-            Bounds for variables. Each element of the tuple must be a tuple with two elements,
-            corresponding to the lower and upper bound for the variable.
+        bounds : sequence
+            List with the limits [x_min,x_max] of each direction x in the space.
         iindex : tuple, optional
             Indices of the input space that are integer. The default is ().
         mu : array-like, optional
@@ -285,9 +281,8 @@ class NormalSampler(Sampler):
 
         Parameters
         ----------
-        bounds
-            Bounds for variables. Each element of the tuple must be a tuple with two elements,
-            corresponding to the lower and upper bound for the variable.
+        bounds : sequence
+            List with the limits [x_min,x_max] of each direction x in the space.
         probability : float
             Perturbation probability.
         iindex : tuple, optional
@@ -363,9 +358,8 @@ class NormalSampler(Sampler):
 
         Parameters
         ----------
-        bounds
-            Bounds for variables. Each element of the tuple must be a tuple with two elements,
-            corresponding to the lower and upper bound for the variable.
+        bounds : sequence
+            List with the limits [x_min,x_max] of each direction x in the space.
         iindex : tuple, optional
             Indices of the input space that are integer. The default is ().
         mu : array-like, optional
@@ -448,9 +442,8 @@ class Mitchel91Sampler(Sampler):
 
         Parameters
         ----------
-        bounds
-            Bounds for variables. Each element of the tuple must be a tuple with two elements,
-            corresponding to the lower and upper bound for the variable.
+        bounds : sequence
+            List with the limits [x_min,x_max] of each direction x in the space.
         iindex : tuple, optional
             Indices of the input space that are integer. The default is ().
         current_samples

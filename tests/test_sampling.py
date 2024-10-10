@@ -99,7 +99,7 @@ def test_normal_sampler(dim: int, strategy: SamplingStrategy):
 
 @pytest.mark.parametrize("dim", [1, 2, 3, 10])
 @pytest.mark.parametrize("n0", [0, 1, 10])
-def test_coverage_sampler(dim: int, n0: int):
+def test_mitchel91_sampler(dim: int, n0: int):
     n = 2 * (dim + 1)
     bounds = [(-1, 1)] * dim
     samples0 = np.random.rand(n0, dim)
@@ -183,7 +183,7 @@ def test_slhd(boundx):
 
 @pytest.mark.parametrize("boundx", [(0, 1), (-1, 1), (-6, 5)])
 @pytest.mark.parametrize("n0", [0, 1, 10])
-def test_iindex_coverage_sampler(boundx, n0: int):
+def test_iindex_mitchel91_sampler(boundx, n0: int):
     dim = 10
     n = 2 * (dim + 1)
     bounds = [boundx] * dim
