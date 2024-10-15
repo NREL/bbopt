@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 import subprocess
-from examples.vlse_benchmark.vlse_bench import myNargs
+from vlse_bench import myNargs
 
 useSbatch = False
 

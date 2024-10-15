@@ -162,7 +162,7 @@ class OptimizeResult:
             self.samples[0:m] = Sampler(m).get_slhd_sample(
                 bounds, iindex=iindex
             )
-            if m >= m_for_surrogate:
+            if m >= 2 * m_for_surrogate:
                 count = 0
                 while not surrogateModel.check_initial_design(
                     self.samples[0:m]
