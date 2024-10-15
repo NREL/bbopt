@@ -7,8 +7,8 @@
 #SBATCH --output=vlse-bench-run.%j.out  # %j will be replaced with the job ID
 
 if command -v module &> /dev/null; then
-    module load anaconda3
-    conda activate py311-intel-bbopt-dev
+    module load conda
+    conda activate /scratch/wdasilv/.conda-envs/py311-intel-bbopt-dev
 fi
 
 if [ $# -eq 0 ]; then

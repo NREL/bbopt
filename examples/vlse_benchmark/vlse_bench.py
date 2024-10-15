@@ -28,8 +28,9 @@ import numpy as np
 import pickle
 import time
 from tests.test_vlse_bench import run_optimizer
-from blackboxopt import optimize, acquisition, sampling
+from blackboxopt import optimize, acquisition, sampling, rbf, gp
 from pathlib import Path
+from sklearn.gaussian_process.kernels import RBF as GPkernelRBF
 
 # Functions to be tested
 myRfuncs = (
@@ -83,6 +84,9 @@ myNargs["rastr"] = 4
 # Algorithms to be tested
 algorithms = {}
 algorithms["SRS"] = {
+    "model": rbf.RbfModel(
+        rbf.RbfKernel.CUBIC, filter=rbf.MedianLpfFilter()
+    ),
     "optimizer": optimize.multistart_stochastic_response_surface,
     "acquisition": acquisition.CoordinatePerturbation(
         0,
@@ -97,6 +101,9 @@ algorithms["SRS"] = {
     ),
 }
 algorithms["DYCORS"] = {
+    "model": rbf.RbfModel(
+        rbf.RbfKernel.CUBIC, filter=rbf.MedianLpfFilter()
+    ),
     "optimizer": optimize.multistart_stochastic_response_surface,
     "acquisition": acquisition.CoordinatePerturbation(
         0,
@@ -111,6 +118,9 @@ algorithms["DYCORS"] = {
     ),
 }
 algorithms["CPTV"] = {
+    "model": rbf.RbfModel(
+        rbf.RbfKernel.CUBIC, filter=rbf.MedianLpfFilter()
+    ),
     "optimizer": optimize.cptv,
     "acquisition": acquisition.CoordinatePerturbation(
         0,
@@ -125,6 +135,9 @@ algorithms["CPTV"] = {
     ),
 }
 algorithms["CPTVl"] = {
+    "model": rbf.RbfModel(
+        rbf.RbfKernel.CUBIC, filter=rbf.MedianLpfFilter()
+    ),
     "optimizer": optimize.cptvl,
     "acquisition": acquisition.CoordinatePerturbation(
         0,
@@ -139,8 +152,18 @@ algorithms["CPTVl"] = {
     ),
 }
 algorithms["MLSL"] = {
+    "model": rbf.RbfModel(
+        rbf.RbfKernel.CUBIC, filter=rbf.MedianLpfFilter()
+    ),
     "optimizer": optimize.target_value_optimization,
     "acquisition": acquisition.MinimizeSurrogate(1, 0.005 * np.sqrt(2.0)),
+}
+algorithms["GP"] = {
+    "model": gp.GaussianProcess(
+        kernel=GPkernelRBF(), n_restarts_optimizer=20, normalize_y=True
+    ),
+    "optimizer": optimize.bayesian_optimization,
+    "acquisition": acquisition.MaximizeEI(),
 }
 
 # Maximum number of evaluations

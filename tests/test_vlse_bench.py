@@ -28,8 +28,9 @@ import numpy as np
 import pytest
 from rpy2 import robjects
 import tests.vlse_benchmark as vlsebmk
-from blackboxopt import rbf, optimize, sampling, acquisition
+from blackboxopt import rbf, optimize, sampling, acquisition, gp
 from scipy.optimize import differential_evolution
+from sklearn.gaussian_process.kernels import RBF as GPkernelRBF
 
 
 @pytest.mark.parametrize("func", list(vlsebmk.rfuncs.keys()))
@@ -131,16 +132,13 @@ def run_optimizer(
         )
 
     # integrality constraints
-    iindex = tuple(
-        i
-        for i in range(nArgs)
-        if isinstance(bounds[i][0], int) and isinstance(bounds[i][1], int)
-    )
-
-    # Surrogate model with median low-pass filter
-    rbfModel = rbf.RbfModel(
-        rbf.RbfKernel.CUBIC, iindex, filter=rbf.MedianLpfFilter()
-    )
+    model = deepcopy(algo["model"])
+    if isinstance(model, rbf.RbfModel):
+        model.iindex = tuple(
+            i
+            for i in range(nArgs)
+            if isinstance(bounds[i][0], int) and isinstance(bounds[i][1], int)
+        )
 
     # Update acquisition strategy, using maxEval and nArgs for the problem
     acquisitionFunc = deepcopy(algo["acquisition"])
@@ -153,13 +151,13 @@ def run_optimizer(
     optimizer = algo["optimizer"]
     optres = []
     for i in range(nRuns):
-        rbfModelIter = deepcopy(rbfModel)
+        modelIter = deepcopy(model)
         acquisitionFuncIter = deepcopy(acquisitionFunc)
         res = optimizer(
             objf,
             bounds=bounds,
             maxeval=maxEval,
-            surrogateModel=rbfModelIter,
+            surrogateModel=modelIter,
             acquisitionFunc=acquisitionFuncIter,
             disp=disp,
         )
@@ -183,6 +181,9 @@ def test_cptv(func: str) -> None:
         nArgs,
         nfev,
         {
+            "model": rbf.RbfModel(
+                rbf.RbfKernel.CUBIC, filter=rbf.MedianLpfFilter()
+            ),
             "optimizer": optimize.cptvl,
             "acquisition": acquisition.CoordinatePerturbation(
                 0,
@@ -203,10 +204,42 @@ def test_cptv(func: str) -> None:
     assert optres[0].nfev == nfev
 
 
+@pytest.mark.parametrize("func", list(vlsebmk.optRfuncs))
+def test_bayesianopt(func: str) -> None:
+    nArgs = vlsebmk.rfuncs[func]
+
+    # If the function takes a variable number of arguments, use the lower bound
+    if not isinstance(nArgs, int):
+        nArgs = nArgs[0]
+
+    # Run the optimization
+    nfev = 4 * (nArgs + 1)
+    optres = run_optimizer(
+        func,
+        nArgs,
+        nfev,
+        {
+            "model": gp.GaussianProcess(
+                kernel=GPkernelRBF(), n_restarts_optimizer=20, normalize_y=True
+            ),
+            "optimizer": optimize.bayesian_optimization,
+            "acquisition": acquisition.MaximizeEI(
+                sampling.Sampler(min(500 * nArgs, 5000)), avoid_clusters=False
+            ),
+        },
+        1,
+        disp=False,
+    )
+
+    assert optres[0].nfev == nfev
+
+
 if __name__ == "__main__":
     nRuns = 1
     func = "ackley"
     nArgs = 15
+    # func = "egg"
+    # nArgs = 2
     np.random.seed(1)
 
     res = run_optimizer(
@@ -214,6 +247,9 @@ if __name__ == "__main__":
         nArgs,
         100 * (nArgs + 1),
         {
+            "model": rbf.RbfModel(
+                rbf.RbfKernel.CUBIC, filter=rbf.MedianLpfFilter()
+            ),
             "optimizer": optimize.cptvl,
             "acquisition": acquisition.CoordinatePerturbation(
                 0,
@@ -228,9 +264,26 @@ if __name__ == "__main__":
             ),
         },
         # {
+        #     "model": rbf.RbfModel(
+        #         rbf.RbfKernel.CUBIC, filter=rbf.MedianLpfFilter()
+        #     ),
         #     "optimizer": optimize.target_value_optimization,
         #     "acquisition": acquisition.MinimizeSurrogate(
         #         1, 0.005 * np.sqrt(2.0)
+        #     ),
+        # },
+        # {
+        #     "model": gp.GaussianProcess(
+        #         kernel=GPkernelRBF(), n_restarts_optimizer=20, normalize_y=True
+        #     ),
+        #     "optimizer": optimize.bayesian_optimization,
+        #     "acquisition": acquisition.MaximizeEI(
+        #         # sampling.Mitchel91Sampler(min(500 * nArgs, 5000)),
+        #         # avoid_clusters=False,
+        #         # sampling.Sampler(min(500*nArgs, 5000)),
+        #         # avoid_clusters=True,
+        #         sampling.Sampler(min(500 * nArgs, 5000)),
+        #         avoid_clusters=False,
         #     ),
         # },
         nRuns,

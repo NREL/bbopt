@@ -48,12 +48,16 @@ from scipy.spatial.distance import cdist
 from pymoo.operators.survival.rank_and_crowding import RankAndCrowding
 from pymoo.core.mixed import MixedVariableGA, MixedVariableMating
 
+# Scikit-Learn imports
+from sklearn.gaussian_process.kernels import RBF as GPkernelRBF
+
 # Local imports
 from .acquisition import (
     CoordinatePerturbation,
     CoordinatePerturbationOverNondominated,
     EndPointsParetoFront,
     GosacSample,
+    MaximizeEI,
     MinimizeMOSurrogate,
     ParetoFront,
     TargetValueAcquisition,
@@ -63,6 +67,8 @@ from .acquisition import (
 )
 from .rbf import RbfModel
 from .problem import BBOptDuplicateElimination
+from .gp import GaussianProcess
+from .sampling import Sampler
 
 
 @dataclass
@@ -85,139 +91,127 @@ class OptimizeResult:
         All objective function values on sampled points.
     """
 
-    x: np.ndarray
-    fx: Union[float, np.ndarray]
-    nit: int
-    nfev: int
-    samples: np.ndarray
-    fsamples: np.ndarray
+    x: Optional[np.ndarray] = None
+    fx: Union[float, np.ndarray, None] = None
+    nit: int = 0
+    nfev: int = 0
+    samples: Optional[np.ndarray] = None
+    fsamples: Optional[np.ndarray] = None
 
+    def init(
+        self,
+        fun,
+        bounds,
+        mineval: int,
+        maxeval: int,
+        *,
+        surrogateModel=None,
+        samples: Optional[np.ndarray] = None,
+    ) -> None:
+        """Initialize the output of the optimization.
 
-def initialize_surrogate(
-    fun,
-    bounds,
-    mineval: int,
-    maxeval: int,
-    x0y0=(),
-    *,
-    surrogateModel=None,
-    samples: Optional[np.ndarray] = None,
-) -> OptimizeResult:
-    """Initialize the surrogate model and the output of the optimization.
+        Parameters
+        ----------
+        fun : callable
+            The objective function to be minimized.
+        bounds : sequence
+            List with the limits [x_min,x_max] of each direction x in the search
+            space.
+        mineval : int
+            Minimum number of function evaluations to build the surrogate model.
+        maxeval : int
+            Maximum number of function evaluations.
+        surrogateModel : surrogate model, optional
+            Surrogate model to be used. The default is RbfModel().
+        samples : np.ndarray, optional
+            Initial samples to be added to the surrogate model. The default is an
+            empty array.
+        """
+        dim = len(bounds)  # Dimension of the problem
+        assert dim > 0
 
-    Parameters
-    ----------
-    fun : callable
-        The objective function to be minimized.
-    bounds
-        Bounds for variables. Each element of the tuple must be a tuple with two
-        elements, corresponding to the lower and upper bound for the variable.
-    mineval : int
-        Minimum number of function evaluations to build the surrogate model.
-    maxeval : int
-        Maximum number of function evaluations.
-    x0y0 : tuple-like, optional
-        Initial guess for the solution and the value of the objective function
-        at the initial guess.
-    surrogateModel : surrogate model, optional
-        Surrogate model to be used. The default is RbfModel().
-    samples : np.ndarray, optional
-        Initial samples to be added to the surrogate model. The default is an
-        empty array.
+        # Initialize optional variables
+        if surrogateModel is None:
+            surrogateModel = RbfModel()
+        if samples is None:
+            samples = np.zeros((0, dim))
 
-    Returns
-    -------
-    OptimizeResult
-        The optimization result.
-    """
-    dim = len(bounds)  # Dimension of the problem
-    assert dim > 0
+        # Local variables
+        m0 = surrogateModel.nsamples()  # Number of initial samples
+        m = min(len(samples), maxeval)  # Number of samples to be added
+        m_for_surrogate = surrogateModel.min_design_space_size(
+            dim
+        )  # Minimum number of samples for a valid surrogate
+        iindex = surrogateModel.get_iindex()  # Integer design variables
+        ydim = (
+            surrogateModel.ydim()
+            if callable(getattr(surrogateModel, "ydim", None))
+            else 1
+        )  # Dimension of the output
 
-    # Initialize optional variables
-    if surrogateModel is None:
-        surrogateModel = RbfModel()
-    if samples is None:
-        samples = np.array([])
+        # Initialize sample arrays in this object
+        self.samples = np.empty((maxeval, dim))
+        self.samples[:] = np.nan
+        self.fsamples = np.empty(maxeval if ydim <= 1 else (maxeval, ydim))
+        self.fsamples[:] = np.nan
 
-    # Initialize output
-    out = OptimizeResult(
-        x=np.array([]),
-        fx=np.inf,
-        nit=0,
-        nfev=0,
-        samples=np.zeros((maxeval, dim)),
-        fsamples=np.zeros(maxeval),
-    )
-
-    # Number of initial samples
-    m0 = surrogateModel.nsamples()
-    m = min(samples.shape[0], maxeval)
-
-    # Initialize out.x and out.fx
-    if m0 > 0:
-        iBest = np.argmin(surrogateModel.get_fsamples()).item()
-        out.x = surrogateModel.sample(iBest).copy()
-        out.fx = surrogateModel.get_fsamples()[iBest].item()
-    else:
-        out.x = np.array(
-            [(bounds[i][0] + bounds[i][1]) / 2 for i in range(dim)]
-        )
-        out.fx = np.Inf
-
-    # Add new samples to the surrogate model
-    if m == 0 and surrogateModel.nsamples() == 0:
-        # Initialize surrogate model
-        surrogateModel.create_initial_design(dim, bounds, mineval, maxeval)
-        m = surrogateModel.nsamples()
-    else:
-        # Add samples to the surrogate model
-        if m > 0:
-            surrogateModel.update_samples(samples)
-        # Check if samples are integer values for integer variables
-        if surrogateModel.iindex:
-            if any(
-                surrogateModel.samples()[:, surrogateModel.iindex]
-                != np.round(surrogateModel.samples()[:, surrogateModel.iindex])
-            ):
-                raise ValueError(
-                    "Initial samples must be integer values for integer variables"
-                )
-        # Check if samples are sufficient to build the surrogate model
-        if (
-            np.linalg.matrix_rank(surrogateModel.get_matrixP())
-            != surrogateModel.pdim()
-        ):
-            raise ValueError(
-                "Initial samples are not sufficient to build the surrogate model"
+        # If the surrogate is empty and no initial samples were given
+        if m == 0 and m0 == 0:
+            # Create new samples with SLHD
+            m = min(maxeval, max(mineval, 2 * m_for_surrogate))
+            self.samples[0:m] = Sampler(m).get_slhd_sample(
+                bounds, iindex=iindex
             )
+            if m >= 2 * m_for_surrogate:
+                count = 0
+                while not surrogateModel.check_initial_design(
+                    self.samples[0:m]
+                ):
+                    self.samples[0:m] = Sampler(m).get_slhd_sample(
+                        bounds, iindex=iindex
+                    )
+                    count += 1
+                    if count > 100:
+                        raise RuntimeError(
+                            "Cannot create valid initial design"
+                        )
+        # If samples were provided, use them
+        elif m > 0:
+            self.samples[0:m] = samples
 
-    # Evaluate initial samples and update output
-    if m > 0:
-        # Add new samples to the output
-        out.samples[0:m, :] = surrogateModel.samples()[m0:, :]
+            # check they have integer values for integer variables
+            if iindex:
+                if any(samples[:, iindex] != np.round(samples[:, iindex])):
+                    raise ValueError(
+                        "Initial samples must be integer values for integer variables"
+                    )
 
-        # Compute f(samples)
-        out.fsamples[0:m] = fun(out.samples[0:m, :])
-        out.nfev = m
+            # check they are a initial design for the surrogate
+            if m >= m_for_surrogate:
+                assert surrogateModel.check_initial_design(self.samples[0:m])
 
-        # Update output variables
-        iBest = np.argmin(out.fsamples[0:m]).item()
-        if out.fsamples[iBest] < out.fx:
-            out.x[:] = out.samples[iBest, :]
-            out.fx = out.fsamples[iBest].item()
+        # Evaluate initial samples
+        if m > 0:
+            # Compute f(samples)
+            self.fsamples[0:m] = fun(self.samples[0:m])
+            self.nfev = m
 
-    # If initial guess is provided, consider it in the output
-    if len(x0y0) >= 2:
-        if x0y0[1] < out.fx:
-            out.x[:] = x0y0[0]
-            out.fx = x0y0[1]
+    def init_best_values(self, surrogateModel):
+        # Initialize self.x and self.fx
+        assert self.samples is not None
+        assert self.fsamples is not None
+        assert self.fsamples.ndim == 1
+        m = self.nfev
 
-    if out.fx == np.inf:
-        raise ValueError(
-            "Provide feasible initial samples or an initial guess"
-        )
-
-    return out
+        iBest = np.argmin(
+            np.concatenate((self.fsamples[0:m], surrogateModel.get_fsamples()))
+        ).item()
+        if iBest < m:
+            self.x = self.samples[iBest].copy()
+            self.fx = self.fsamples[iBest].item()
+        else:
+            self.x = surrogateModel.sample(iBest - m).copy()
+            self.fx = surrogateModel.get_fsamples()[iBest - m].item()
 
 
 def initialize_moo_surrogate(
@@ -235,9 +229,9 @@ def initialize_moo_surrogate(
     ----------
     fun : callable
         The objective function to be minimized.
-    bounds
-        Bounds for variables. Each element of the tuple must be a tuple with two
-        elements, corresponding to the lower and upper bound for the variable.
+    bounds : sequence
+        List with the limits [x_min,x_max] of each direction x in the search
+        space.
     mineval : int
         Minimum number of function evaluations to build the surrogate model.
     maxeval : int
@@ -332,10 +326,7 @@ def initialize_moo_surrogate(
         ),
         axis=0,
     )
-    iPareto = find_pareto_front(
-        surrogateModels[0].samples(),
-        fallsamples,
-    )
+    iPareto = find_pareto_front(fallsamples)
     out.x = surrogateModels[0].samples()[iPareto, :].copy()
     out.fx = fallsamples[iPareto, :]
 
@@ -362,9 +353,9 @@ def initialize_surrogate_constraints(
         The constraint functions. Each constraint function must return a scalar
         value. If the constraint function returns a value greater than zero, it
         is considered a violation of the constraint.
-    bounds
-        Bounds for variables. Each element of the tuple must be a tuple with two
-        elements, corresponding to the lower and upper bound for the variable.
+    bounds : sequence
+        List with the limits [x_min,x_max] of each direction x in the search
+        space.
     mineval : int
         Minimum number of function evaluations to build the surrogate model.
     maxeval : int
@@ -488,9 +479,9 @@ def stochastic_response_surface(
     ----------
     fun : callable
         The objective function to be minimized.
-    bounds
-        Bounds for variables. Each element of the tuple must be a tuple with two
-        elements, corresponding to the lower and upper bound for the variable.
+    bounds : sequence
+        List with the limits [x_min,x_max] of each direction x in the search
+        space.
     maxeval : int
         Maximum number of function evaluations.
     x0y0 : tuple-like, optional
@@ -556,15 +547,20 @@ def stochastic_response_surface(
     surrogateModel.reserve(surrogateModel.nsamples() + maxeval, dim)
 
     # Initialize output
-    out = initialize_surrogate(
+    out = OptimizeResult()
+    out.init(
         fun,
         bounds,
         newSamplesPerIteration,
         maxeval,
-        x0y0,
         surrogateModel=surrogateModel,
         samples=samples,
     )
+    out.init_best_values(surrogateModel)
+    if x0y0:
+        if x0y0[1] < out.fx:
+            out.x[:] = x0y0[0]
+            out.fx = x0y0[1]
 
     # Call the callback function
     if callback is not None:
@@ -582,7 +578,7 @@ def stochastic_response_surface(
     succtolerance = 3  # Number of consecutive significant improvements before the algorithm modifies the sampler
 
     # do until max number of f-evals reached or local min found
-    xselected = np.empty((0, dim))
+    xselected = np.copy(out.samples[0 : out.nfev, :])
     ySelected = np.copy(out.fsamples[0 : out.nfev])
     while out.nfev < maxeval:
         if disp:
@@ -595,8 +591,7 @@ def stochastic_response_surface(
 
         # Update surrogate model
         t0 = time.time()
-        surrogateModel.update_samples(xselected)
-        surrogateModel.update_coefficients(ySelected)
+        surrogateModel.update(xselected, ySelected)
         tf = time.time()
         if disp:
             print("Time to update surrogate model: %f s" % (tf - t0))
@@ -713,13 +708,15 @@ def multistart_stochastic_response_surface(
     """Minimize a scalar function of one or more variables using a surrogate
     model.
 
+    This method is based on [#]_.
+
     Parameters
     ----------
     fun : callable
         The objective function to be minimized.
-    bounds
-        Bounds for variables. Each element of the tuple must be a tuple with two
-        elements, corresponding to the lower and upper bound for the variable.
+    bounds : sequence
+        List with the limits [x_min,x_max] of each direction x in the search
+        space.
     maxeval : int
         Maximum number of function evaluations.
     surrogateModel : surrogate model, optional
@@ -744,6 +741,13 @@ def multistart_stochastic_response_surface(
     -------
     OptimizeResult
         The optimization result.
+
+    References
+    ----------
+
+    .. [#] Rommel G Regis and Christine A Shoemaker. A stochastic radial basis
+        function method for the global optimization of expensive functions.
+        INFORMS Journal on Computing, 19(4):497–509, 2007.
     """
     dim = len(bounds)  # Dimension of the problem
     assert dim > 0
@@ -820,9 +824,9 @@ def target_value_optimization(
     ----------
     fun : callable
         The objective function to be minimized.
-    bounds
-        Bounds for variables. Each element of the tuple must be a tuple with two
-        elements, corresponding to the lower and upper bound for the variable.
+    bounds : sequence
+        List with the limits [x_min,x_max] of each direction x in the search
+        space.
     maxeval : int
         Maximum number of function evaluations.
     x0y0 : tuple-like, optional
@@ -882,32 +886,33 @@ def target_value_optimization(
     surrogateModel.reserve(surrogateModel.nsamples() + maxeval, dim)
 
     # Initialize output
-    out = initialize_surrogate(
+    out = OptimizeResult()
+    out.init(
         fun,
         bounds,
         newSamplesPerIteration,
         maxeval,
-        x0y0,
         surrogateModel=surrogateModel,
         samples=samples,
     )
+    out.init_best_values(surrogateModel)
+    if x0y0:
+        if x0y0[1] < out.fx:
+            out.x[:] = x0y0[0]
+            out.fx = x0y0[1]
 
     # Call the callback function
     if callback is not None:
         callback(out)
 
     # max value of f
-    if surrogateModel.nsamples() - out.nfev > 0:
-        maxf = np.max(
-            surrogateModel.get_fsamples()[
-                0 : surrogateModel.nsamples() - out.nfev
-            ]
-        ).item()
+    if surrogateModel.nsamples() > 0:
+        maxf = np.max(surrogateModel.get_fsamples()).item()
     else:
         maxf = -np.Inf
     if out.nfev > 0:
         maxf = max(np.max(out.fsamples[0 : out.nfev]).item(), maxf)
-    if len(x0y0) >= 2:
+    if x0y0:
         maxf = max(maxf, x0y0[1])
 
     # counters
@@ -920,7 +925,7 @@ def target_value_optimization(
         failtolerance = max(failtolerance, dim)  # must be at least dim
 
     # do until max number of f-evals reached or local min found
-    xselected = np.empty((0, dim))
+    xselected = np.copy(out.samples[0 : out.nfev, :])
     ySelected = np.copy(out.fsamples[0 : out.nfev])
     while out.nfev < maxeval:
         if disp:
@@ -933,8 +938,7 @@ def target_value_optimization(
 
         # Update surrogate model
         t0 = time.time()
-        surrogateModel.update_samples(xselected)
-        surrogateModel.update_coefficients(ySelected)
+        surrogateModel.update(xselected, ySelected)
         tf = time.time()
         if disp:
             print("Time to update surrogate model: %f s" % (tf - t0))
@@ -1008,13 +1012,15 @@ def cptv(
     """Minimize a scalar function of one or more variables using the coordinate
     perturbation and target value strategy.
 
+    This method is based on [#]_.
+
     Parameters
     ----------
     fun : callable
         The objective function to be minimized.
-    bounds
-        Bounds for variables. Each element of the tuple must be a tuple with two
-        elements, corresponding to the lower and upper bound for the variable.
+    bounds : sequence
+        List with the limits [x_min,x_max] of each direction x in the search
+        space.
     maxeval : int
         Maximum number of function evaluations.
     surrogateModel : surrogate model, optional
@@ -1054,6 +1060,12 @@ def cptv(
     -------
     OptimizeResult
         The optimization result.
+
+    References
+    ----------
+
+    .. [#] Müller, J. MISO: mixed-integer surrogate optimization framework.
+        Optim Eng 17, 177–203 (2016). https://doi.org/10.1007/s11081-015-9281-2
     """
     dim = len(bounds)  # Dimension of the problem
     assert dim > 0
@@ -1117,11 +1129,9 @@ def cptv(
                 callback=callback,
             )
 
-            surrogateModel.update_samples(
-                out_local.samples[out_local.nfev - 1, :].reshape(1, -1)
-            )
-            surrogateModel.update_coefficients(
-                out_local.fsamples[out_local.nfev - 1 : out_local.nfev]
+            surrogateModel.update(
+                out_local.samples[out_local.nfev - 1, :].reshape(1, -1),
+                out_local.fsamples[out_local.nfev - 1 : out_local.nfev],
             )
 
             if out_local.nfev == failtolerance:
@@ -1162,11 +1172,9 @@ def cptv(
                 callback=callback,
             )
 
-            surrogateModel.update_samples(
-                out_local.samples[out_local.nfev - 1, :].reshape(1, -1)
-            )
-            surrogateModel.update_coefficients(
-                out_local.fsamples[out_local.nfev - 1 : out_local.nfev]
+            surrogateModel.update(
+                out_local.samples[out_local.nfev - 1, :].reshape(1, -1),
+                out_local.fsamples[out_local.nfev - 1 : out_local.nfev],
             )
 
             if out_local.nfev == failtolerance:
@@ -1221,8 +1229,9 @@ def cptv(
                 callback(out_local)
 
             if np.linalg.norm((out.x - out_local.x) / (xup - xlow)) >= tol:
-                surrogateModel.update_samples(out_local.x.reshape(1, -1))
-                surrogateModel.update_coefficients([out_local.fx])
+                surrogateModel.update(
+                    out_local.x.reshape(1, -1), [out_local.fx]
+                )
 
             if disp:
                 print("Local step ended after ", out_local.nfev, "f evals.")
@@ -1269,7 +1278,7 @@ def cptvl(
     disp: bool = False,
     callback: Optional[Callable[[OptimizeResult], None]] = None,
 ) -> OptimizeResult:
-    """Wrapper to cptv. See cptv."""
+    """Wrapper to cptv. See :meth:`blackboxopt.optimize.cptv`."""
     return cptv(
         fun,
         bounds,
@@ -1297,15 +1306,16 @@ def socemo(
     disp: bool = False,
     callback: Optional[Callable[[OptimizeResult], None]] = None,
 ):
-    """Minimize a multiobjective function using the surrogate model approach from [#]_.
+    """Minimize a multiobjective function using the surrogate model approach
+    from [#]_.
 
     Parameters
     ----------
     fun : callable
         The objective function to be minimized.
-    bounds
-        Bounds for variables. Each element of the tuple must be a tuple with two
-        elements, corresponding to the lower and upper bound for the variable.
+    bounds : sequence
+        List with the limits [x_min,x_max] of each direction x in the search
+        space.
     maxeval : int
         Maximum number of function evaluations.
     surrogateModels : tuple, optional
@@ -1392,7 +1402,7 @@ def socemo(
         ),
     )
     nGens = 100
-    tol = acquisitionFunc.tol(bounds)
+    tol = acquisitionFunc.compute_tol(dim)
 
     # Define acquisition functions
     step1acquisition = ParetoFront(mooptimizer, nGens)
@@ -1413,8 +1423,7 @@ def socemo(
         t0 = time.time()
         if out.nfev > 0:
             for i in range(objdim):
-                surrogateModels[i].update_samples(xselected)
-                surrogateModels[i].update_coefficients(ySelected[:, i])
+                surrogateModels[i].update(xselected, ySelected[:, i])
         tf = time.time()
         if disp:
             print("Time to update surrogate model: %f s" % (tf - t0))
@@ -1528,7 +1537,7 @@ def socemo(
         # Update the Pareto front
         out.x = np.concatenate((out.x, xselected), axis=0)
         out.fx = np.concatenate((out.fx, ySelected), axis=0)
-        iPareto = find_pareto_front(out.x, out.fx)
+        iPareto = find_pareto_front(out.fx)
         out.x = out.x[iPareto, :]
         out.fx = out.fx[iPareto, :]
 
@@ -1569,6 +1578,8 @@ def gosac(
     function is assumed to be cheap to evaluate, while the constraints are
     assumed to be expensive to evaluate.
 
+    This method is based on [#]_.
+
     Parameters
     ----------
     fun : callable
@@ -1576,9 +1587,9 @@ def gosac(
     gfun : callable
         The constraint function to be minimized. The constraints must be
         formulated as g(x) <= 0.
-    bounds
-        Bounds for variables. Each element of the tuple must be a tuple with two
-        elements, corresponding to the lower and upper bound for the variable.
+    bounds : sequence
+        List with the limits [x_min,x_max] of each direction x in the search
+        space.
     maxeval : int
         Maximum number of function evaluations.
     surrogateModels : tuple, optional
@@ -1597,6 +1608,13 @@ def gosac(
     -------
     OptimizeResult
         The optimization result.
+
+    References
+    ----------
+    .. [#] Juliane Müller and Joshua D. Woodbury. 2017. GOSAC: global
+        optimization with surrogate approximation of constraints. J. of Global
+        Optimization 69, 1 (September 2017), 117–136.
+        https://doi.org/10.1007/s10898-017-0496-y
     """
     dim = len(bounds)  # Dimension of the problem
     gdim = len(surrogateModels)  # Number of constraints
@@ -1664,8 +1682,7 @@ def gosac(
         t0 = time.time()
         if out.nfev > 0:
             for i in range(gdim):
-                surrogateModels[i].update_samples(xselected)
-                surrogateModels[i].update_coefficients(ySelected[:, i])
+                surrogateModels[i].update(xselected, ySelected[:, i])
         tf = time.time()
         if disp:
             print("Time to update surrogate model: %f s" % (tf - t0))
@@ -1746,8 +1763,7 @@ def gosac(
         t0 = time.time()
         if out.nfev > 0:
             for i in range(gdim):
-                surrogateModels[i].update_samples(xselected)
-                surrogateModels[i].update_coefficients(ySelected[:, i])
+                surrogateModels[i].update(xselected, ySelected[:, i])
         tf = time.time()
         if disp:
             print("Time to update surrogate model: %f s" % (tf - t0))
@@ -1787,5 +1803,155 @@ def gosac(
         # Call the callback function
         if callback is not None:
             callback(out)
+
+    return out
+
+
+def bayesian_optimization(
+    fun,
+    bounds,
+    maxeval: int,
+    x0y0=(),
+    *,
+    surrogateModel=None,
+    acquisitionFunc: Optional[MaximizeEI] = None,
+    samples: Optional[np.ndarray] = None,
+    newSamplesPerIteration: int = 1,
+    disp: bool = False,
+    callback: Optional[Callable[[OptimizeResult], None]] = None,
+) -> OptimizeResult:
+    """Minimize a scalar function of one or more variables via active learning
+    of a Gaussian Process model.
+
+    See [#]_ for details.
+
+    Parameters
+    ----------
+    fun : callable
+        The objective function to be minimized.
+    bounds : sequence
+        List with the limits [x_min,x_max] of each direction x in the search
+        space.
+    maxeval : int
+        Maximum number of function evaluations.
+    x0y0 : tuple-like, optional
+        Initial guess for the solution and the value of the objective function
+        at the initial guess.
+    surrogateModel : surrogate model, optional
+        Gaussian Process surrogate model. The default is GaussianProcess().
+        On exit, if provided, the surrogate model is updated to represent the
+        one used in the last iteration.
+    acquisitionFunc : MaximizeEI, optional
+        Acquisition function to be used.
+    samples : np.ndarray, optional
+        Initial samples to be added to the surrogate model. The default is an
+        empty array.
+    newSamplesPerIteration : int, optional
+        Number of new samples to be generated per iteration. The default is 1.
+    disp : bool, optional
+        If True, print information about the optimization process. The default
+        is False.
+    callback : callable, optional
+        If provided, the callback function will be called after each iteration
+        with the current optimization result. The default is None.
+
+    Returns
+    -------
+    OptimizeResult
+        The optimization result.
+
+    References
+    ----------
+    .. [#] Che Y, Müller J, Cheng C. Dispersion-enhanced sequential batch
+        sampling for adaptive contour estimation. Qual Reliab Eng Int. 2024;
+        40: 131–144. https://doi.org/10.1002/qre.3245
+    """
+    dim = len(bounds)  # Dimension of the problem
+    assert dim > 0
+
+    # Initialize optional variables
+    if surrogateModel is None:
+        surrogateModel = GaussianProcess(
+            kernel=GPkernelRBF(), n_restarts_optimizer=20, normalize_y=True
+        )
+    if samples is None:
+        samples = np.empty((0, dim))
+    if acquisitionFunc is None:
+        acquisitionFunc = MaximizeEI()
+    if acquisitionFunc.sampler.n <= 1:
+        acquisitionFunc.sampler.n = min(500 * dim, 5000)
+
+    # Initialize output
+    out = OptimizeResult()
+    out.init(
+        fun,
+        bounds,
+        newSamplesPerIteration,
+        maxeval,
+        surrogateModel=surrogateModel,
+        samples=samples,
+    )
+    out.init_best_values(surrogateModel)
+    if x0y0:
+        if x0y0[1] < out.fx:
+            out.x[:] = x0y0[0]
+            out.fx = x0y0[1]
+
+    # Call the callback function
+    if callback is not None:
+        callback(out)
+
+    # do until max number of f-evals reached or local min found
+    xselected = np.copy(out.samples[0 : out.nfev, :])
+    ySelected = np.copy(out.fsamples[0 : out.nfev])
+    while out.nfev < maxeval:
+        if disp:
+            print("Iteration: %d" % out.nit)
+            print("fEvals: %d" % out.nfev)
+            print("Best value: %f" % out.fx)
+
+        # number of new samples in an iteration
+        NumberNewSamples = min(newSamplesPerIteration, maxeval - out.nfev)
+
+        # Update surrogate model
+        t0 = time.time()
+        surrogateModel.update(xselected, ySelected)
+        tf = time.time()
+        if disp:
+            print("Time to update surrogate model: %f s" % (tf - t0))
+
+        # Acquire new samples
+        t0 = time.time()
+        xselected = acquisitionFunc.acquire(
+            surrogateModel, bounds, NumberNewSamples, ybest=out.fx
+        )
+        tf = time.time()
+        if disp:
+            print("Time to acquire new samples: %f s" % (tf - t0))
+
+        # Compute f(xselected)
+        NumberNewSamples = len(xselected)
+        ySelected = np.asarray(fun(xselected))
+
+        # Update best point found so far if necessary
+        iSelectedBest = np.argmin(ySelected).item()
+        fxSelectedBest = ySelected[iSelectedBest]
+        if fxSelectedBest < out.fx:
+            out.x[:] = xselected[iSelectedBest, :]
+            out.fx = fxSelectedBest
+
+        # Update remaining output variables
+        out.samples[out.nfev : out.nfev + NumberNewSamples, :] = xselected
+        out.fsamples[out.nfev : out.nfev + NumberNewSamples] = ySelected
+        out.nfev = out.nfev + NumberNewSamples
+        out.nit = out.nit + 1
+
+        # Call the callback function
+        if callback is not None:
+            callback(out)
+
+    # Update output
+    out.samples.resize(out.nfev, dim)
+    out.fsamples.resize(out.nfev)
 
     return out
