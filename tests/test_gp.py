@@ -82,15 +82,15 @@ def test_expected_improvement():
 
 @pytest.mark.parametrize("n", (10, 100))
 @pytest.mark.parametrize("copy_X_train", (True, False))
-def test_samples(n: int, copy_X_train: bool):
+def test_xtrain(n: int, copy_X_train: bool):
     gp = GaussianProcess(copy_X_train=copy_X_train)
 
     X = np.random.rand(n, 3)
     y = np.random.rand(n)
     gp.fit(X, y)
-    assert (X == gp.samples()).all()
+    assert (X == gp.xtrain()).all()
 
     X = np.random.rand(2 * n, 3)
     y = np.random.rand(2 * n)
     gp.fit(X, y)
-    assert (X == gp.samples()).all()
+    assert (X == gp.xtrain()).all()

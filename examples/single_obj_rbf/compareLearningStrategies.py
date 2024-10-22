@@ -44,7 +44,7 @@ def read_and_run(
     acquisitionFunc: AcquisitionFunction,
     maxeval: int = 0,
     Ntrials: int = 0,
-    NumberNewSamples: int = 0,
+    batchSize: int = 0,
     rbf_type: rbf.RbfKernel = rbf.RbfKernel.CUBIC,
     filter: rbf.RbfFilter = rbf.RbfFilter(),
     optim_func=optimize.multistart_stochastic_response_surface,
@@ -67,8 +67,8 @@ def read_and_run(
         Maximum number of allowed function evaluations per trial.
     Ntrials : int, optional
         Number of trials.
-    NumberNewSamples : int, optional
-        Number of new samples per step of the optimization algorithm.
+    batchSize : int, optional
+        Number of new sample points per step of the optimization algorithm.
     rbf_type : rbf.RbfKernel, optional
         Type of RBF to be used.
 
@@ -79,8 +79,8 @@ def read_and_run(
     """
     ## Start input check
     data = read_check_data_file(data_file)
-    maxeval, Ntrials, NumberNewSamples = check_set_parameters(
-        data, maxeval, Ntrials, NumberNewSamples
+    maxeval, Ntrials, batchSize = check_set_parameters(
+        data, maxeval, Ntrials, batchSize
     )
     ## End input check
 
@@ -92,7 +92,7 @@ def read_and_run(
         acquisitionFuncIter = deepcopy(acquisitionFunc)
 
         # # Uncomment to compare with Surrogates.jl
-        # rbfModel.update_samples(
+        # rbfModel.update_xtrain(
         #     np.array(
         #         [
         #             [0.3125, 0.8125, 0.8125],
@@ -120,7 +120,7 @@ def read_and_run(
                 maxeval=maxeval,
                 surrogateModel=rbfModel,
                 acquisitionFunc=acquisitionFuncIter,
-                newSamplesPerIteration=NumberNewSamples,
+                batchSize=batchSize,
                 disp=True,
             )
         elif optim_func == optimize.target_value_optimization:
@@ -131,7 +131,7 @@ def read_and_run(
                 ),
                 maxeval=maxeval,
                 acquisitionFunc=acquisitionFuncIter,
-                newSamplesPerIteration=NumberNewSamples,
+                batchSize=batchSize,
                 surrogateModel=rbfModel,
                 disp=True,
             )
@@ -163,10 +163,10 @@ def get_meanPerNEval(optres: list[optimize.OptimizeResult]) -> np.ndarray:
         List of optimize.OptimizeResult objects with the optimization results.
     """
     Ntrials = len(optres)
-    maxeval = min([len(optres[i].fsamples) for i in range(Ntrials)])
+    maxeval = min([len(optres[i].fsample) for i in range(Ntrials)])
     Y_cur_best = np.empty((maxeval, Ntrials))
     for ii in range(Ntrials):  # go through all trials
-        Y_cur = optres[ii].fsamples
+        Y_cur = optres[ii].fsample
         Y_cur_best[0, ii] = Y_cur[0]
         for j in range(1, maxeval):
             if Y_cur[j] < Y_cur_best[j - 1, ii]:
@@ -207,7 +207,7 @@ def check_set_parameters(
     data: Data,
     maxeval: int = 0,
     Ntrials: int = 0,
-    NumberNewSamples: int = 0,
+    batchSize: int = 0,
 ):
     """Check and set the parameters for the optimization.
 
@@ -219,8 +219,8 @@ def check_set_parameters(
         Maximum number of allowed function evaluations per trial.
     Ntrials : int, optional
         Number of trials.
-    NumberNewSamples : int, optional
-        Number of new samples per step of the optimization algorithm.
+    batchSize : int, optional
+        Number of new sample points per step of the optimization algorithm.
 
     Returns
     -------
@@ -228,8 +228,8 @@ def check_set_parameters(
         Maximum number of allowed function evaluations per trial.
     Ntrials : int
         Number of trials.
-    NumberNewSamples : int
-        Number of new samples per step of the optimization algorithm.
+    batchSize : int
+        Number of new sample points per step of the optimization algorithm.
     """
 
     if maxeval == 0:
@@ -254,18 +254,18 @@ def check_set_parameters(
             "Maximal number of trials must be positive integer.\n"
         )
 
-    if NumberNewSamples == 0:
+    if batchSize == 0:
         print(
             """No number of desired new sample sites given.\
-                \n\tI use default value NumberNewSamples=1."""
+                \n\tI use default value batchSize=1."""
         )
-        NumberNewSamples = 1
-    if not isinstance(NumberNewSamples, int) or NumberNewSamples < 0:
+        batchSize = 1
+    if not isinstance(batchSize, int) or batchSize < 0:
         raise ValueError(
             "Number of new sample sites must be positive integer.\n"
         )
 
-    return maxeval, Ntrials, NumberNewSamples
+    return maxeval, Ntrials, batchSize
 
 
 if __name__ == "__main__":
@@ -294,7 +294,7 @@ if __name__ == "__main__":
             filter=rbf.MedianLpfFilter(),
             maxeval=200,
             Ntrials=3,
-            NumberNewSamples=1,
+            batchSize=1,
         )
     if 2 in comparisonList:
         optresList[2] = read_and_run(
@@ -313,7 +313,7 @@ if __name__ == "__main__":
             filter=rbf.MedianLpfFilter(),
             maxeval=200,
             Ntrials=1,
-            NumberNewSamples=1,
+            batchSize=1,
         )
     if 3 in comparisonList:
         strategyName.append("DYCORS with multistart")
@@ -333,7 +333,7 @@ if __name__ == "__main__":
             filter=rbf.RbfFilter(),
             maxeval=100,
             Ntrials=3,
-            NumberNewSamples=1,
+            batchSize=1,
             rbf_type=rbf.RbfKernel.THINPLATE,
         )
     if 4 in comparisonList:
@@ -353,7 +353,7 @@ if __name__ == "__main__":
             filter=rbf.RbfFilter(),
             maxeval=100,
             Ntrials=3,
-            NumberNewSamples=1,
+            batchSize=1,
             rbf_type=rbf.RbfKernel.THINPLATE,
             optim_func=optimize.stochastic_response_surface,
         )
@@ -365,7 +365,7 @@ if __name__ == "__main__":
             filter=rbf.RbfFilter(),
             maxeval=100,
             Ntrials=3,
-            NumberNewSamples=1,
+            batchSize=1,
             rbf_type=rbf.RbfKernel.THINPLATE,
             optim_func=optimize.target_value_optimization,
         )
@@ -387,7 +387,7 @@ if __name__ == "__main__":
             filter=rbf.RbfFilter(),
             maxeval=100,
             Ntrials=3,
-            NumberNewSamples=1,
+            batchSize=1,
             rbf_type=rbf.RbfKernel.THINPLATE,
             optim_func=optimize.cptv,
         )
@@ -409,7 +409,7 @@ if __name__ == "__main__":
             filter=rbf.RbfFilter(),
             maxeval=100,
             Ntrials=3,
-            NumberNewSamples=1,
+            batchSize=1,
             rbf_type=rbf.RbfKernel.THINPLATE,
             optim_func=optimize.cptvl,
         )
@@ -421,7 +421,7 @@ if __name__ == "__main__":
             filter=rbf.RbfFilter(),
             maxeval=100,
             Ntrials=3,
-            NumberNewSamples=10,
+            batchSize=10,
             rbf_type=rbf.RbfKernel.THINPLATE,
             optim_func=optimize.target_value_optimization,
         )

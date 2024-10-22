@@ -45,7 +45,7 @@ if __name__ == "__main__":
     maxeval = 200
     Ntrials = 3
     PlotResult = 1
-    NumberNewSamples = 2
+    batchSize = 2
     data = read_check_data_file(data_file)
     nCand = 500 * data.dim
     phifunction = RbfKernel.CUBIC
@@ -68,10 +68,10 @@ if __name__ == "__main__":
 
     rank_P = 0
     while rank_P != data.dim + 1:
-        samples = Sampler(m).get_slhd_sample(bounds)
-        P = np.concatenate((np.ones((m, 1)), samples), axis=1)
+        sample = Sampler(m).get_slhd_sample(bounds)
+        P = np.concatenate((np.ones((m, 1)), sample), axis=1)
         rank_P = np.linalg.matrix_rank(P)
-    samples = np.array(
+    sample = np.array(
         [
             [0.0625, 0.3125, 0.0625],
             [0.1875, 0.5625, 0.8125],
@@ -83,7 +83,7 @@ if __name__ == "__main__":
             [0.9375, 0.6875, 0.9375],
         ]
     )
-    samples = np.add(np.multiply(data.xup - data.xlow, samples), data.xlow)
+    sample = np.add(np.multiply(data.xup - data.xlow, sample), data.xlow)
 
     print(data.xlow)
     print(data.xup)
@@ -91,7 +91,7 @@ if __name__ == "__main__":
     print(data.dim)
     print(nCand)
     print(phifunction)
-    print(samples)
+    print(sample)
     print("LocalStochRBFstop Start")
 
     rbfModel = RbfModel(phifunction, filter=MedianLpfFilter())
@@ -101,7 +101,7 @@ if __name__ == "__main__":
         bounds=bounds,
         maxeval=maxeval - numevals,
         surrogateModel=rbfModel,
-        samples=samples,
+        sample=sample,
         acquisitionFunc=CoordinatePerturbation(
             maxeval - numevals,
             NormalSampler(
@@ -114,17 +114,17 @@ if __name__ == "__main__":
             weightpattern=[0.3, 0.5],
             reltol=1e-3,
         ),
-        newSamplesPerIteration=NumberNewSamples,
+        batchSize=batchSize,
     )
 
     print("Results")
     print("xlow", data.xlow)
     print("xup", data.xup)
-    print("S", optres.samples.shape)
-    print("m", optres.samples.shape[0])
-    print("Y", optres.fsamples.shape)
+    print("S", optres.sample.shape)
+    print("m", optres.sample.shape[0])
+    print("Y", optres.fsample.shape)
     print("xbest", optres.x)
     print("Fbest", optres.fx)
-    print("lambda", rbfModel.nsamples())
+    print("lambda", rbfModel.ntrain())
     print("ctail", rbfModel.pdim())
     print("NumberFevals", optres.nfev)

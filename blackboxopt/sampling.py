@@ -58,7 +58,7 @@ class Sampler:
     strategy : SamplingStrategy
         Sampling strategy.
     n : int
-        Number of samples to be generated.
+        Number of sample points to be drawn.
     """
 
     def __init__(
@@ -84,13 +84,13 @@ class Sampler:
         Returns
         -------
         numpy.ndarray
-            Matrix with the generated samples.
+            Matrix with the generated sample points.
         """
         dim = len(bounds)
         xlow = np.array([bounds[i][0] for i in range(dim)])
         xup = np.array([bounds[i][1] for i in range(dim)])
 
-        # Generate n samples
+        # Generate n sample points
         xnew = xlow + np.random.rand(self.n, dim) * (xup - xlow)
 
         # Round integer variables
@@ -117,7 +117,7 @@ class Sampler:
         Returns
         -------
         numpy.ndarray
-            Matrix with the generated samples.
+            Matrix with the generated sample points.
         """
         d = len(bounds)
         m = self.n
@@ -187,7 +187,7 @@ class Sampler:
 
 
 class NormalSampler(Sampler):
-    """Sampler that generates samples from a normal distribution.
+    """Sampler that generates sample points from a normal distribution.
 
     Attributes
     ----------
@@ -244,7 +244,7 @@ class NormalSampler(Sampler):
         Returns
         -------
         numpy.ndarray
-            Matrix with the generated samples.
+            Matrix with the generated sample points.
         """
         # The normal sampler does not support integer variables
         assert iindex == ()
@@ -260,7 +260,7 @@ class NormalSampler(Sampler):
         xnew = np.tile(mu, (self.n, 1))
         assert xnew.shape == (self.n, dim)
 
-        # Generate n samples
+        # Generate n sample points
         if len(coord) == 0:
             coord = tuple(range(dim))
         xnew[:, coord] += sigma * np.random.randn(self.n, len(coord))
@@ -296,7 +296,7 @@ class NormalSampler(Sampler):
         Returns
         -------
         numpy.ndarray
-            Matrix with the generated samples.
+            Matrix with the generated sample points.
         """
         dim = len(bounds)
         xlow = np.array([bounds[i][0] for i in range(dim)])
@@ -313,7 +313,7 @@ class NormalSampler(Sampler):
         if not (0 <= probability <= 1):
             raise ValueError("Probability must be between 0 and 1")
 
-        # generate n samples
+        # generate n sample points
         if len(coord) == 0:
             coord = tuple(range(dim))
         cdim = len(coord)
@@ -373,7 +373,7 @@ class NormalSampler(Sampler):
         Returns
         -------
         numpy.ndarray
-            Matrix with the generated samples.
+            Matrix with the generated sample points.
         """
         if self.strategy == SamplingStrategy.NORMAL:
             return self.get_normal_sample(
@@ -411,11 +411,11 @@ class Mitchel91Sampler(Sampler):
     Attributes
     ----------
     maxCand : int | None
-        The maximum number of random candidate samples, from which each new
-        sample is selected. Defaults to 10*n
+        The maximum number of random candidates from which each new sample
+        points is selected. Defaults to 10*n
     scale : float
-        A scale factor. The bigger it is, the more candidate samples in each
-        iteration. Defaults to 2.0
+        A scale factor. The bigger it is, the more candidates in each iteration.
+        Defaults to 2.0
 
     References
     ----------
@@ -436,9 +436,9 @@ class Mitchel91Sampler(Sampler):
         self.scale = scale
 
     def get_sample(
-        self, bounds, *, iindex: tuple[int, ...] = (), current_samples=[]
+        self, bounds, *, iindex: tuple[int, ...] = (), current_sample=[]
     ) -> np.ndarray:
-        """Generate a set of samples that aims to fill gaps in the search space.
+        """Generate a sample that aims to fill gaps in the search space.
 
         Parameters
         ----------
@@ -446,8 +446,8 @@ class Mitchel91Sampler(Sampler):
             List with the limits [x_min,x_max] of each direction x in the space.
         iindex : tuple, optional
             Indices of the input space that are integer. The default is ().
-        current_samples
-            Samples already used.
+        current_sample
+            Sample points already drawn.
 
         References
         ----------
@@ -456,7 +456,7 @@ class Mitchel91Sampler(Sampler):
         """
         if self.strategy == SamplingStrategy.MITCHEL91:
             dim = len(bounds)
-            ncurrent = len(current_samples)
+            ncurrent = len(current_sample)
             cand = np.empty((self.n, dim))
 
             if ncurrent == 0:
@@ -467,9 +467,9 @@ class Mitchel91Sampler(Sampler):
                 i0 = 0
 
             if ncurrent > 0:
-                tree = KDTree(current_samples)
+                tree = KDTree(current_sample)
 
-            # Choose candidates that are far from samples and from each other
+            # Choose candidates that are far from current sample and each other
             for i in range(i0, self.n):
                 npool = int(min(self.scale * (i + ncurrent), self.maxCand))
 
@@ -478,7 +478,7 @@ class Mitchel91Sampler(Sampler):
                     bounds, iindex=iindex
                 )
 
-                # Compute distance to current samples
+                # Compute distance to current sample
                 minDist = tree.query(candPool)[0] if ncurrent > 0 else 0
 
                 # Now, consider distance to candidates selected up to iteration i-1
@@ -492,5 +492,5 @@ class Mitchel91Sampler(Sampler):
 
             return cand
         else:
-            assert len(current_samples) == 0
+            assert len(current_sample) == 0
             return super().get_sample(bounds, iindex=iindex)

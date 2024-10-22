@@ -129,8 +129,8 @@ class RbfModel:
     def reserve(self, maxeval: int, dim: int) -> None:
         """Reserve space for the RBF model.
 
-        If the input maxeval is smaller than the current number of samples,
-        nothing is done.
+        If the input maxeval is smaller than the current number of sample
+        points, nothing is done.
 
         Parameters
         ----------
@@ -442,7 +442,7 @@ class RbfModel:
         dim = self.dim()
 
         # compute pairwise distances between candidates and sampled points
-        D = cdist(x.reshape(-1, dim), self.samples())
+        D = cdist(x.reshape(-1, dim), self.xtrain())
 
         Px = self.pbasis(x.reshape(-1, dim))
         y = np.matmul(self.phi(D), self._coef[0 : self._m]) + np.dot(
@@ -477,7 +477,7 @@ class RbfModel:
         dim = self.dim()
 
         # compute pairwise distances between candidates and sampled points
-        d = cdist(x.reshape(-1, dim), self.samples()).flatten()
+        d = cdist(x.reshape(-1, dim), self.xtrain()).flatten()
 
         A = np.array([self.dphiOverR(d[i]) * x for i in range(d.size)])
         B = self.dpbasis(x)
@@ -520,7 +520,7 @@ class RbfModel:
         dim = self.dim()
 
         # compute pairwise distances between candidates and sampled points
-        d = cdist(x.reshape(-1, dim), self.samples()).flatten()
+        d = cdist(x.reshape(-1, dim), self.xtrain()).flatten()
 
         xxTp = np.dot(p, x) * x
         A = np.array(
@@ -578,12 +578,12 @@ class RbfModel:
             warnings.simplefilter("ignore")
             self._coef = solve(
                 A,
-                np.concatenate((filter(self.get_fsamples()), np.zeros(pdim))),
+                np.concatenate((filter(self.ytrain()), np.zeros(pdim))),
                 assume_a="sym",
             )
         self._valid_coefficients = True
 
-    def update_samples(self, xNew: np.ndarray, distNew=None) -> None:
+    def update_xtrain(self, xNew: np.ndarray, distNew=None) -> None:
         """Updates the RBF model with new points.
 
         Parameters
@@ -591,8 +591,8 @@ class RbfModel:
         xNew : np.ndarray
             m-by-d matrix with m point coordinates in a d-dimensional space.
         distNew : array-like, optional
-            m-by-(self.nsamples() + m) matrix with distances between points in
-            xNew and points in (self.samples(), xNew). If not provided, the
+            m-by-(self.ntrain() + m) matrix with distances between points in
+            xNew and points in (self.xtrain(), xNew). If not provided, the
             distances are computed.
         """
         oldm = self._m
@@ -611,7 +611,7 @@ class RbfModel:
                 distNew = cdist(xNew, xNew)
             else:
                 distNew = cdist(
-                    xNew, np.concatenate((self.samples(), xNew), axis=0)
+                    xNew, np.concatenate((self.xtrain(), xNew), axis=0)
                 )
 
         self.reserve(m, dim)
@@ -640,13 +640,13 @@ class RbfModel:
         ynew : array-like
             Function values on the sampled points.
         """
-        self.update_samples(Xnew)
+        self.update_xtrain(Xnew)
         self.update_coefficients(ynew)
 
     def create_initial_design(
         self, dim: int, bounds, minm: int = 0, maxm: int = 0
     ) -> None:
-        """Creates an initial set of samples for the RBF model.
+        """Creates an initial sample for the RBF model.
 
         The points are generated using a symmetric Latin hypercube design.
 
@@ -687,7 +687,7 @@ class RbfModel:
                 raise RuntimeError("Cannot create valid initial design")
 
         # Compute distances between new points and sampled points
-        distNew = cdist(self.samples(), self.samples())
+        distNew = cdist(self.xtrain(), self.xtrain())
 
         # Set matrix _PHI
         self._PHI[0:m, 0:m] = self.phi(distNew)
@@ -696,7 +696,7 @@ class RbfModel:
         # Coefficients are not valid
         self._valid_coefficients = False
 
-    def nsamples(self) -> int:
+    def ntrain(self) -> int:
         """Get the number of sampled points.
 
         Returns
@@ -710,7 +710,7 @@ class RbfModel:
         """Resets the RBF model."""
         self._m = 0
 
-    def samples(self) -> np.ndarray:
+    def xtrain(self) -> np.ndarray:
         """Get the sampled points.
 
         Returns
@@ -720,7 +720,7 @@ class RbfModel:
         """
         return self._x[0 : self._m, :]
 
-    def get_fsamples(self) -> np.ndarray:
+    def ytrain(self) -> np.ndarray:
         """Get f(x) for the sampled points.
 
         Returns
@@ -769,7 +769,7 @@ class RbfModel:
         out: np.ndarray
             i-th sampled point.
         """
-        return self.samples()[i, :]
+        return self.xtrain()[i, :]
 
     def mu_measure(self, x: np.ndarray, xdist=None, LDLt=()) -> float:
         """Compute the value of abs(mu) in the inf step of the target value
@@ -799,7 +799,7 @@ class RbfModel:
         """
         # compute rbf value of the new point x
         if xdist is None:
-            xdist = cdist(x.reshape(1, -1), self.samples())
+            xdist = cdist(x.reshape(1, -1), self.xtrain())
         newRow = np.concatenate(
             (
                 np.asarray(self.phi(xdist)).flatten(),
@@ -937,11 +937,11 @@ class RbfModel:
         else:
             raise ValueError("Unknown RBF type")
 
-    def check_initial_design(self, samples: np.ndarray) -> bool:
-        """Check if the set of samples is able to generate a valid surrogate."""
-        if samples.ndim != 2 or len(samples) < 1:
+    def check_initial_design(self, sample: np.ndarray) -> bool:
+        """Check if the sample is able to generate a valid surrogate."""
+        if sample.ndim != 2 or len(sample) < 1:
             return False
-        P = self.pbasis(samples)
+        P = self.pbasis(sample)
         return np.linalg.matrix_rank(P) == P.shape[1]
 
     def get_iindex(self) -> tuple[int, ...]:

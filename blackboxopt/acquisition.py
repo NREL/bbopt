@@ -65,21 +65,20 @@ from .problem import (
 )
 
 
-def find_pareto_front(fx, iStart=0) -> list:
-    """Find the Pareto front given a set of points and their values.
+def find_pareto_front(fx, iStart: int = 0) -> list:
+    """Find the Pareto front given a set of points in the target space.
 
     Parameters
     ----------
-    fx : numpy.ndarray
-        n-by-m matrix with the values of the objective function on the samples.
-    iStart : int, optional
-        Points from 0 to iStart - 1 are considered to be already in the Pareto
-        front. The default is 0.
+    fx : sequence
+        List with n points in the m-dimensional target space.
+    iStart : int = 0
+        Points from 0 to iStart - 1 are already known to be in the Pareto front.
 
     Returns
     -------
     list
-        Indices of the points that are in the Pareto front.
+        Indices of the points in the Pareto front.
     """
     pareto = [True] * len(fx)
     for i in range(iStart, len(fx)):
@@ -100,11 +99,14 @@ def find_pareto_front(fx, iStart=0) -> list:
 class AcquisitionFunction:
     """Base class for acquisition functions.
 
+    This an abstract class. Subclasses must implement the method
+    :meth:`acquire()`.
+
     Acquisition functions are strategies to propose new sample points to a
     surrogate. The acquisition functions here are modeled as objects with the
     goals of adding states to the learning process. Moreover, this design
-    enables the definition of the acquire() method with a similar API when we
-    compare different acquisition strategies.
+    enables the definition of the :meth:`acquire()` method with a similar API
+    when we compare different acquisition strategies.
     """
 
     def __init__(self) -> None:
@@ -117,41 +119,40 @@ class AcquisitionFunction:
         n: int = 1,
         **kwargs,
     ) -> np.ndarray:
-        """Propose a maximum of n new samples to improve the surrogate.
+        """Propose a maximum of n new sample points to improve the surrogate.
 
         Parameters
         ----------
-        surrogateModel : Surrogate model
+        surrogateModel :
             Surrogate model.
         bounds : sequence
             List with the limits [x_min,x_max] of each direction x in the search
             space.
-        n : int, optional
+        n : int = 1
             Number of points to be acquired, or maximum requested number.
-            The default is 1.
 
         Returns
         -------
         numpy.ndarray
-            n-by-dim matrix with the selected points.
+            m-by-dim matrix with the selected points, where m <= n.
         """
         raise NotImplementedError
 
 
 class WeightedAcquisition(AcquisitionFunction):
     """Acquisition based on the weighted average of function value and distance
-    to previous samples.
+    to sample points.
 
-    This an abstract class. Subclasses must implement the method acquire().
+    This an abstract class. Subclasses must implement the method
+    :meth:`acquire()`.
 
     Attributes
     ----------
-    tol : float
-        Tolerance value for excluding candidates that are too close to already
-        sampled points. The default is 1e-3.
-    weightpattern: sequence, optional
-        Weight(s) `w` to be used in the score given as a circular list.
-        The default is (0.2, 0.4, 0.6, 0.9, 0.95, 1).
+    weightpattern: sequence = (0.2, 0.4, 0.6, 0.9, 0.95, 1)
+        Weight(s) `w` to be used in the score. Accessed as a circular list.
+    tol : float = 1e-3
+        Tolerance value for excluding candidates that are too close to current
+        sample points.
     """
 
     def __init__(
@@ -394,10 +395,10 @@ class CoordinatePerturbation(WeightedAcquisition):
 
         # Evaluate candidates
         if not listOfSurrogates:
-            samples = surrogateModel.samples()
+            sample = surrogateModel.xtrain()
             fx, _ = surrogateModel(x)
         else:
-            samples = surrogateModel[0].samples()
+            sample = surrogateModel[0].xtrain()
             objdim = len(surrogateModel)
             fx = np.empty((nCand, objdim))
             for i in range(objdim):
@@ -407,8 +408,8 @@ class CoordinatePerturbation(WeightedAcquisition):
         xlow = np.array([bounds[i][0] for i in range(dim)])
         xup = np.array([bounds[i][1] for i in range(dim)])
         sx = (x - xlow) / (xup - xlow)
-        ssamples = (samples - xlow) / (xup - xlow)
-        sdistx = cdist(sx, ssamples)
+        ssample = (sample - xlow) / (xup - xlow)
+        sdistx = cdist(sx, ssample)
 
         # Select best candidates
         self.tol = self.compute_tol(dim)
@@ -498,10 +499,10 @@ class UniformAcquisition(WeightedAcquisition):
 
         # Evaluate candidates
         if not listOfSurrogates:
-            samples = surrogateModel.samples()
+            sample = surrogateModel.xtrain()
             fx, _ = surrogateModel(x)
         else:
-            samples = surrogateModel[0].samples()
+            sample = surrogateModel[0].xtrain()
             objdim = len(surrogateModel)
             fx = np.empty((nCand, objdim))
             for i in range(objdim):
@@ -511,8 +512,8 @@ class UniformAcquisition(WeightedAcquisition):
         xlow = np.array([bounds[i][0] for i in range(dim)])
         xup = np.array([bounds[i][1] for i in range(dim)])
         sx = (x - xlow) / (xup - xlow)
-        ssamples = (samples - xlow) / (xup - xlow)
-        sdistx = cdist(sx, ssamples)
+        ssample = (sample - xlow) / (xup - xlow)
+        sdistx = cdist(sx, ssample)
 
         # Select best candidates
         xselected, _ = self.minimize_weightedavg_fx_distx(sx, sdistx, fx, n)
@@ -584,11 +585,11 @@ class TargetValueAcquisition(AcquisitionFunction):
         """
         dim = len(bounds)  # Dimension of the problem
 
-        # Create scaled samples and KDTree with those
+        # Create scaled sample and KDTree with that
         xlow = np.array([bounds[i][0] for i in range(dim)])
         xup = np.array([bounds[i][1] for i in range(dim)])
-        ssamples = (surrogateModel.samples() - xlow) / (xup - xlow)
-        tree = KDTree(ssamples)
+        ssample = (surrogateModel.xtrain() - xlow) / (xup - xlow)
+        tree = KDTree(ssample)
 
         # see Holmstrom 2008 "An adaptive radial basis algorithm (ARBF) for
         # expensive black-box global optimization", JOGO
@@ -619,7 +620,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                     problem,
                     self.GA,
                     ("n_gen", self.ngen),
-                    seed=surrogateModel.nsamples(),
+                    seed=surrogateModel.ntrain(),
                     verbose=False,
                 )
 
@@ -643,7 +644,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                     problem,
                     self.GA,
                     ("n_gen", self.ngen),
-                    seed=surrogateModel.nsamples(),
+                    seed=surrogateModel.ntrain(),
                     verbose=False,
                 )
                 assert res.F is not None
@@ -677,7 +678,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                     problem,
                     self.GA,
                     ("n_gen", self.ngen),
-                    seed=surrogateModel.nsamples(),
+                    seed=surrogateModel.ntrain(),
                     verbose=False,
                 )
 
@@ -698,7 +699,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                     problem,
                     self.GA,
                     ("n_gen", self.ngen),
-                    seed=surrogateModel.nsamples(),
+                    seed=surrogateModel.ntrain(),
                     verbose=False,
                 )
                 assert res.F is not None
@@ -743,7 +744,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                         problem,
                         self.GA,
                         ("n_gen", self.ngen),
-                        seed=surrogateModel.nsamples(),
+                        seed=surrogateModel.ntrain(),
                         verbose=False,
                     )
 
@@ -771,7 +772,7 @@ class TargetValueAcquisition(AcquisitionFunction):
 
 
 class MinimizeSurrogate(AcquisitionFunction):
-    """Obtain samples that are local minima of the surrogate model.
+    """Obtain sample points that are local minima of the surrogate model.
 
     Attributes
     ----------
@@ -832,11 +833,11 @@ class MinimizeSurrogate(AcquisitionFunction):
         startpID = np.full((self.sampler.n * maxiter,), False)
         selected = np.empty((n, dim))
 
-        # Create scaled samples and KDTree with those
+        # Create scaled sample and KDTree with that
         xlow = np.array([bounds[i][0] for i in range(dim)])
         xup = np.array([bounds[i][1] for i in range(dim)])
-        ssamples = (surrogateModel.samples() - xlow) / (xup - xlow)
-        tree = KDTree(ssamples)
+        ssample = (surrogateModel.xtrain() - xlow) / (xup - xlow)
+        tree = KDTree(ssample)
 
         iter = 0
         k = 0
@@ -939,7 +940,7 @@ class MinimizeSurrogate(AcquisitionFunction):
                         tree = KDTree(
                             np.concatenate(
                                 (
-                                    ssamples,
+                                    ssample,
                                     (selected[0:k, :] - xlow) / (xup - xlow),
                                 ),
                                 axis=0,
@@ -978,7 +979,7 @@ class MinimizeSurrogate(AcquisitionFunction):
 
 
 class ParetoFront(AcquisitionFunction):
-    """Obtain samples that fill gaps in the Pareto front.
+    """Obtain sample points that fill gaps in the Pareto front.
 
     Attributes
     ----------
@@ -1031,9 +1032,9 @@ class ParetoFront(AcquisitionFunction):
         )
         dim = paretoModel.dim()
 
-        # Bounds in the pareto samples
-        xParetoLow = np.min(paretoModel.samples(), axis=0)
-        xParetoHigh = np.max(paretoModel.samples(), axis=0)
+        # Bounds in the pareto sample
+        xParetoLow = np.min(paretoModel.xtrain(), axis=0)
+        xParetoHigh = np.max(paretoModel.xtrain(), axis=0)
         boundsPareto = [(xParetoLow[i], xParetoHigh[i]) for i in range(dim)]
 
         # Minimum of delta_f maximizes the distance inside the Pareto front
@@ -1181,20 +1182,20 @@ class EndPointsParetoFront(AcquisitionFunction):
                 minimumPointProblem,
                 self.optimizer,
                 ("n_gen", self.nGens),
-                seed=surrogateModels[0].nsamples(),
+                seed=surrogateModels[0].ntrain(),
                 verbose=False,
             )
             assert res.X is not None
             for j in range(dim):
                 endpoints[i, j] = res.X[j]
 
-        # Create scaled samples and KDTree with those
+        # Create scaled sample and KDTree with that
         xlow = np.array([bounds[i][0] for i in range(dim)])
         xup = np.array([bounds[i][1] for i in range(dim)])
-        ssamples = (surrogateModels[0].samples() - xlow) / (xup - xlow)
-        tree = KDTree(ssamples)
+        ssample = (surrogateModels[0].xtrain() - xlow) / (xup - xlow)
+        tree = KDTree(ssample)
 
-        # Discard points that are too close to eachother and previously samples.
+        # Discard points that are too close to eachother and to current sample
         selectedIdx = []
         for i in range(objdim):
             distNeighbor = tree.query((endpoints[i, :] - xlow) / (xup - xlow))[
@@ -1218,7 +1219,7 @@ class EndPointsParetoFront(AcquisitionFunction):
         # Should all points be discarded, which may happen if the minima of
         # the surrogate surfaces do not change between iterations, we
         # consider the whole variable domain and sample at the point that
-        # maximizes the minimum distance of samples
+        # maximizes the minimum distance of sample points
         if endpoints.size == 0:
             minimumPointProblem = ProblemNoConstraint(
                 lambda x: -tree.query((x - xlow) / (xup - xlow))[0],
@@ -1230,7 +1231,7 @@ class EndPointsParetoFront(AcquisitionFunction):
                 self.optimizer,
                 ("n_gen", self.nGens),
                 verbose=False,
-                seed=surrogateModels[0].nsamples() + 1,
+                seed=surrogateModels[0].ntrain() + 1,
             )
             assert res.X is not None
             endpoints = np.empty((1, dim))
@@ -1242,7 +1243,8 @@ class EndPointsParetoFront(AcquisitionFunction):
 
 
 class MinimizeMOSurrogate(AcquisitionFunction):
-    """Obtain pareto-optimal samplesfor the multi-objective surrogate model.
+    """Obtain pareto-optimal sample points for the multi-objective surrogate
+    model.
 
     Attributes
     ----------
@@ -1299,7 +1301,7 @@ class MinimizeMOSurrogate(AcquisitionFunction):
             multiobjSurrogateProblem,
             self.mooptimizer,
             ("n_gen", self.nGens),
-            seed=surrogateModels[0].nsamples(),
+            seed=surrogateModels[0].ntrain(),
             verbose=False,
         )
 
@@ -1312,11 +1314,11 @@ class MinimizeMOSurrogate(AcquisitionFunction):
                 [[res.X[idx][i] for i in range(dim)] for idx in idxs]
             )
 
-            # Create scaled samples and KDTree with those
+            # Create scaled sample and KDTree with that
             xlow = np.array([bounds[i][0] for i in range(dim)])
             xup = np.array([bounds[i][1] for i in range(dim)])
-            ssamples = (surrogateModels[0].samples() - xlow) / (xup - xlow)
-            tree = KDTree(ssamples)
+            ssample = (surrogateModels[0].xtrain() - xlow) / (xup - xlow)
+            tree = KDTree(ssample)
 
             # Discard points that are too close to eachother and previously
             # sampled points.
@@ -1499,11 +1501,11 @@ class GosacSample(AcquisitionFunction):
         iindex = surrogateModels[0].iindex
         assert n == 1
 
-        # Create scaled samples and KDTree with those
+        # Create scaled sample and KDTree with that
         xlow = np.array([bounds[i][0] for i in range(dim)])
         xup = np.array([bounds[i][1] for i in range(dim)])
-        ssamples = (surrogateModels[0].samples() - xlow) / (xup - xlow)
-        tree = KDTree(ssamples)
+        ssample = (surrogateModels[0].xtrain() - xlow) / (xup - xlow)
+        tree = KDTree(ssample)
 
         cheapProblem = ProblemWithConstraint(
             self.fun,
@@ -1518,14 +1520,14 @@ class GosacSample(AcquisitionFunction):
             cheapProblem,
             self.optimizer,
             ("n_gen", self.nGens),
-            seed=surrogateModels[0].nsamples(),
+            seed=surrogateModels[0].ntrain(),
             verbose=False,
         )
 
         # If either no feasible solution was found or the solution found is too
         # close to already sampled points, we then
         # consider the whole variable domain and sample at the point that
-        # maximizes the minimum distance of samples
+        # maximizes the minimum distance of sample points.
         isGoodCandidate = True
         if res.X is None:
             isGoodCandidate = False
@@ -1544,7 +1546,7 @@ class GosacSample(AcquisitionFunction):
                 minimumPointProblem,
                 self.optimizer,
                 ("n_gen", self.nGens),
-                seed=surrogateModels[0].nsamples() + 1,
+                seed=surrogateModels[0].ntrain() + 1,
                 verbose=False,
             )
             assert res.X is not None
@@ -1614,12 +1616,10 @@ class MaximizeEI(AcquisitionFunction):
 
         # Generate the complete pool of candidates
         if isinstance(self.sampler, Mitchel91Sampler):
-            current_samples = np.concatenate(
-                (surrogateModel.samples(), [xs]), axis=0
+            current_sample = np.concatenate(
+                (surrogateModel.xtrain(), [xs]), axis=0
             )
-            x = self.sampler.get_sample(
-                bounds, current_samples=current_samples
-            )
+            x = self.sampler.get_sample(bounds, current_sample=current_sample)
         else:
             x = self.sampler.get_sample(bounds)
         x = np.concatenate(([xs], x), axis=0)

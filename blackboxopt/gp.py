@@ -108,8 +108,8 @@ class GaussianProcess(GaussianProcessRegressor):
         """
         return self.predict(x, return_std=True, return_cov=False)
 
-    def samples(self) -> np.ndarray:
-        """Get the sampled points.
+    def xtrain(self) -> np.ndarray:
+        """Get the training data points.
 
         Returns
         -------
@@ -128,12 +128,12 @@ class GaussianProcess(GaussianProcessRegressor):
         """Return the minimum design space size for a given space dimension."""
         return 1 if dim > 0 else 0
 
-    def check_initial_design(self, samples: np.ndarray) -> bool:
-        """Check if the set of samples is able to generate a valid surrogate."""
-        if samples.ndim != 2 or len(samples) < 1:
+    def check_initial_design(self, sample: np.ndarray) -> bool:
+        """Check if the sample is able to generate a valid surrogate."""
+        if sample.ndim != 2 or len(sample) < 1:
             return False
         try:
-            copy.deepcopy(self).fit(samples, np.ones(len(samples)))
+            copy.deepcopy(self).fit(sample, np.ones(len(sample)))
             return True
         except np.linalg.LinAlgError:
             return False
@@ -148,15 +148,15 @@ class GaussianProcess(GaussianProcessRegressor):
         ynew : array-like
             Function values on the sampled points.
         """
-        if self.nsamples() > 0:
-            X = np.concatenate((self.samples(), Xnew), axis=0)
-            y = np.concatenate((self.get_fsamples(), ynew), axis=0)
+        if self.ntrain() > 0:
+            X = np.concatenate((self.xtrain(), Xnew), axis=0)
+            y = np.concatenate((self.ytrain(), ynew), axis=0)
         else:
             X = Xnew
             y = ynew
         self.fit(X, y)
 
-    def nsamples(self) -> int:
+    def ntrain(self) -> int:
         """Get the number of sampled points.
 
         Returns
@@ -164,13 +164,13 @@ class GaussianProcess(GaussianProcessRegressor):
         out: int
             Number of sampled points.
         """
-        return len(self.samples())
+        return len(self.xtrain())
 
     def get_iindex(self) -> tuple[int, ...]:
         """Return iindex, the sequence of integer variable indexes."""
         return ()
 
-    def get_fsamples(self) -> np.ndarray:
+    def ytrain(self) -> np.ndarray:
         """Get f(x) for the sampled points.
 
         Returns
