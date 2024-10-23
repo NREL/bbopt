@@ -166,12 +166,6 @@ def read_and_run(
         optres.append(opt)
     ## End Optimization
 
-    # save solution to file
-    f = open("Results.data", mode="wb")
-    p.dump(optres, f)
-    f.close()
-    # TODO: Is it the best option?
-
     ## Plot Result
     if PlotResult:
         plot_results(optres, "RBFPlot.png")
