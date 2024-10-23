@@ -36,7 +36,6 @@ __deprecated__ = False
 
 import numpy as np
 from math import log
-from typing import Optional
 # from multiprocessing.pool import ThreadPool
 
 # Scipy imports
@@ -140,46 +139,82 @@ class AcquisitionFunction:
 
 
 class WeightedAcquisition(AcquisitionFunction):
-    """Acquisition based on the weighted average of function value and distance
-    to sample points.
+    """Select candidates based on the minimization of an weighted average score.
 
-    This an abstract class. Subclasses must implement the method
-    :meth:`acquire()`.
+    The weighted average is :math:`w f_s(x) + (1-w) (-d_s(x))`, where
+    :math:`f_s(x)` is the surrogate value at :math:`x` and :math:`d_s(x)` is the
+    distance of :math:`x` to its closest neighbor in the current sample.
+
+    The sampler generate candidate points to be scored and then selected.
 
     Attributes
     ----------
-    weightpattern: sequence = (0.2, 0.4, 0.6, 0.9, 0.95, 1)
+    sampler :
+        Sampler to generate candidate points.
+    weightpattern:
         Weight(s) `w` to be used in the score. Accessed as a circular list.
-    tol : float = 1e-3
-        Tolerance value for excluding candidates that are too close to current
-        sample points.
+        The default value is [0.2, 0.4, 0.6, 0.9, 0.95, 1].
+    reltol : float = 1e-3
+        Relative tolerance value for excluding candidates that are too close to
+        current sample points.
+    maxeval : int = 0
+        Maximum number of evaluations. A value 0 means there is no maximum.
+    _neval : int
+        Number of evaluations done so far.
     """
 
     def __init__(
-        self, weightpattern=(0.2, 0.4, 0.6, 0.9, 0.95, 1), tol: float = 1e-3
+        self,
+        sampler,
+        weightpattern=None,
+        reltol: float = 1e-3,
+        maxeval: int = 0,
     ) -> None:
         super().__init__()
-        self.weightpattern = weightpattern
-        self.tol = tol
+        self.sampler = sampler
+        if weightpattern is None:
+            self.weightpattern = [0.2, 0.4, 0.6, 0.9, 0.95, 1]
+        elif hasattr(weightpattern, "__len__"):
+            self.weightpattern = list(weightpattern)
+        else:
+            self.weightpattern = [weightpattern]
+        self.reltol = reltol
+        self.maxeval = maxeval
+        self._neval = 0
 
+    @staticmethod
     def argminscore(
-        self, scaledvalue: np.ndarray, dist: np.ndarray, valueweight: float
-    ) -> np.intp:
+        scaledvalue: np.ndarray,
+        dist: np.ndarray,
+        weight: float,
+        tol: float,
+    ) -> int:
         """Gets the index of the candidate point that minimizes the score.
+
+        The score is :math:`w f_s(x) + (1-w) (-d_s(x))`, where
+
+        - :math:`w` is a weight.
+        - :math:`f_s(x)` is the estimated value for the objective function on x,
+        scaled to [0,1].
+        - :math:`d_s(x)` is the minimum distance between x and the previously
+        selected evaluation points, scaled to [-1,0].
 
         Parameters
         ----------
         scaledvalue : numpy.ndarray
-            Function values scaled from [0, 1].
+            Function values :math:`f_s(x)` scaled to [0, 1].
         dist : numpy.ndarray
             Minimum distance between a candidate point and previously evaluated
             sampled points.
-        valueweight: float
-            Weight `w` to be used in the score.
+        weight: float
+            Weight :math:`w`.
+        tol : float
+            Tolerance value for excluding candidates that are too close to
+            current sample points.
 
         Returns
         -------
-        numpy.intp
+        int
             Index of the selected candidate.
         """
         # Scale distance values to [0,1]
@@ -191,11 +226,11 @@ class WeightedAcquisition(AcquisitionFunction):
             scaleddist = (maxdist - dist) / (maxdist - mindist)
 
         # Compute weighted score for all candidates
-        score = valueweight * scaledvalue + (1 - valueweight) * scaleddist
+        score = weight * scaledvalue + (1 - weight) * scaleddist
 
         # Assign bad values to points that are too close to already
         # evaluated/chosen points
-        score[dist < self.tol] = np.inf
+        score[dist < tol] = np.inf
 
         # Return index with the best (smallest) score
         iBest = np.argmin(score)
@@ -206,32 +241,23 @@ class WeightedAcquisition(AcquisitionFunction):
             print(score)
             exit()
 
-        return iBest
+        return int(iBest)
 
     def minimize_weightedavg_fx_distx(
         self, x: np.ndarray, distx: np.ndarray, fx: np.ndarray, n: int
     ) -> tuple[np.ndarray, np.ndarray]:
-        """Select n points based on their values and distances to candidates.
+        """Select n points from a pool of candidates using :meth:`argminscore()`
+        iteratively.
 
-        The points are chosen from x such that they minimize the expression
-        :math:`w f_s(x) + (1-w) (1-d_s(x))`, where
-
-        - :math:`w` is a weight.
-        - :math:`f_s(x)` is the estimated value for the objective function on x,
-        scaled to [0,1].
-        - :math:`d_s(x)` is the minimum distance between x and the previously
-        selected evaluation points, scaled to [-1,0].
-
-        If there are more than one new sample point to be
-        selected, the distances of the candidate points to the previously
-        selected candidate point have to be taken into account.
+        The score on the iteration `i > 1` uses the distances to cadidates
+        selected in the iterations `0` to `i-1`.
 
         Parameters
         ----------
         x : numpy.ndarray
             Matrix with candidate points.
         distx: numpy.ndarray
-            Matrix with the distances between the candidate points and the
+            Matrix with the distances between the candidate points and the m
             sampled points. The number of rows of distx must be equal to the number
             of rows of x.
         fx : numpy.ndarray
@@ -276,7 +302,10 @@ class WeightedAcquisition(AcquisitionFunction):
                 axis=1,
             )
 
-        selindex = self.argminscore(scaledvalue, dist, self.weightpattern[0])
+        tol = self.tol(dim)
+        selindex = self.argminscore(
+            scaledvalue, dist, self.weightpattern[0], tol
+        )
         xselected[0, :] = x[selindex, :]
         distselected[0, 0:m] = distx[selindex, :]
         for ii in range(1, n):
@@ -289,6 +318,7 @@ class WeightedAcquisition(AcquisitionFunction):
                 scaledvalue,
                 dist,
                 self.weightpattern[ii % len(self.weightpattern)],
+                tol,
             )
             xselected[ii, :] = x[selindex, :]
 
@@ -303,47 +333,32 @@ class WeightedAcquisition(AcquisitionFunction):
 
         return xselected, distselected
 
+    def tol(self, dim: int) -> float:
+        """Compute tolerance value based on :attr:`reltol` and the sampling
+        region diameter for a reference domain.
 
-class CoordinatePerturbation(WeightedAcquisition):
-    """Acquisition function by coordinate perturbation.
+        Parameters
+        ----------
+        dim : int
+            Dimension of the space of features.
 
-    Attributes
-    ----------
-    neval : int
-        Number of evaluations done so far.
-    maxeval : int
-        Maximum number of evaluations.
-    sampler : NormalSampler
-        Sampler to generate candidate points.
-    reltol : float, optional
-        Relative tolerance. Used to compute the tolerance for the weighted
-        acquisition.
-    """
-
-    def __init__(
-        self,
-        maxeval: int,
-        sampler: Optional[NormalSampler] = None,
-        weightpattern=(0.2, 0.4, 0.6, 0.9, 0.95, 1),
-        reltol: float = 0.01,
-    ) -> None:
-        super().__init__(list(weightpattern), 0)
-        self.neval = 0
-        self.maxeval = maxeval
-        self.sampler = NormalSampler(1, 1) if sampler is None else sampler
-        self.reltol = reltol
+        Returns
+        -------
+        float
+            Tolerance used to eliminate points that are too close to previously
+            selected ones.
+        """
+        return self.reltol * self.sampler.get_diameter(dim)
 
     def acquire(
         self,
         surrogateModel,
         bounds,
         n: int = 1,
-        *,
-        xbest=None,
-        coord=(),
         **kwargs,
     ) -> np.ndarray:
-        """Acquire n points.
+        """Generate a number of candidates using the :attr:`sampler`. Then,
+        select n points that maximize the score.
 
         Parameters
         ----------
@@ -352,11 +367,12 @@ class CoordinatePerturbation(WeightedAcquisition):
         bounds : sequence
             List with the limits [x_min,x_max] of each direction x in the search
             space.
-        n : int, optional
-            Number of points to be acquired. The default is 1.
+        n : int = 1
+            Number of points to be acquired.
         xbest : array-like, optional
-            Best point so far.
-        coord : tuple, optional
+            Best point so far. Used if :attr:`sampler` is an instance of
+            :class:`blackboxopt.sampling.NormalSampler`.
+        coord : tuple = ()
             Coordinates of the input space that will vary. The default is (),
             which means that all coordinates will vary.
 
@@ -375,22 +391,25 @@ class CoordinatePerturbation(WeightedAcquisition):
             else surrogateModel.iindex
         )
 
-        # Probability
-        if self.maxeval > 1:
-            self._prob = min(20 / dim, 1) * (
-                1 - (log(self.neval + 1) / log(self.maxeval))
+        # Generate candidates
+        if isinstance(self.sampler, NormalSampler):
+            # Compute probability in case DDS is used
+            if self.maxeval > 1:
+                prob = min(20 / dim, 1) * (
+                    1 - (log(self._neval + 1) / log(self.maxeval))
+                )
+            else:
+                prob = 1.0
+
+            x = self.sampler.get_sample(
+                bounds,
+                iindex=iindex,
+                mu=kwargs["xbest"],
+                probability=prob,
+                coord=kwargs["coord"] if "coord" in kwargs else (),
             )
         else:
-            self._prob = 1.0
-
-        # Generate candidates
-        x = self.sampler.get_sample(
-            bounds,
-            iindex=iindex,
-            mu=xbest,
-            probability=self._prob,
-            coord=coord,
-        )
+            x = self.sampler.get_sample(bounds, iindex=iindex)
         nCand = x.shape[0]
 
         # Evaluate candidates
@@ -412,7 +431,6 @@ class CoordinatePerturbation(WeightedAcquisition):
         sdistx = cdist(sx, ssample)
 
         # Select best candidates
-        self.tol = self.compute_tol(dim)
         xselected, _ = self.minimize_weightedavg_fx_distx(sx, sdistx, fx, n)
         assert n == xselected.shape[0]
 
@@ -427,101 +445,7 @@ class CoordinatePerturbation(WeightedAcquisition):
         )
 
         # Update number of evaluations
-        self.neval += n
-
-        return xselected
-
-    def compute_tol(self, dim) -> float:
-        """Candidate points are chosen s.t.
-
-            ||x - xbest|| >= reltol * sqrt(dim) * sigma,
-
-        where sigma is the standard deviation of the normal distribution.
-        """
-        return self.reltol * self.sampler.sigma * np.sqrt(dim)
-
-
-class UniformAcquisition(WeightedAcquisition):
-    """Uniform acquisition function.
-
-    Attributes
-    ----------
-    sampler : Sampler
-        Sampler to generate candidate points.
-    """
-
-    def __init__(
-        self,
-        nCand: int,
-        weight: float = 0.95,
-        tol: float = 1e-3,
-    ) -> None:
-        super().__init__((weight,), tol)
-        self.sampler = Sampler(nCand)
-
-    def acquire(
-        self,
-        surrogateModel,
-        bounds,
-        n: int = 1,
-        **kwargs,
-    ) -> np.ndarray:
-        """Acquire n points.
-
-        Parameters
-        ----------
-        surrogateModel : Surrogate model
-            Surrogate model.
-        bounds : sequence
-            List with the limits [x_min,x_max] of each direction x in the search
-            space.
-        n : int, optional
-            Number of points to be acquired. The default is 1.
-
-        Returns
-        -------
-        numpy.ndarray
-            n-by-dim matrix with the selected points.
-        """
-        dim = len(bounds)  # Dimension of the problem
-
-        # Check if surrogateModel is a list of models
-        listOfSurrogates = hasattr(surrogateModel, "__len__")
-        iindex = (
-            surrogateModel[0].iindex
-            if listOfSurrogates
-            else surrogateModel.iindex
-        )
-
-        # Generate candidates
-        x = self.sampler.get_uniform_sample(bounds, iindex=iindex)
-        nCand = x.shape[0]
-
-        # Evaluate candidates
-        if not listOfSurrogates:
-            sample = surrogateModel.xtrain()
-            fx, _ = surrogateModel(x)
-        else:
-            sample = surrogateModel[0].xtrain()
-            objdim = len(surrogateModel)
-            fx = np.empty((nCand, objdim))
-            for i in range(objdim):
-                fx[:, i], _ = surrogateModel[i](x)
-
-        # Create scaled x and scaled distx
-        xlow = np.array([bounds[i][0] for i in range(dim)])
-        xup = np.array([bounds[i][1] for i in range(dim)])
-        sx = (x - xlow) / (xup - xlow)
-        ssample = (sample - xlow) / (xup - xlow)
-        sdistx = cdist(sx, ssample)
-
-        # Select best candidates
-        xselected, _ = self.minimize_weightedavg_fx_distx(sx, sdistx, fx, n)
-        assert n == xselected.shape[0]
-
-        # Rescale selected points
-        xselected = xselected * (xup - xlow) + xlow
-        xselected[:, iindex] = np.round(xselected[:, iindex])
+        self._neval += n
 
         return xselected
 
@@ -1353,11 +1277,11 @@ class CoordinatePerturbationOverNondominated(AcquisitionFunction):
 
     Attributes
     ----------
-    acquisitionFunc : CoordinatePerturbation
+    acquisitionFunc : WeightedAcquisition
         Coordinate perturbation acquisition function.
     """
 
-    def __init__(self, acquisitionFunc: CoordinatePerturbation) -> None:
+    def __init__(self, acquisitionFunc: WeightedAcquisition) -> None:
         self.acquisitionFunc = acquisitionFunc
 
     def acquire(
@@ -1388,7 +1312,7 @@ class CoordinatePerturbationOverNondominated(AcquisitionFunction):
             Pareto front in the objective space. The default is an empty tuple.
         """
         dim = len(bounds)
-        tol = self.acquisitionFunc.compute_tol(dim)
+        tol = self.acquisitionFunc.tol(dim)
 
         # Create vectors xlow and xup
         xlow = np.array([bounds[i][0] for i in range(dim)])

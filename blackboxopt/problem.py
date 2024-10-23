@@ -111,7 +111,7 @@ class ProblemWithConstraint(Problem):
         self.gfunc = gfunc
         super().__init__(vars=vars, n_obj=1, n_ieq_constr=n_ieq_constr)
 
-    def _evaluate(self, X, out, *args, **kwargs):
+    def _evaluate(self, X, out):
         x = _dict_to_array(X)
         out["F"] = self.objfunc(x)
         out["G"] = self.gfunc(x)
@@ -131,7 +131,7 @@ class ProblemNoConstraint(Problem):
         self.objfunc = objfunc
         super().__init__(vars=vars, n_obj=1)
 
-    def _evaluate(self, X, out, *args, **kwargs):
+    def _evaluate(self, X, out):
         x = _dict_to_array(X)
         out["F"] = self.objfunc(x)
 

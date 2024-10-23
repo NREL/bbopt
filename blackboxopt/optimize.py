@@ -53,7 +53,7 @@ from sklearn.gaussian_process.kernels import RBF as GPkernelRBF
 
 # Local imports
 from .acquisition import (
-    CoordinatePerturbation,
+    WeightedAcquisition,
     CoordinatePerturbationOverNondominated,
     EndPointsParetoFront,
     GosacSample,
@@ -62,13 +62,12 @@ from .acquisition import (
     ParetoFront,
     TargetValueAcquisition,
     AcquisitionFunction,
-    UniformAcquisition,
     find_pareto_front,
 )
 from .rbf import RbfModel
 from .problem import BBOptDuplicateElimination
 from .gp import GaussianProcess
-from .sampling import Sampler
+from .sampling import NormalSampler, Sampler
 
 
 @dataclass
@@ -461,7 +460,7 @@ def stochastic_response_surface(
     x0y0=(),
     *,
     surrogateModel=None,
-    acquisitionFunc: Optional[CoordinatePerturbation] = None,
+    acquisitionFunc: Optional[WeightedAcquisition] = None,
     sample: Optional[np.ndarray] = None,
     batchSize: int = 1,
     expectedRelativeImprovement: float = 1e-3,
@@ -491,7 +490,7 @@ def stochastic_response_surface(
         Surrogate model to be used. The default is RbfModel().
         On exit, if provided, the surrogate model is updated to represent the
         one used in the last iteration.
-    acquisitionFunc : CoordinatePerturbation, optional
+    acquisitionFunc : WeightedAcquisition, optional
         Acquisition function to be used.
     sample : np.ndarray, optional
         Initial sample to be added to the surrogate model. The default is an
@@ -537,7 +536,7 @@ def stochastic_response_surface(
     if sample is None:
         sample = np.array([])
     if acquisitionFunc is None:
-        acquisitionFunc = CoordinatePerturbation(0)
+        acquisitionFunc = WeightedAcquisition(NormalSampler(0, 0.1))
 
     # Use a number of candidates that is greater than 1
     if acquisitionFunc.sampler.n <= 1:
@@ -667,24 +666,25 @@ def stochastic_response_surface(
                     countinuousSearch = len(acquisitionFunc.weightpattern)
 
             # check if algorithm is in a local minimum
-            elif failctr >= failtolerance:
-                acquisitionFunc.sampler.sigma *= 0.5
-                failctr = 0
-                if (
-                    acquisitionFunc.sampler.sigma
-                    < acquisitionFunc.sampler.sigma_min
-                ):
-                    # Algorithm is probably in a local minimum!
-                    acquisitionFunc.sampler.sigma = (
-                        acquisitionFunc.sampler.sigma_min
+            elif isinstance(acquisitionFunc.sampler, NormalSampler):
+                if failctr >= failtolerance:
+                    acquisitionFunc.sampler.sigma *= 0.5
+                    failctr = 0
+                    if (
+                        acquisitionFunc.sampler.sigma
+                        < acquisitionFunc.sampler.sigma_min
+                    ):
+                        # Algorithm is probably in a local minimum!
+                        acquisitionFunc.sampler.sigma = (
+                            acquisitionFunc.sampler.sigma_min
+                        )
+                        break
+                elif succctr >= succtolerance:
+                    acquisitionFunc.sampler.sigma = min(
+                        2 * acquisitionFunc.sampler.sigma,
+                        acquisitionFunc.sampler.sigma_max,
                     )
-                    break
-            elif succctr >= succtolerance:
-                acquisitionFunc.sampler.sigma = min(
-                    2 * acquisitionFunc.sampler.sigma,
-                    acquisitionFunc.sampler.sigma_max,
-                )
-                succctr = 0
+                    succctr = 0
 
     # Update output
     out.sample.resize(out.nfev, dim)
@@ -699,7 +699,7 @@ def multistart_stochastic_response_surface(
     maxeval: int,
     *,
     surrogateModel=None,
-    acquisitionFunc: Optional[CoordinatePerturbation] = None,
+    acquisitionFunc: Optional[WeightedAcquisition] = None,
     batchSize: int = 1,
     performContinuousSearch: bool = True,
     disp: bool = False,
@@ -721,7 +721,7 @@ def multistart_stochastic_response_surface(
         Maximum number of function evaluations.
     surrogateModel : surrogate model, optional
         Surrogate model to be used. The default is RbfModel().
-    acquisitionFunc : CoordinatePerturbation, optional
+    acquisitionFunc : WeightedAcquisition, optional
         Acquisition function to be used.
     batchSize : int, optional
         Number of new sample points to be generated per iteration. The default is 1.
@@ -999,7 +999,7 @@ def cptv(
     maxeval: int,
     *,
     surrogateModel=None,
-    acquisitionFunc: Optional[CoordinatePerturbation] = None,
+    acquisitionFunc: Optional[WeightedAcquisition] = None,
     expectedRelativeImprovement: float = 1e-3,
     failtolerance: int = 5,
     consecutiveQuickFailuresTol: int = 0,
@@ -1023,9 +1023,9 @@ def cptv(
         Maximum number of function evaluations.
     surrogateModel : surrogate model, optional
         Surrogate model. The default is RbfModel().
-    acquisitionFunc : CoordinatePerturbation, optional
+    acquisitionFunc : WeightedAcquisition, optional
         Acquisition function to be used in the CP step. The default is
-        CoordinatePerturbation(0).
+        WeightedAcquisition(0).
     expectedRelativeImprovement : float, optional
         Expected relative improvement with respect to the current best value.
         An improvement is considered significant if it is greater than
@@ -1072,7 +1072,7 @@ def cptv(
     if surrogateModel is None:
         surrogateModel = RbfModel()
     if acquisitionFunc is None:
-        acquisitionFunc = CoordinatePerturbation(0)
+        acquisitionFunc = WeightedAcquisition(NormalSampler(0, 0.1))
 
     # xup and xlow
     xup = np.array([b[1] for b in bounds])
@@ -1181,7 +1181,7 @@ def cptv(
             else:
                 consecutiveQuickFailures = 0
 
-            acquisitionFunc0.neval += out_local.nfev
+            acquisitionFunc0._neval += out_local.nfev
 
             if disp:
                 print("TV step ended after ", out_local.nfev, "f evals.")
@@ -1269,7 +1269,7 @@ def cptvl(
     maxeval: int,
     *,
     surrogateModel=None,
-    acquisitionFunc: Optional[CoordinatePerturbation] = None,
+    acquisitionFunc: Optional[WeightedAcquisition] = None,
     expectedRelativeImprovement: float = 1e-3,
     failtolerance: int = 5,
     consecutiveQuickFailuresTol: int = 0,
@@ -1298,8 +1298,8 @@ def socemo(
     maxeval: int,
     *,
     surrogateModels=(RbfModel(),),
-    acquisitionFunc: Optional[CoordinatePerturbation] = None,
-    acquisitionFuncGlobal: Optional[UniformAcquisition] = None,
+    acquisitionFunc: Optional[WeightedAcquisition] = None,
+    acquisitionFuncGlobal: Optional[WeightedAcquisition] = None,
     sample: Optional[np.ndarray] = None,
     disp: bool = False,
     callback: Optional[Callable[[OptimizeResult], None]] = None,
@@ -1318,12 +1318,12 @@ def socemo(
         Maximum number of function evaluations.
     surrogateModels : tuple, optional
         Surrogate models to be used. The default is (RbfModel(),).
-    acquisitionFunc : CoordinatePerturbation, optional
+    acquisitionFunc : WeightedAcquisition, optional
         Acquisition function to be used in the CP step. The default is
-        CoordinatePerturbation(0).
-    acquisitionFuncGlobal : UniformAcquisition, optional
+        WeightedAcquisition(0).
+    acquisitionFuncGlobal : WeightedAcquisition, optional
         Acquisition function to be used in the global step. The default is
-        UniformAcquisition(0).
+        WeightedAcquisition(Sampler(0), 0.95).
     sample : np.ndarray, optional
         Initial sample to be added to the surrogate model. The default is an
         empty array.
@@ -1354,9 +1354,9 @@ def socemo(
     if sample is None:
         sample = np.array([])
     if acquisitionFunc is None:
-        acquisitionFunc = CoordinatePerturbation(0)
+        acquisitionFunc = WeightedAcquisition(NormalSampler(0, 0.1))
     if acquisitionFuncGlobal is None:
-        acquisitionFuncGlobal = UniformAcquisition(0)
+        acquisitionFuncGlobal = WeightedAcquisition(Sampler(0), 0.95)
 
     # xup and xlow
     xup = np.array([b[1] for b in bounds])
@@ -1400,7 +1400,7 @@ def socemo(
         ),
     )
     nGens = 100
-    tol = acquisitionFunc.compute_tol(dim)
+    tol = acquisitionFunc.tol(dim)
 
     # Define acquisition functions
     step1acquisition = ParetoFront(mooptimizer, nGens)

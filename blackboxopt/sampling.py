@@ -69,6 +69,21 @@ class Sampler:
         self.strategy = strategy
         self.n = n
 
+    def get_diameter(self, dim: int) -> float:
+        """Diameter of the sampling region in a [0,1]^dim volume.
+
+        Parameters
+        ----------
+        dim : int
+            Number of dimensions in the space.
+
+        Return
+        ------
+        float
+            Diameter of the sampling region.
+        """
+        return np.sqrt(dim)
+
     def get_uniform_sample(
         self, bounds, *, iindex: tuple[int, ...] = ()
     ) -> np.ndarray:
@@ -167,7 +182,7 @@ class Sampler:
         return X
 
     def get_sample(
-        self, bounds, *, iindex: tuple[int, ...] = ()
+        self, bounds, *, iindex: tuple[int, ...] = (), **kwargs
     ) -> np.ndarray:
         """Generate a sample.
 
@@ -208,7 +223,7 @@ class NormalSampler(Sampler):
         sigma: float,
         *,
         sigma_min: float = 0,
-        sigma_max: float = float("inf"),
+        sigma_max: float = 0.25,
         strategy: SamplingStrategy = SamplingStrategy.NORMAL,
     ) -> None:
         super().__init__(n, strategy=strategy)
@@ -219,12 +234,30 @@ class NormalSampler(Sampler):
             0 <= self.sigma_min <= self.sigma <= self.sigma_max <= float("inf")
         )
 
+    def get_diameter(self, dim: int) -> float:
+        """Diameter of the sampling region in a [0,1]^dim volume.
+
+        For the normal sampler, the diameter is relative to the std. This
+        implementation considers the region of 95% of the values on each
+        coordinate, which has diameter `4*sigma`.
+
+        Parameters
+        ----------
+        dim : int
+            Number of dimensions in the space.
+
+        Return
+        ------
+        float
+            Diameter of the sampling region.
+        """
+        return min(4 * self.sigma, 1.0) * np.sqrt(dim)
+
     def get_normal_sample(
         self,
         bounds,
+        mu,
         *,
-        iindex: tuple[int, ...] = (),
-        mu=None,
         coord=(),
     ) -> np.ndarray:
         """Generate a sample from a normal distribution around a given point mu.
@@ -233,22 +266,17 @@ class NormalSampler(Sampler):
         ----------
         bounds : sequence
             List with the limits [x_min,x_max] of each direction x in the space.
-        iindex : tuple, optional
-            Indices of the input space that are integer. The default is ().
-        mu : array-like, optional
-            Point around which the sample will be generated. The default is the origin.
+        mu : array-like
+            Point around which the sample will be generated.
         coord : tuple, optional
-            Coordinates of the input space that will vary. The default is (), which means that all
-            coordinates will vary.
+            Coordinates of the input space that will vary. The default is (),
+            which means that all coordinates will vary.
 
         Returns
         -------
         numpy.ndarray
             Matrix with the generated sample points.
         """
-        # The normal sampler does not support integer variables
-        assert iindex == ()
-
         dim = len(bounds)
         xlow = np.array([bounds[i][0] for i in range(dim)])
         xup = np.array([bounds[i][1] for i in range(dim)])
@@ -271,10 +299,10 @@ class NormalSampler(Sampler):
     def get_dds_sample(
         self,
         bounds,
+        mu,
         probability: float,
         *,
         iindex: tuple[int, ...] = (),
-        mu=None,
         coord=(),
     ) -> np.ndarray:
         """Generate a DDS sample.
@@ -283,15 +311,15 @@ class NormalSampler(Sampler):
         ----------
         bounds : sequence
             List with the limits [x_min,x_max] of each direction x in the space.
+        mu : array-like
+            Point around which the sample will be generated.
         probability : float
             Perturbation probability.
         iindex : tuple, optional
             Indices of the input space that are integer. The default is ().
-        mu : array-like, optional
-            Point around which the sample will be generated. The default is the origin.
         coord : tuple, optional
-            Coordinates of the input space that will vary. The default is (), which means that all
-            coordinates will vary.
+            Coordinates of the input space that will vary. The default is (),
+            which means that all coordinates will vary.
 
         Returns
         -------
@@ -346,13 +374,7 @@ class NormalSampler(Sampler):
         return xnew
 
     def get_sample(
-        self,
-        bounds,
-        *,
-        iindex: tuple[int, ...] = (),
-        mu=None,
-        probability: float = 1,
-        coord=(),
+        self, bounds, *, iindex: tuple[int, ...] = (), **kwargs
     ) -> np.ndarray:
         """Generate a sample.
 
@@ -363,12 +385,25 @@ class NormalSampler(Sampler):
         iindex : tuple, optional
             Indices of the input space that are integer. The default is ().
         mu : array-like, optional
-            Point around which the sample will be generated. The default is the origin.
-        probability : float, optional
-            Perturbation probability. The default is 1.
+            Point around which the sample will be generated. Used by:
+
+            * `SamplingStrategy.NORMAL`
+            * `SamplingStrategy.DDS`
+            * `SamplingStrategy.DDS_UNIFORM`
+
         coord : tuple, optional
             Coordinates of the input space that will vary. The default is (),
-            which means that all coordinates will vary.
+            which means that all coordinates will vary. Used by:
+
+            * `SamplingStrategy.NORMAL`
+            * `SamplingStrategy.DDS`
+            * `SamplingStrategy.DDS_UNIFORM`
+
+        probability : float, optional
+            Perturbation probability. Used by:
+
+            * `SamplingStrategy.DDS`
+            * `SamplingStrategy.DDS_UNIFORM`
 
         Returns
         -------
@@ -376,22 +411,35 @@ class NormalSampler(Sampler):
             Matrix with the generated sample points.
         """
         if self.strategy == SamplingStrategy.NORMAL:
-            return self.get_normal_sample(
-                bounds, iindex=iindex, mu=mu, coord=coord
-            )
+            assert (
+                iindex == ()
+            )  # This strategy does not support integer variables
+            mu = kwargs["mu"]
+            coord = kwargs["coord"] if "coord" in kwargs else ()
+            return self.get_normal_sample(bounds, mu, coord=coord)
         elif self.strategy == SamplingStrategy.DDS:
+            mu = kwargs["mu"]
+            probability = (
+                kwargs["probability"] if "probability" in kwargs else 1
+            )
+            coord = kwargs["coord"] if "coord" in kwargs else ()
             return self.get_dds_sample(
-                bounds, probability, iindex=iindex, mu=mu, coord=coord
+                bounds, mu, probability, iindex=iindex, coord=coord
             )
         elif self.strategy == SamplingStrategy.DDS_UNIFORM:
             nTotal = self.n
+            mu = kwargs["mu"]
+            probability = (
+                kwargs["probability"] if "probability" in kwargs else 1
+            )
+            coord = kwargs["coord"] if "coord" in kwargs else ()
 
             self.n = self.n // 2
             sample0 = self.get_dds_sample(
                 bounds,
+                mu,
                 probability,
                 iindex=iindex,
-                mu=mu,
                 coord=coord,
             )
 
@@ -401,7 +449,6 @@ class NormalSampler(Sampler):
             self.n = nTotal
             return np.concatenate((sample0, sample1), axis=0)
         else:
-            assert coord == ()
             return super().get_sample(bounds, iindex=iindex)
 
 
@@ -435,8 +482,69 @@ class Mitchel91Sampler(Sampler):
         self.maxCand = maxCand if maxCand > 0 else 10 * n
         self.scale = scale
 
+    def get_mitchel91_sample(
+        self, bounds, *, iindex: tuple[int, ...] = (), current_sample=()
+    ) -> np.ndarray:
+        """Generate a sample that aims to fill gaps in the search space.
+
+        Algorithm from [#]_.
+
+        Parameters
+        ----------
+        bounds : sequence
+            List with the limits [x_min,x_max] of each direction x in the space.
+        iindex : tuple, optional
+            Indices of the input space that are integer. The default is ().
+        current_sample : array-like, optional
+            Sample points already drawn.
+
+        Returns
+        -------
+        numpy.ndarray
+            Matrix with the generated sample points.
+
+        References
+        ----------
+        .. [#] Mitchell, D. P. (1991). Spectrally optimal sampling for distribution
+            ray tracing. Computer Graphics, 25, 157–164.
+        """
+        dim = len(bounds)
+        ncurrent = len(current_sample)
+        cand = np.empty((self.n, dim))
+
+        if ncurrent == 0:
+            # Select the first sample randomly in the domain
+            cand[0, :] = self.get_uniform_sample(bounds, iindex=iindex)[0]
+            i0 = 1
+        else:
+            i0 = 0
+
+        if ncurrent > 0:
+            tree = KDTree(current_sample)
+
+        # Choose candidates that are far from current sample and each other
+        for i in range(i0, self.n):
+            npool = int(min(self.scale * (i + ncurrent), self.maxCand))
+
+            # Pool of candidates in iteration i
+            candPool = Sampler(npool).get_uniform_sample(bounds, iindex=iindex)
+
+            # Compute distance to current sample
+            minDist = tree.query(candPool)[0] if ncurrent > 0 else 0
+
+            # Now, consider distance to candidates selected up to iteration i-1
+            if i > 0:
+                minDist = np.minimum(
+                    minDist, np.min(cdist(candPool, cand[0:i, :]), axis=1)
+                )
+
+            # Choose the farthest point
+            cand[i, :] = candPool[np.argmax(minDist), :]
+
+        return cand
+
     def get_sample(
-        self, bounds, *, iindex: tuple[int, ...] = (), current_sample=[]
+        self, bounds, *, iindex: tuple[int, ...] = (), **kwargs
     ) -> np.ndarray:
         """Generate a sample that aims to fill gaps in the search space.
 
@@ -446,51 +554,15 @@ class Mitchel91Sampler(Sampler):
             List with the limits [x_min,x_max] of each direction x in the space.
         iindex : tuple, optional
             Indices of the input space that are integer. The default is ().
-        current_sample
-            Sample points already drawn.
-
-        References
-        ----------
-        .. [#] Mitchell, D. P. (1991). Spectrally optimal sampling for distribution
-            ray tracing. Computer Graphics, 25, 157–164.
+        current_sample : array-like, optional
+            Sample points already drawn. Used by: `SamplingStrategy.MITCHEL91`
         """
         if self.strategy == SamplingStrategy.MITCHEL91:
-            dim = len(bounds)
-            ncurrent = len(current_sample)
-            cand = np.empty((self.n, dim))
-
-            if ncurrent == 0:
-                # Select the first sample randomly in the domain
-                cand[0, :] = self.get_uniform_sample(bounds, iindex=iindex)[0]
-                i0 = 1
-            else:
-                i0 = 0
-
-            if ncurrent > 0:
-                tree = KDTree(current_sample)
-
-            # Choose candidates that are far from current sample and each other
-            for i in range(i0, self.n):
-                npool = int(min(self.scale * (i + ncurrent), self.maxCand))
-
-                # Pool of candidates in iteration i
-                candPool = Sampler(npool).get_uniform_sample(
-                    bounds, iindex=iindex
-                )
-
-                # Compute distance to current sample
-                minDist = tree.query(candPool)[0] if ncurrent > 0 else 0
-
-                # Now, consider distance to candidates selected up to iteration i-1
-                if i > 0:
-                    minDist = np.minimum(
-                        minDist, np.min(cdist(candPool, cand[0:i, :]), axis=1)
-                    )
-
-                # Choose the farthest point
-                cand[i, :] = candPool[np.argmax(minDist), :]
-
-            return cand
+            current_sample = (
+                kwargs["current_sample"] if "current_sample" in kwargs else []
+            )
+            return self.get_mitchel91_sample(
+                bounds, iindex=iindex, current_sample=current_sample
+            )
         else:
-            assert len(current_sample) == 0
             return super().get_sample(bounds, iindex=iindex)
