@@ -43,7 +43,7 @@ import matplotlib.pyplot as plt
 import pickle as p
 from blackboxopt import rbf, optimize, sampling
 from blackboxopt.acquisition import (
-    CoordinatePerturbation,
+    WeightedAcquisition,
     TargetValueAcquisition,
     AcquisitionFunction,
     MinimizeSurrogate,
@@ -309,8 +309,7 @@ def main(args):
     if args.config == 1:
         optres = read_and_run(
             data_file="datainput_Branin",
-            acquisitionFunc=CoordinatePerturbation(
-                200,
+            acquisitionFunc=WeightedAcquisition(
                 sampling.NormalSampler(
                     1000,
                     sigma=0.2,
@@ -321,6 +320,7 @@ def main(args):
                 [
                     0.95,
                 ],
+                maxeval=200,
             ),
             filter=rbf.MedianLpfFilter(),
             maxeval=200,
@@ -331,8 +331,7 @@ def main(args):
     elif args.config == 2:
         optres = read_and_run(
             data_file="datainput_hartman3",
-            acquisitionFunc=CoordinatePerturbation(
-                200,
+            acquisitionFunc=WeightedAcquisition(
                 sampling.NormalSampler(
                     300,
                     sigma=0.2,
@@ -341,6 +340,7 @@ def main(args):
                     strategy=sampling.SamplingStrategy.DDS,
                 ),
                 [0.3, 0.5, 0.8, 0.95],
+                maxeval=200,
             ),
             filter=rbf.MedianLpfFilter(),
             maxeval=200,
@@ -351,8 +351,7 @@ def main(args):
     elif args.config == 3:
         optres = read_and_run(
             data_file="datainput_BraninWithInteger",
-            acquisitionFunc=CoordinatePerturbation(
-                100,
+            acquisitionFunc=WeightedAcquisition(
                 sampling.NormalSampler(
                     200,
                     sigma=0.2,
@@ -361,6 +360,7 @@ def main(args):
                     strategy=sampling.SamplingStrategy.DDS,
                 ),
                 [0.3, 0.5, 0.8, 0.95],
+                maxeval=100,
             ),
             filter=rbf.RbfFilter(),
             maxeval=100,
@@ -372,8 +372,7 @@ def main(args):
     elif args.config == 4:
         optres = read_and_run(
             data_file="datainput_BraninWithInteger",
-            acquisitionFunc=CoordinatePerturbation(
-                100,
+            acquisitionFunc=WeightedAcquisition(
                 sampling.NormalSampler(
                     200,
                     sigma=0.2,
@@ -382,6 +381,7 @@ def main(args):
                     strategy=sampling.SamplingStrategy.DDS_UNIFORM,
                 ),
                 [0.3, 0.5, 0.8, 0.95],
+                maxeval=100,
             ),
             filter=rbf.RbfFilter(),
             maxeval=100,
@@ -406,8 +406,7 @@ def main(args):
     elif args.config == 6:
         optres = read_and_run(
             data_file="datainput_BraninWithInteger",
-            acquisitionFunc=CoordinatePerturbation(
-                100,
+            acquisitionFunc=WeightedAcquisition(
                 sampling.NormalSampler(
                     1000,
                     sigma=0.2,
@@ -416,6 +415,7 @@ def main(args):
                     strategy=sampling.SamplingStrategy.DDS,
                 ),
                 [0.3, 0.5, 0.8, 0.95],
+                maxeval=100,
             ),
             filter=rbf.RbfFilter(),
             maxeval=100,
@@ -428,8 +428,7 @@ def main(args):
     elif args.config == 7:
         optres = read_and_run(
             data_file="datainput_BraninWithInteger",
-            acquisitionFunc=CoordinatePerturbation(
-                100,
+            acquisitionFunc=WeightedAcquisition(
                 sampling.NormalSampler(
                     1000,
                     sigma=0.2,
@@ -438,6 +437,7 @@ def main(args):
                     strategy=sampling.SamplingStrategy.DDS,
                 ),
                 [0.3, 0.5, 0.8, 0.95],
+                maxeval=100,
             ),
             filter=rbf.RbfFilter(),
             maxeval=100,

@@ -31,7 +31,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from blackboxopt import rbf, optimize, sampling
 from blackboxopt.acquisition import (
-    CoordinatePerturbation,
+    WeightedAcquisition,
     TargetValueAcquisition,
     AcquisitionFunction,
     MinimizeSurrogate,
@@ -278,8 +278,7 @@ if __name__ == "__main__":
     if 1 in comparisonList:
         optresList[1] = read_and_run(
             data_file="datainput_Branin",
-            acquisitionFunc=CoordinatePerturbation(
-                200,
+            acquisitionFunc=WeightedAcquisition(
                 sampling.NormalSampler(
                     1000,
                     sigma=0.2,
@@ -290,6 +289,7 @@ if __name__ == "__main__":
                 [
                     0.95,
                 ],
+                maxeval=200,
             ),
             filter=rbf.MedianLpfFilter(),
             maxeval=200,
@@ -299,8 +299,7 @@ if __name__ == "__main__":
     if 2 in comparisonList:
         optresList[2] = read_and_run(
             data_file="datainput_hartman3",
-            acquisitionFunc=CoordinatePerturbation(
-                200,
+            acquisitionFunc=WeightedAcquisition(
                 sampling.NormalSampler(
                     300,
                     sigma=0.2,
@@ -309,6 +308,7 @@ if __name__ == "__main__":
                     strategy=sampling.SamplingStrategy.DDS,
                 ),
                 [0.3, 0.5, 0.8, 0.95],
+                maxeval=200,
             ),
             filter=rbf.MedianLpfFilter(),
             maxeval=200,
@@ -319,8 +319,7 @@ if __name__ == "__main__":
         strategyName.append("DYCORS with multistart")
         optresList[3] = read_and_run(
             data_file="datainput_BraninWithInteger",
-            acquisitionFunc=CoordinatePerturbation(
-                100,
+            acquisitionFunc=WeightedAcquisition(
                 sampling.NormalSampler(
                     1000,
                     sigma=0.2,
@@ -329,6 +328,7 @@ if __name__ == "__main__":
                     strategy=sampling.SamplingStrategy.DDS,
                 ),
                 [0.3, 0.5, 0.8, 0.95],
+                maxeval=100,
             ),
             filter=rbf.RbfFilter(),
             maxeval=100,
@@ -339,8 +339,7 @@ if __name__ == "__main__":
     if 4 in comparisonList:
         optresList[4] = read_and_run(
             data_file="datainput_BraninWithInteger",
-            acquisitionFunc=CoordinatePerturbation(
-                100,
+            acquisitionFunc=WeightedAcquisition(
                 sampling.NormalSampler(
                     200,
                     sigma=0.2,
@@ -349,6 +348,7 @@ if __name__ == "__main__":
                     strategy=sampling.SamplingStrategy.DDS_UNIFORM,
                 ),
                 [0.3, 0.5, 0.8, 0.95],
+                maxeval=100,
             ),
             filter=rbf.RbfFilter(),
             maxeval=100,
@@ -373,8 +373,7 @@ if __name__ == "__main__":
         strategyName.append("CPTV")
         optresList[6] = read_and_run(
             data_file="datainput_BraninWithInteger",
-            acquisitionFunc=CoordinatePerturbation(
-                100,
+            acquisitionFunc=WeightedAcquisition(
                 sampling.NormalSampler(
                     1000,
                     sigma=0.2,
@@ -383,6 +382,7 @@ if __name__ == "__main__":
                     strategy=sampling.SamplingStrategy.DDS,
                 ),
                 [0.3, 0.5, 0.8, 0.95],
+                maxeval=100,
             ),
             filter=rbf.RbfFilter(),
             maxeval=100,
@@ -395,8 +395,7 @@ if __name__ == "__main__":
         strategyName.append("CPTVl")
         optresList[7] = read_and_run(
             data_file="datainput_BraninWithInteger",
-            acquisitionFunc=CoordinatePerturbation(
-                100,
+            acquisitionFunc=WeightedAcquisition(
                 sampling.NormalSampler(
                     1000,
                     sigma=0.2,
@@ -405,6 +404,7 @@ if __name__ == "__main__":
                     strategy=sampling.SamplingStrategy.DDS,
                 ),
                 [0.3, 0.5, 0.8, 0.95],
+                maxeval=100,
             ),
             filter=rbf.RbfFilter(),
             maxeval=100,

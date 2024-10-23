@@ -33,7 +33,7 @@ from optprogram1 import read_check_data_file
 from blackboxopt.rbf import RbfKernel, RbfModel, MedianLpfFilter
 from blackboxopt.optimize import stochastic_response_surface
 from blackboxopt.sampling import NormalSampler, Sampler, SamplingStrategy
-from blackboxopt.acquisition import CoordinatePerturbation
+from blackboxopt.acquisition import WeightedAcquisition
 import numpy as np
 
 if __name__ == "__main__":
@@ -102,8 +102,7 @@ if __name__ == "__main__":
         maxeval=maxeval - numevals,
         surrogateModel=rbfModel,
         sample=sample,
-        acquisitionFunc=CoordinatePerturbation(
-            maxeval - numevals,
+        acquisitionFunc=WeightedAcquisition(
             NormalSampler(
                 nCand,
                 sigma=0.2,
@@ -113,6 +112,7 @@ if __name__ == "__main__":
             ),
             weightpattern=[0.3, 0.5],
             reltol=1e-3,
+            maxeval=maxeval - numevals,
         ),
         batchSize=batchSize,
     )
