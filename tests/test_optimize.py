@@ -56,16 +56,16 @@ def test_callback(minimize):
         assert isinstance(intermediate_result.fx, float)
         assert intermediate_result.nit >= 0
         assert intermediate_result.nfev > 0
-        assert intermediate_result.samples.size > 0
-        assert intermediate_result.samples.ndim == 2
-        assert intermediate_result.fsamples.size > 0
-        assert intermediate_result.fsamples.ndim == 1
+        assert intermediate_result.sample.size > 0
+        assert intermediate_result.sample.ndim == 2
+        assert intermediate_result.fsample.size > 0
+        assert intermediate_result.fsample.ndim == 1
         assert (
-            intermediate_result.samples.shape[0]
-            == intermediate_result.fsamples.size
+            intermediate_result.sample.shape[0]
+            == intermediate_result.fsample.size
         )
         assert (
-            intermediate_result.samples.shape[1] == intermediate_result.x.size
+            intermediate_result.sample.shape[1] == intermediate_result.x.size
         )
 
     minimize(
@@ -114,8 +114,8 @@ def test_multiple_calls(minimize):
     assert np.all(res0.fx == res1.fx)
     assert res0.nit == res1.nit
     assert res0.nfev == res1.nfev
-    assert np.all(res0.samples == res1.samples)
-    assert np.all(res0.fsamples == res1.fsamples)
+    assert np.all(res0.sample == res1.sample)
+    assert np.all(res0.fsample == res1.fsample)
 
 
 def test_batched_sampling():
@@ -139,7 +139,7 @@ def test_batched_sampling():
         lambda x: [ackley(xi - 3.14) for xi in x],
         bounds=bounds,
         maxeval=100,
-        newSamplesPerIteration=10,
+        batchSize=10,
         acquisitionFunc=MaximizeEI(Sampler(1000), avoid_clusters=True),
     )
     assert out.nfev == 100

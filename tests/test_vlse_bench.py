@@ -185,8 +185,7 @@ def test_cptv(func: str) -> None:
                 rbf.RbfKernel.CUBIC, filter=rbf.MedianLpfFilter()
             ),
             "optimizer": optimize.cptvl,
-            "acquisition": acquisition.CoordinatePerturbation(
-                0,
+            "acquisition": acquisition.WeightedAcquisition(
                 sampling.NormalSampler(
                     1,
                     sigma=0.2,
@@ -251,8 +250,7 @@ if __name__ == "__main__":
                 rbf.RbfKernel.CUBIC, filter=rbf.MedianLpfFilter()
             ),
             "optimizer": optimize.cptvl,
-            "acquisition": acquisition.CoordinatePerturbation(
-                0,
+            "acquisition": acquisition.WeightedAcquisition(
                 sampling.NormalSampler(
                     1,
                     sigma=0.2,

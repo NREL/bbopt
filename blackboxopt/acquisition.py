@@ -36,7 +36,6 @@ __deprecated__ = False
 
 import numpy as np
 from math import log
-from typing import Optional
 # from multiprocessing.pool import ThreadPool
 
 # Scipy imports
@@ -65,21 +64,13 @@ from .problem import (
 )
 
 
-def find_pareto_front(fx, iStart=0) -> list:
-    """Find the Pareto front given a set of points and their values.
+def find_pareto_front(fx, iStart: int = 0) -> list:
+    """Find the Pareto front given a set of points in the target space.
 
-    Parameters
-    ----------
-    fx : numpy.ndarray
-        n-by-m matrix with the values of the objective function on the samples.
-    iStart : int, optional
-        Points from 0 to iStart - 1 are considered to be already in the Pareto
-        front. The default is 0.
-
-    Returns
-    -------
-    list
-        Indices of the points that are in the Pareto front.
+    :param fx: List with n points in the m-dimensional target space.
+    :param iStart: Points from 0 to iStart - 1 are already known to be in the
+        Pareto front.
+    :return: Indices of the points in the Pareto front.
     """
     pareto = [True] * len(fx)
     for i in range(iStart, len(fx)):
@@ -100,11 +91,14 @@ def find_pareto_front(fx, iStart=0) -> list:
 class AcquisitionFunction:
     """Base class for acquisition functions.
 
+    This an abstract class. Subclasses must implement the method
+    :meth:`acquire()`.
+
     Acquisition functions are strategies to propose new sample points to a
     surrogate. The acquisition functions here are modeled as objects with the
     goals of adding states to the learning process. Moreover, this design
-    enables the definition of the acquire() method with a similar API when we
-    compare different acquisition strategies.
+    enables the definition of the :meth:`acquire()` method with a similar API
+    when we compare different acquisition strategies.
     """
 
     def __init__(self) -> None:
@@ -117,69 +111,102 @@ class AcquisitionFunction:
         n: int = 1,
         **kwargs,
     ) -> np.ndarray:
-        """Propose a maximum of n new samples to improve the surrogate.
+        """Propose a maximum of n new sample points to improve the surrogate.
 
-        Parameters
-        ----------
-        surrogateModel : Surrogate model
-            Surrogate model.
-        bounds : sequence
-            List with the limits [x_min,x_max] of each direction x in the search
-            space.
-        n : int, optional
-            Number of points to be acquired, or maximum requested number.
-            The default is 1.
-
-        Returns
-        -------
-        numpy.ndarray
-            n-by-dim matrix with the selected points.
+        :param surrogateModel: Surrogate model.
+        :param sequence bounds: List with the limits [x_min,x_max] of each
+            direction x in the space.
+        :param n: Number of points to be acquired, or maximum requested number.
+        :return: m-by-dim matrix with the selected points, where m <= n.
         """
         raise NotImplementedError
 
 
 class WeightedAcquisition(AcquisitionFunction):
-    """Acquisition based on the weighted average of function value and distance
-    to previous samples.
+    """Select candidates based on the minimization of an weighted average score.
 
-    This an abstract class. Subclasses must implement the method acquire().
+    The weighted average is :math:`w f_s(x) + (1-w) (-d_s(x))`, where
+    :math:`f_s(x)` is the surrogate value at :math:`x` and :math:`d_s(x)` is the
+    distance of :math:`x` to its closest neighbor in the current sample. The
+    sampler generates candidate points to be scored and then selected.
 
-    Attributes
-    ----------
-    tol : float
-        Tolerance value for excluding candidates that are too close to already
-        sampled points. The default is 1e-3.
-    weightpattern: sequence, optional
-        Weight(s) `w` to be used in the score given as a circular list.
-        The default is (0.2, 0.4, 0.6, 0.9, 0.95, 1).
+    :param Sampler sampler: Sampler to generate candidate points.
+        Stored in :attr:`sampler`.
+    :param float|sequence weightpattern: Weight(s) `w` to be used in the score.
+        Stored in :attr:`weightpattern`.
+        The default value is [0.2, 0.4, 0.6, 0.9, 0.95, 1].
+    :param reltol: Description
+        Stored in :attr:`reltol`.
+    :param maxeval: Description
+        Stored in :attr:`maxeval`.
+
+    .. attribute:: _neval
+
+        Number of evaluations done so far. Used and updated in
+        :meth:`acquire()`.
+
+    .. attribute:: sampler
+
+        Sampler to generate candidate points. Used in :meth:`acquire()`.
+
+    .. attribute:: weightpattern
+
+        Weight(s) `w` to be used in the score. This is a circular list that is
+        rotated every time :meth:`acquire()` is called.
+
+    .. attribute:: reltol
+
+        Relative tolerance value for excluding candidates that are too close to
+        current sample points.
+
+    .. attribute:: maxeval
+
+        Maximum number of evaluations. A value 0 means there is no maximum.
+
     """
 
     def __init__(
-        self, weightpattern=(0.2, 0.4, 0.6, 0.9, 0.95, 1), tol: float = 1e-3
+        self,
+        sampler,
+        weightpattern=None,
+        reltol: float = 1e-3,
+        maxeval: int = 0,
     ) -> None:
         super().__init__()
-        self.weightpattern = weightpattern
-        self.tol = tol
+        self.sampler = sampler
+        if weightpattern is None:
+            self.weightpattern = [0.2, 0.4, 0.6, 0.9, 0.95, 1]
+        elif hasattr(weightpattern, "__len__"):
+            self.weightpattern = list(weightpattern)
+        else:
+            self.weightpattern = [weightpattern]
+        self.reltol = reltol
+        self.maxeval = maxeval
+        self._neval = 0
 
+    @staticmethod
     def argminscore(
-        self, scaledvalue: np.ndarray, dist: np.ndarray, valueweight: float
-    ) -> np.intp:
+        scaledvalue: np.ndarray,
+        dist: np.ndarray,
+        weight: float,
+        tol: float,
+    ) -> int:
         """Gets the index of the candidate point that minimizes the score.
 
-        Parameters
-        ----------
-        scaledvalue : numpy.ndarray
-            Function values scaled from [0, 1].
-        dist : numpy.ndarray
-            Minimum distance between a candidate point and previously evaluated
-            sampled points.
-        valueweight: float
-            Weight `w` to be used in the score.
+        The score is :math:`w f_s(x) + (1-w) (-d_s(x))`, where
 
-        Returns
-        -------
-        numpy.intp
-            Index of the selected candidate.
+        - :math:`w` is a weight.
+        - :math:`f_s(x)` is the estimated value for the objective function on x,
+          scaled to [0,1].
+        - :math:`d_s(x)` is the minimum distance between x and the previously
+          selected evaluation points, scaled to [-1,0].
+
+        :param scaledvalue: Function values :math:`f_s(x)` scaled to [0, 1].
+        :param dist: Minimum distance between a candidate point and previously
+            evaluated sampled points.
+        :param weight: Weight :math:`w`.
+        :param tol: Tolerance value for excluding candidates that are too close to
+            current sample points.
         """
         # Scale distance values to [0,1]
         maxdist = np.max(dist)
@@ -190,11 +217,11 @@ class WeightedAcquisition(AcquisitionFunction):
             scaleddist = (maxdist - dist) / (maxdist - mindist)
 
         # Compute weighted score for all candidates
-        score = valueweight * scaledvalue + (1 - valueweight) * scaleddist
+        score = weight * scaledvalue + (1 - weight) * scaleddist
 
         # Assign bad values to points that are too close to already
         # evaluated/chosen points
-        score[dist < self.tol] = np.inf
+        score[dist < tol] = np.inf
 
         # Return index with the best (smallest) score
         iBest = np.argmin(score)
@@ -205,48 +232,31 @@ class WeightedAcquisition(AcquisitionFunction):
             print(score)
             exit()
 
-        return iBest
+        return int(iBest)
 
     def minimize_weightedavg_fx_distx(
         self, x: np.ndarray, distx: np.ndarray, fx: np.ndarray, n: int
     ) -> tuple[np.ndarray, np.ndarray]:
-        """Select n points based on their values and distances to candidates.
+        """Select n points from a pool of candidates using :meth:`argminscore()`
+        iteratively.
 
-        The points are chosen from x such that they minimize the expression
-        :math:`w f_s(x) + (1-w) (1-d_s(x))`, where
+        The score on the iteration `i > 1` uses the distances to cadidates
+        selected in the iterations `0` to `i-1`.
 
-        - :math:`w` is a weight.
-        - :math:`f_s(x)` is the estimated value for the objective function on x,
-        scaled to [0,1].
-        - :math:`d_s(x)` is the minimum distance between x and the previously
-        selected evaluation points, scaled to [-1,0].
+        :param x: Matrix with candidate points.
+        :param distx: Matrix with the distances between the candidate points and
+            the m number of rows of x.
+        :param fx: Vector with the estimated values for the objective function
+            on the candidate points.
+        :param n: Number of points to be selected for the next costly
+            evaluation.
+        :return:
 
-        If there are more than one new sample point to be
-        selected, the distances of the candidate points to the previously
-        selected candidate point have to be taken into account.
+            * n-by-dim matrix with the selected points.
 
-        Parameters
-        ----------
-        x : numpy.ndarray
-            Matrix with candidate points.
-        distx: numpy.ndarray
-            Matrix with the distances between the candidate points and the
-            sampled points. The number of rows of distx must be equal to the number
-            of rows of x.
-        fx : numpy.ndarray
-            Vector with the estimated values for the objective function on the
-            candidate points.
-        n : int
-            Number of points to be selected for the next costly evaluation.
-
-        Returns
-        -------
-        numpy.ndarray
-            n-by-dim matrix with the selected points.
-        numpy.ndarray
-            n-by-(n+m) matrix with the distances between the n selected points and
-            the (n+m) sampled points (m is the number of points that have been
-            sampled so far)
+            * n-by-(n+m) matrix with the distances between the n selected points
+              and the (n+m) sampled points (m is the number of points that have
+              been sampled so far).
         """
         # Compute neighbor distances
         dist = np.min(distx, axis=1)
@@ -275,7 +285,10 @@ class WeightedAcquisition(AcquisitionFunction):
                 axis=1,
             )
 
-        selindex = self.argminscore(scaledvalue, dist, self.weightpattern[0])
+        tol = self.tol(dim)
+        selindex = self.argminscore(
+            scaledvalue, dist, self.weightpattern[0], tol
+        )
         xselected[0, :] = x[selindex, :]
         distselected[0, 0:m] = distx[selindex, :]
         for ii in range(1, n):
@@ -288,6 +301,7 @@ class WeightedAcquisition(AcquisitionFunction):
                 scaledvalue,
                 dist,
                 self.weightpattern[ii % len(self.weightpattern)],
+                tol,
             )
             xselected[ii, :] = x[selindex, :]
 
@@ -302,67 +316,50 @@ class WeightedAcquisition(AcquisitionFunction):
 
         return xselected, distselected
 
+    def tol(self, dim: int) -> float:
+        """Compute tolerance used to eliminate points that are too close to
+        previously selected ones.
 
-class CoordinatePerturbation(WeightedAcquisition):
-    """Acquisition function by coordinate perturbation.
+        The tolerance value is based on :attr:`reltol` and the sampling region
+        diameter for a reference domain.
 
-    Attributes
-    ----------
-    neval : int
-        Number of evaluations done so far.
-    maxeval : int
-        Maximum number of evaluations.
-    sampler : NormalSampler
-        Sampler to generate candidate points.
-    reltol : float, optional
-        Relative tolerance. Used to compute the tolerance for the weighted
-        acquisition.
-    """
-
-    def __init__(
-        self,
-        maxeval: int,
-        sampler: Optional[NormalSampler] = None,
-        weightpattern=(0.2, 0.4, 0.6, 0.9, 0.95, 1),
-        reltol: float = 0.01,
-    ) -> None:
-        super().__init__(list(weightpattern), 0)
-        self.neval = 0
-        self.maxeval = maxeval
-        self.sampler = NormalSampler(1, 1) if sampler is None else sampler
-        self.reltol = reltol
+        :param dim: Dimension of the space of features.
+        """
+        return self.reltol * self.sampler.get_diameter(dim)
 
     def acquire(
         self,
         surrogateModel,
         bounds,
         n: int = 1,
-        *,
-        xbest=None,
-        coord=(),
         **kwargs,
     ) -> np.ndarray:
-        """Acquire n points.
+        """Generate a number of candidates using the :attr:`sampler`. Then,
+        select n points that maximize the score.
 
-        Parameters
+        When `sampler.strategy` is
+        :attr:`blackboxopt.sampling.SamplingStrategy.DDS` or
+        :attr:`blackboxopt.sampling.SamplingStrategy.DDS_UNIFORM`, the
+        probability is computed based on the DYCORS method as proposed in [#]_.
+
+        :param surrogateModel: Surrogate model.
+        :param sequence bounds: List with the limits [x_min,x_max] of each
+            direction x in the space.
+        :param n: Number of points to be acquired.
+        :param xbest: Best point so far. Used if :attr:`sampler` is an instance of
+            :class:`blackboxopt.sampling.NormalSampler`.
+        :param sequence coord: Coordinates of the input space that will vary. If
+            (), all coordinates will vary.
+        :return: n-by-dim matrix with the selected points.
+        :return: m-by-dim matrix with the selected points, where m <= n.
+
+        References
         ----------
-        surrogateModel : Surrogate model
-            Surrogate model.
-        bounds : sequence
-            List with the limits [x_min,x_max] of each direction x in the search
-            space.
-        n : int, optional
-            Number of points to be acquired. The default is 1.
-        xbest : array-like, optional
-            Best point so far.
-        coord : tuple, optional
-            Coordinates of the input space that will vary. The default is (),
-            which means that all coordinates will vary.
-
-        Returns
-        -------
-        numpy.ndarray
-            n-by-dim matrix with the selected points.
+        .. [#] Regis, R. G., & Shoemaker, C. A. (2012). Combining radial basis
+            function surrogates and dynamic coordinate search in
+            high-dimensional expensive black-box optimization.
+            Engineering Optimization, 45(5), 529–555.
+            https://doi.org/10.1080/0305215X.2012.687731
         """
         dim = len(bounds)  # Dimension of the problem
 
@@ -374,30 +371,33 @@ class CoordinatePerturbation(WeightedAcquisition):
             else surrogateModel.iindex
         )
 
-        # Probability
-        if self.maxeval > 1:
-            self._prob = min(20 / dim, 1) * (
-                1 - (log(self.neval + 1) / log(self.maxeval))
+        # Generate candidates
+        if isinstance(self.sampler, NormalSampler):
+            # Compute probability in case DDS is used
+            if self.maxeval > 1:
+                prob = min(20 / dim, 1) * (
+                    1 - (log(self._neval + 1) / log(self.maxeval))
+                )
+            else:
+                prob = 1.0
+
+            x = self.sampler.get_sample(
+                bounds,
+                iindex=iindex,
+                mu=kwargs["xbest"],
+                probability=prob,
+                coord=kwargs["coord"] if "coord" in kwargs else (),
             )
         else:
-            self._prob = 1.0
-
-        # Generate candidates
-        x = self.sampler.get_sample(
-            bounds,
-            iindex=iindex,
-            mu=xbest,
-            probability=self._prob,
-            coord=coord,
-        )
+            x = self.sampler.get_sample(bounds, iindex=iindex)
         nCand = x.shape[0]
 
         # Evaluate candidates
         if not listOfSurrogates:
-            samples = surrogateModel.samples()
+            sample = surrogateModel.xtrain()
             fx, _ = surrogateModel(x)
         else:
-            samples = surrogateModel[0].samples()
+            sample = surrogateModel[0].xtrain()
             objdim = len(surrogateModel)
             fx = np.empty((nCand, objdim))
             for i in range(objdim):
@@ -407,11 +407,10 @@ class CoordinatePerturbation(WeightedAcquisition):
         xlow = np.array([bounds[i][0] for i in range(dim)])
         xup = np.array([bounds[i][1] for i in range(dim)])
         sx = (x - xlow) / (xup - xlow)
-        ssamples = (samples - xlow) / (xup - xlow)
-        sdistx = cdist(sx, ssamples)
+        ssample = (sample - xlow) / (xup - xlow)
+        sdistx = cdist(sx, ssample)
 
         # Select best candidates
-        self.tol = self.compute_tol(dim)
         xselected, _ = self.minimize_weightedavg_fx_distx(sx, sdistx, fx, n)
         assert n == xselected.shape[0]
 
@@ -426,118 +425,69 @@ class CoordinatePerturbation(WeightedAcquisition):
         )
 
         # Update number of evaluations
-        self.neval += n
-
-        return xselected
-
-    def compute_tol(self, dim) -> float:
-        """Candidate points are chosen s.t.
-
-            ||x - xbest|| >= reltol * sqrt(dim) * sigma,
-
-        where sigma is the standard deviation of the normal distribution.
-        """
-        return self.reltol * self.sampler.sigma * np.sqrt(dim)
-
-
-class UniformAcquisition(WeightedAcquisition):
-    """Uniform acquisition function.
-
-    Attributes
-    ----------
-    sampler : Sampler
-        Sampler to generate candidate points.
-    """
-
-    def __init__(
-        self,
-        nCand: int,
-        weight: float = 0.95,
-        tol: float = 1e-3,
-    ) -> None:
-        super().__init__((weight,), tol)
-        self.sampler = Sampler(nCand)
-
-    def acquire(
-        self,
-        surrogateModel,
-        bounds,
-        n: int = 1,
-        **kwargs,
-    ) -> np.ndarray:
-        """Acquire n points.
-
-        Parameters
-        ----------
-        surrogateModel : Surrogate model
-            Surrogate model.
-        bounds : sequence
-            List with the limits [x_min,x_max] of each direction x in the search
-            space.
-        n : int, optional
-            Number of points to be acquired. The default is 1.
-
-        Returns
-        -------
-        numpy.ndarray
-            n-by-dim matrix with the selected points.
-        """
-        dim = len(bounds)  # Dimension of the problem
-
-        # Check if surrogateModel is a list of models
-        listOfSurrogates = hasattr(surrogateModel, "__len__")
-        iindex = (
-            surrogateModel[0].iindex
-            if listOfSurrogates
-            else surrogateModel.iindex
-        )
-
-        # Generate candidates
-        x = self.sampler.get_uniform_sample(bounds, iindex=iindex)
-        nCand = x.shape[0]
-
-        # Evaluate candidates
-        if not listOfSurrogates:
-            samples = surrogateModel.samples()
-            fx, _ = surrogateModel(x)
-        else:
-            samples = surrogateModel[0].samples()
-            objdim = len(surrogateModel)
-            fx = np.empty((nCand, objdim))
-            for i in range(objdim):
-                fx[:, i], _ = surrogateModel[i](x)
-
-        # Create scaled x and scaled distx
-        xlow = np.array([bounds[i][0] for i in range(dim)])
-        xup = np.array([bounds[i][1] for i in range(dim)])
-        sx = (x - xlow) / (xup - xlow)
-        ssamples = (samples - xlow) / (xup - xlow)
-        sdistx = cdist(sx, ssamples)
-
-        # Select best candidates
-        xselected, _ = self.minimize_weightedavg_fx_distx(sx, sdistx, fx, n)
-        assert n == xselected.shape[0]
-
-        # Rescale selected points
-        xselected = xselected * (xup - xlow) + xlow
-        xselected[:, iindex] = np.round(xselected[:, iindex])
+        self._neval += n
 
         return xselected
 
 
 class TargetValueAcquisition(AcquisitionFunction):
-    """Target value acquisition function.
+    """Target value acquisition function for the RBF model based on [#]_.
 
-    Attributes
-    ----------
-    cycleLength : int
+    Every iteration of the algorithm randomly chooses a number from 0 to
+    :attr:`cycleLength` (inclusive) and runs one of the procedures:
+
+    * Inf-step (0): Selects a sample point that minimizes the
+      :math:`\mu`-measure, i.e., :meth:`blackboxopt.rbf.RbfModel.mu_measure()`.
+
+    * Global search (1 to :attr:`cycleLength`): Finds the global minimum of the
+      surrogate and defines a (lower) target value to be achieved. Choose a
+      sample point that minimizes the product of :math:`\mu`-measure by the
+      distance to the target value. The described measure is known as 'bumpiness
+      measure'.
+
+    * Local search (:attr:`cycleLength`): Finds the global minimum of the
+      surrogate. If the global minimum is predicted to have a sufficient (>1e-6)
+      improvement, use that point in the new sample. Otherwise, do the
+      global search.
+
+    :param tol: Tolerance value for excluding candidate points that are too
+        close to already sampled points.
+    :param popsize: Population size of the genetic algorithm.
+    :param ngen: Maximum number of generations for the genetic algorithm.
+
+    .. attribute:: cycleLength
+
         Length of the cycle.
-    tol : float
-        Tolerance value for excluding candidate points that are too close to already sampled points.
+
+    .. attribute:: tol
+
+        Tolerance value for excluding candidate points that are too close to
+        already sampled points.
         Default is 1e-3.
+
+    .. attribute:: GA
+
+        Tolerance value for excluding candidate points that are too close to
+        already sampled points.
+        Default is 1e-3.
+
+    .. attribute:: ngen
+
+        Tolerance value for excluding candidate points that are too close to
+        already sampled points.
+        Default is 1e-3.
+
+    References
+    ----------
+    .. [#] Holmström, K., Quttineh, NH. & Edvall, M.M. An adaptive radial
+        basis algorithm (ARBF) for expensive black-box mixed-integer
+        constrained global optimization. Optim Eng 9, 311–339 (2008).
+        https://doi.org/10.1007/s11081-008-9037-3
     """
 
-    def __init__(self, tol=1e-3, popsize=10, ngen=10) -> None:
+    def __init__(
+        self, tol: float = 1e-3, popsize: int = 10, ngen: int = 10
+    ) -> None:
         self.cycleLength = 10
         self.tol = tol
         self.GA = MixedVariableGA(
@@ -559,36 +509,26 @@ class TargetValueAcquisition(AcquisitionFunction):
         fbounds=(),
         **kwargs,
     ) -> np.ndarray:
-        """Acquire n points.
+        """Acquire n points following the algorithm from Holmström et al.(2008).
 
-        Parameters
-        ----------
-        surrogateModel : Surrogate model
-            Surrogate model.
-        bounds : sequence
-            List with the limits [x_min,x_max] of each direction x in the search
-            space.
-        n : int, optional
-            Number of points to be acquired. The default is 1.
-        sampleStage : int, optional
-            Stage of the sampling process. The default is -1, which means that
-            the stage is not specified.
-        fbounds, optional
+        :param surrogateModel: Surrogate model.
+        :param sequence bounds: List with the limits [x_min,x_max] of each
+            direction x in the space.
+        :param n: Number of points to be acquired. The default is 1.
+        :param sampleStage: Stage of the sampling process. The default is -1,
+            which means that the stage is not specified.
+        :param fbounds:
             Bounds of the objective function so far. Optional if sampleStage is
             0.
-
-        Returns
-        -------
-        numpy.ndarray
-            n-by-dim matrix with the selected points.
+        :return: n-by-dim matrix with the selected points.
         """
         dim = len(bounds)  # Dimension of the problem
 
-        # Create scaled samples and KDTree with those
+        # Create scaled sample and KDTree with that
         xlow = np.array([bounds[i][0] for i in range(dim)])
         xup = np.array([bounds[i][1] for i in range(dim)])
-        ssamples = (surrogateModel.samples() - xlow) / (xup - xlow)
-        tree = KDTree(ssamples)
+        ssample = (surrogateModel.xtrain() - xlow) / (xup - xlow)
+        tree = KDTree(ssample)
 
         # see Holmstrom 2008 "An adaptive radial basis algorithm (ARBF) for
         # expensive black-box global optimization", JOGO
@@ -619,7 +559,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                     problem,
                     self.GA,
                     ("n_gen", self.ngen),
-                    seed=surrogateModel.nsamples(),
+                    seed=surrogateModel.ntrain(),
                     verbose=False,
                 )
 
@@ -643,7 +583,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                     problem,
                     self.GA,
                     ("n_gen", self.ngen),
-                    seed=surrogateModel.nsamples(),
+                    seed=surrogateModel.ntrain(),
                     verbose=False,
                 )
                 assert res.F is not None
@@ -677,7 +617,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                     problem,
                     self.GA,
                     ("n_gen", self.ngen),
-                    seed=surrogateModel.nsamples(),
+                    seed=surrogateModel.ntrain(),
                     verbose=False,
                 )
 
@@ -698,7 +638,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                     problem,
                     self.GA,
                     ("n_gen", self.ngen),
-                    seed=surrogateModel.nsamples(),
+                    seed=surrogateModel.ntrain(),
                     verbose=False,
                 )
                 assert res.F is not None
@@ -743,7 +683,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                         problem,
                         self.GA,
                         ("n_gen", self.ngen),
-                        seed=surrogateModel.nsamples(),
+                        seed=surrogateModel.ntrain(),
                         verbose=False,
                     )
 
@@ -771,18 +711,43 @@ class TargetValueAcquisition(AcquisitionFunction):
 
 
 class MinimizeSurrogate(AcquisitionFunction):
-    """Obtain samples that are local minima of the surrogate model.
+    """Obtain sample points that are local minima of the surrogate model.
 
-    Attributes
-    ----------
-    sampler : Sampler
+    This implementation is based on the one of MISO-MS used in the paper [#]_.
+    The original method, Multi-level Single-Linkage, was described in [#]_.
+    In each iteration, the algorithm generates a pool of candidates and select
+    the best candidates (lowest predicted value) that are far enough from each
+    other. The number of candidates chosen as well as the distance threshold
+    vary with each iteration. The hypothesis is that the successful candidates
+    each belong to a different region in the space, which may contain a local
+    minimum, and those regions cover the whole search space. In the sequence,
+    the algorithm runs multiple local minimization procedures using the
+    successful candidates as local guesses. The results of the minimization are
+    collected for the new sample.
+
+    :param nCand: Number of candidates used on each iteration.
+    :param tol: Tolerance for excluding points that are too close to each other
+        from the new sample.
+
+    .. attribute:: sampler
+
         Sampler to generate candidate points.
-    tol : float
+
+    .. attribute:: tol
+
         Tolerance value for excluding candidate points that are too close to
         already sampled points.
+
+    References
+    ----------
+    .. [#] Müller, J. MISO: mixed-integer surrogate optimization framework.
+        Optim Eng 17, 177–203 (2016). https://doi.org/10.1007/s11081-015-9281-2
+    .. [#] Rinnooy Kan, A.H.G., Timmer, G.T. Stochastic global optimization
+        methods part II: Multi level methods. Mathematical Programming 39, 57–78
+        (1987). https://doi.org/10.1007/BF02592071
     """
 
-    def __init__(self, nCand: int, tol=1e-3) -> None:
+    def __init__(self, nCand: int, tol: float = 1e-3) -> None:
         self.sampler = Sampler(nCand)
         self.tol = tol
 
@@ -793,22 +758,13 @@ class MinimizeSurrogate(AcquisitionFunction):
         n: int = 1,
         **kwargs,
     ) -> np.ndarray:
-        """Acquire n points.
+        """Acquire n points based on MISO-MS from Müller (2016).
 
-        Parameters
-        ----------
-        surrogateModel : Surrogate model
-            Surrogate model.
-        bounds : sequence
-            List with the limits [x_min,x_max] of each direction x in the search
-            space.
-        n : int, optional
-            Max number of points to be acquired. The default is 1.
-
-        Returns
-        -------
-        numpy.ndarray
-            n-by-dim matrix with the selected points.
+        :param surrogateModel: Surrogate model.
+        :param sequence bounds: List with the limits [x_min,x_max] of each
+            direction x in the space.
+        :param n: Max number of points to be acquired. The default is 1.
+        :return: n-by-dim matrix with the selected points.
         """
         dim = len(bounds)
         volumeBounds = np.prod([b[1] - b[0] for b in bounds])
@@ -817,13 +773,15 @@ class MinimizeSurrogate(AcquisitionFunction):
         cindex = [i for i in range(dim) if i not in surrogateModel.iindex]
         cbounds = [bounds[i] for i in cindex]
 
+        # Local parameters
         remevals = 1000 * dim  # maximum number of RBF evaluations
-        maxiter = 10
+        maxiter = 10  # maximum number of iterations to find local minima.
         sigma = 4.0  # default value for computing crit distance
         critdist = (
             (gamma(1 + (dim / 2)) * volumeBounds * sigma) ** (1 / dim)
         ) / np.sqrt(np.pi)  # critical distance when 2 points are equal
 
+        # Local space to store information
         candidates = np.empty((self.sampler.n * maxiter, dim))
         distCandidates = np.empty(
             (self.sampler.n * maxiter, self.sampler.n * maxiter)
@@ -832,11 +790,11 @@ class MinimizeSurrogate(AcquisitionFunction):
         startpID = np.full((self.sampler.n * maxiter,), False)
         selected = np.empty((n, dim))
 
-        # Create scaled samples and KDTree with those
+        # Create scaled sample and KDTree with that
         xlow = np.array([bounds[i][0] for i in range(dim)])
         xup = np.array([bounds[i][1] for i in range(dim)])
-        ssamples = (surrogateModel.samples() - xlow) / (xup - xlow)
-        tree = KDTree(ssamples)
+        ssample = (surrogateModel.xtrain() - xlow) / (xup - xlow)
+        tree = KDTree(ssample)
 
         iter = 0
         k = 0
@@ -939,7 +897,7 @@ class MinimizeSurrogate(AcquisitionFunction):
                         tree = KDTree(
                             np.concatenate(
                                 (
-                                    ssamples,
+                                    ssample,
                                     (selected[0:k, :] - xlow) / (xup - xlow),
                                 ),
                                 axis=0,
@@ -978,18 +936,22 @@ class MinimizeSurrogate(AcquisitionFunction):
 
 
 class ParetoFront(AcquisitionFunction):
-    """Obtain samples that fill gaps in the Pareto front.
+    """Obtain sample points that fill gaps in the Pareto front.
 
-    Attributes
-    ----------
-    mooptimizer
+    .. attribute:: mooptimizer
+
         Multi-objective optimizer. Default is MixedVariableGA from pymoo with
         RankAndCrowding survival strategy.
-    nGens : int
+
+    .. attribute:: nGens
+
         Number of generations for the multi-objective optimizer. Default is 100.
-    oldTV : numpy.ndarray
+
+    .. attribute:: oldTV
+
         Old target values to be avoided in the acquisition.
         Default is an empty array.
+
     """
 
     def __init__(
@@ -1009,15 +971,7 @@ class ParetoFront(AcquisitionFunction):
     def pareto_front_target(self, paretoFront: np.ndarray) -> np.ndarray:
         """Find a target value that should fill a gap in the Pareto front.
 
-        Parameters
-        ----------
-        paretoFront : numpy.ndarray
-            Pareto front in the objective space.
-
-        Returns
-        -------
-        numpy.ndarray
-            Target value.
+        :param paretoFront: Pareto front in the objective space.
         """
         objdim = paretoFront.shape[1]
         assert objdim > 1
@@ -1031,9 +985,9 @@ class ParetoFront(AcquisitionFunction):
         )
         dim = paretoModel.dim()
 
-        # Bounds in the pareto samples
-        xParetoLow = np.min(paretoModel.samples(), axis=0)
-        xParetoHigh = np.max(paretoModel.samples(), axis=0)
+        # Bounds in the pareto sample
+        xParetoLow = np.min(paretoModel.xtrain(), axis=0)
+        xParetoHigh = np.max(paretoModel.xtrain(), axis=0)
         boundsPareto = [(xParetoLow[i], xParetoHigh[i]) for i in range(dim)]
 
         # Minimum of delta_f maximizes the distance inside the Pareto front
@@ -1066,22 +1020,12 @@ class ParetoFront(AcquisitionFunction):
     ) -> np.ndarray:
         """Acquire n points.
 
-        Parameters
-        ----------
-        surrogateModels : list
-            List of surrogate models.
-        bounds : sequence
-            List with the limits [x_min,x_max] of each direction x in the search
-            space.
-        n : int, optional
-            Number of points to be acquired. The default is 1.
-        paretoFront : array-like, optional
-            Pareto front in the objective space. The default is an empty tuple.
-
-        Returns
-        -------
-        numpy.ndarray
-            n-by-dim matrix with the selected points.
+        :param surrogateModels: List of surrogate models.
+        :param sequence bounds: List with the limits [x_min,x_max] of each
+            direction x in the space.
+        :param n: Number of points to be acquired. The default is 1.
+        :param paretoFront: Pareto front in the objective space. The default is an empty tuple.
+        :return: n-by-dim matrix with the selected points.
         """
         dim = len(bounds)
         objdim = len(surrogateModels)
@@ -1129,13 +1073,14 @@ class ParetoFront(AcquisitionFunction):
 class EndPointsParetoFront(AcquisitionFunction):
     """Obtain endpoints of the Pareto front.
 
-    Attributes
-    ----------
-    optimizer
+    .. attribute:: optimizer
         Single-objective optimizer. Default is MixedVariableGA from pymoo.
-    tol : float
+
+    .. attribute:: tol
+
         Tolerance value for excluding candidate points that are too close to
         already sampled points.
+
     """
 
     def __init__(self, optimizer=None, nGens: int = 100, tol=1e-3) -> None:
@@ -1152,20 +1097,11 @@ class EndPointsParetoFront(AcquisitionFunction):
     ) -> np.ndarray:
         """Acquire n points at most.
 
-        Parameters
-        ----------
-        surrogateModels : list
-            List of surrogate models.
-        bounds : sequence
-            List with the limits [x_min,x_max] of each direction x in the search
-            space.
-        n : int, optional
-            Maximum number of points to be acquired. The default is 1.
-
-        Returns
-        -------
-        numpy.ndarray
-            k-by-dim matrix with the selected points.
+        :param surrogateModels: List of surrogate models.
+        :param sequence bounds: List with the limits [x_min,x_max] of each
+            direction x in the space.
+        :param n: Maximum number of points to be acquired. The default is 1.
+        :return: k-by-dim matrix with the selected points.
         """
         dim = len(bounds)
         objdim = len(surrogateModels)
@@ -1181,20 +1117,20 @@ class EndPointsParetoFront(AcquisitionFunction):
                 minimumPointProblem,
                 self.optimizer,
                 ("n_gen", self.nGens),
-                seed=surrogateModels[0].nsamples(),
+                seed=surrogateModels[0].ntrain(),
                 verbose=False,
             )
             assert res.X is not None
             for j in range(dim):
                 endpoints[i, j] = res.X[j]
 
-        # Create scaled samples and KDTree with those
+        # Create scaled sample and KDTree with that
         xlow = np.array([bounds[i][0] for i in range(dim)])
         xup = np.array([bounds[i][1] for i in range(dim)])
-        ssamples = (surrogateModels[0].samples() - xlow) / (xup - xlow)
-        tree = KDTree(ssamples)
+        ssample = (surrogateModels[0].xtrain() - xlow) / (xup - xlow)
+        tree = KDTree(ssample)
 
-        # Discard points that are too close to eachother and previously samples.
+        # Discard points that are too close to eachother and to current sample
         selectedIdx = []
         for i in range(objdim):
             distNeighbor = tree.query((endpoints[i, :] - xlow) / (xup - xlow))[
@@ -1218,7 +1154,7 @@ class EndPointsParetoFront(AcquisitionFunction):
         # Should all points be discarded, which may happen if the minima of
         # the surrogate surfaces do not change between iterations, we
         # consider the whole variable domain and sample at the point that
-        # maximizes the minimum distance of samples
+        # maximizes the minimum distance of sample points
         if endpoints.size == 0:
             minimumPointProblem = ProblemNoConstraint(
                 lambda x: -tree.query((x - xlow) / (xup - xlow))[0],
@@ -1230,7 +1166,7 @@ class EndPointsParetoFront(AcquisitionFunction):
                 self.optimizer,
                 ("n_gen", self.nGens),
                 verbose=False,
-                seed=surrogateModels[0].nsamples() + 1,
+                seed=surrogateModels[0].ntrain() + 1,
             )
             assert res.X is not None
             endpoints = np.empty((1, dim))
@@ -1242,18 +1178,23 @@ class EndPointsParetoFront(AcquisitionFunction):
 
 
 class MinimizeMOSurrogate(AcquisitionFunction):
-    """Obtain pareto-optimal samplesfor the multi-objective surrogate model.
+    """Obtain pareto-optimal sample points for the multi-objective surrogate
+    model.
 
-    Attributes
-    ----------
-    mooptimizer
+    .. attribute:: mooptimizer
+
         Multi-objective optimizer. Default is MixedVariableGA from pymoo with
         RankAndCrowding survival strategy.
-    nGens : int
+
+    .. attribute:: nGens
+
         Number of generations for the multi-objective optimizer. Default is 100.
-    tol : float
+
+    .. attribute:: tol
+
         Tolerance value for excluding candidate points that are too close to
         already sampled points. Default is 1e-3.
+
     """
 
     def __init__(self, mooptimizer=None, nGens=100, tol=1e-3) -> None:
@@ -1272,22 +1213,13 @@ class MinimizeMOSurrogate(AcquisitionFunction):
         n: int = 1,
         **kwargs,
     ) -> np.ndarray:
-        """Acquire n points.
+        """Acquire k points, where k <= n.
 
-        Parameters
-        ----------
-        surrogateModels : list
-            List of surrogate models.
-        bounds : sequence
-            List with the limits [x_min,x_max] of each direction x in the search
-            space.
-        n : int, optional
-            Maximum number of points to be acquired. The default is 1.
-
-        Returns
-        -------
-        numpy.ndarray
-            k-by-dim matrix with the selected points.
+        :param surrogateModels: List of surrogate models.
+        :param sequence bounds: List with the limits [x_min,x_max] of each
+            direction x in the space.
+        :param n: Maximum number of points to be acquired. The default is 1.
+        :return: k-by-dim matrix with the selected points.
         """
         dim = len(bounds)
 
@@ -1299,7 +1231,7 @@ class MinimizeMOSurrogate(AcquisitionFunction):
             multiobjSurrogateProblem,
             self.mooptimizer,
             ("n_gen", self.nGens),
-            seed=surrogateModels[0].nsamples(),
+            seed=surrogateModels[0].ntrain(),
             verbose=False,
         )
 
@@ -1312,11 +1244,11 @@ class MinimizeMOSurrogate(AcquisitionFunction):
                 [[res.X[idx][i] for i in range(dim)] for idx in idxs]
             )
 
-            # Create scaled samples and KDTree with those
+            # Create scaled sample and KDTree with that
             xlow = np.array([bounds[i][0] for i in range(dim)])
             xup = np.array([bounds[i][1] for i in range(dim)])
-            ssamples = (surrogateModels[0].samples() - xlow) / (xup - xlow)
-            tree = KDTree(ssamples)
+            ssample = (surrogateModels[0].xtrain() - xlow) / (xup - xlow)
+            tree = KDTree(ssample)
 
             # Discard points that are too close to eachother and previously
             # sampled points.
@@ -1349,13 +1281,13 @@ class MinimizeMOSurrogate(AcquisitionFunction):
 class CoordinatePerturbationOverNondominated(AcquisitionFunction):
     """Coordinate perturbation acquisition function over the nondominated set.
 
-    Attributes
-    ----------
-    acquisitionFunc : CoordinatePerturbation
-        Coordinate perturbation acquisition function.
+    .. attribute:: acquisitionFunc
+
+         Coordinate perturbation acquisition function.
+
     """
 
-    def __init__(self, acquisitionFunc: CoordinatePerturbation) -> None:
+    def __init__(self, acquisitionFunc: WeightedAcquisition) -> None:
         self.acquisitionFunc = acquisitionFunc
 
     def acquire(
@@ -1370,23 +1302,16 @@ class CoordinatePerturbationOverNondominated(AcquisitionFunction):
     ) -> np.ndarray:
         """Acquire n points.
 
-        Parameters
-        ----------
-        surrogateModels : list
-            List of surrogate models.
-        bounds : sequence
-            List with the limits [x_min,x_max] of each direction x in the search
-            space.
-        n : int
-            Maximum number of points to be acquired. The default is 1.
-        nondominated : array-like, optional
-            Nondominated set in the objective space. The default is an empty
+        :param surrogateModels: List of surrogate models.
+        :param sequence bounds: List with the limits [x_min,x_max] of each
+            direction x in the space.
+        :param n: Maximum number of points to be acquired. The default is 1.
+        :param nondominated: Nondominated set in the objective space. The default is an empty
             tuple.
-        paretoFront : array-like, optional
-            Pareto front in the objective space. The default is an empty tuple.
+        :param paretoFront: Pareto front in the objective space. The default is an empty tuple.
         """
         dim = len(bounds)
-        tol = self.acquisitionFunc.compute_tol(dim)
+        tol = self.acquisitionFunc.tol(dim)
 
         # Create vectors xlow and xup
         xlow = np.array([bounds[i][0] for i in range(dim)])
@@ -1444,13 +1369,16 @@ class CoordinatePerturbationOverNondominated(AcquisitionFunction):
 class GosacSample(AcquisitionFunction):
     """GOSAC acquisition function as described in [#]_.
 
-    Attributes
-    ----------
-    fun : callable
+    .. attribute:: fun
+
         Objective function.
-    optimizer : pymoo.optimizer
+
+    .. attribute:: optimizer
+
         Optimizer for the acquisition function.
-    tol : float
+
+    .. attribute:: tol
+
         Tolerance value for excluding candidate points that are too close to
         already sampled points.
 
@@ -1479,31 +1407,22 @@ class GosacSample(AcquisitionFunction):
     ) -> np.ndarray:
         """Acquire n points (Currently only n=1 is supported).
 
-        Parameters
-        ----------
-        surrogateModels : list
-            List of surrogate models for the constraints.
-        bounds : sequence
-            List with the limits [x_min,x_max] of each direction x in the search
-            space.
-        n : int, optional
-            Number of points to be acquired. The default is 1.
-
-        Returns
-        -------
-        numpy.ndarray
-            n-by-dim matrix with the selected points.
+        :param surrogateModels: List of surrogate models for the constraints.
+        :param sequence bounds: List with the limits [x_min,x_max] of each
+            direction x in the space.
+        :param n: Number of points to be acquired. The default is 1.
+        :return: n-by-dim matrix with the selected points.
         """
         dim = len(bounds)
         gdim = len(surrogateModels)
         iindex = surrogateModels[0].iindex
         assert n == 1
 
-        # Create scaled samples and KDTree with those
+        # Create scaled sample and KDTree with that
         xlow = np.array([bounds[i][0] for i in range(dim)])
         xup = np.array([bounds[i][1] for i in range(dim)])
-        ssamples = (surrogateModels[0].samples() - xlow) / (xup - xlow)
-        tree = KDTree(ssamples)
+        ssample = (surrogateModels[0].xtrain() - xlow) / (xup - xlow)
+        tree = KDTree(ssample)
 
         cheapProblem = ProblemWithConstraint(
             self.fun,
@@ -1518,14 +1437,14 @@ class GosacSample(AcquisitionFunction):
             cheapProblem,
             self.optimizer,
             ("n_gen", self.nGens),
-            seed=surrogateModels[0].nsamples(),
+            seed=surrogateModels[0].ntrain(),
             verbose=False,
         )
 
         # If either no feasible solution was found or the solution found is too
         # close to already sampled points, we then
         # consider the whole variable domain and sample at the point that
-        # maximizes the minimum distance of samples
+        # maximizes the minimum distance of sample points.
         isGoodCandidate = True
         if res.X is None:
             isGoodCandidate = False
@@ -1544,7 +1463,7 @@ class GosacSample(AcquisitionFunction):
                 minimumPointProblem,
                 self.optimizer,
                 ("n_gen", self.nGens),
-                seed=surrogateModels[0].nsamples() + 1,
+                seed=surrogateModels[0].ntrain() + 1,
                 verbose=False,
             )
             assert res.X is not None
@@ -1556,11 +1475,12 @@ class GosacSample(AcquisitionFunction):
 class MaximizeEI(AcquisitionFunction):
     """Acquisition by maximization of the expected improvement.
 
-    Attributes
-    ----------
-    sampler : Sampler
+    .. attribute:: sampler
+
         Sampler to generate candidate points.
-    avoid_clusters : bool
+
+    .. attribute:: avoid_clusters
+
         When sampling in batch, penalize candidates that are close to already
         chosen ones. Inspired in [#]_. Default is False.
 
@@ -1581,17 +1501,11 @@ class MaximizeEI(AcquisitionFunction):
     ) -> np.ndarray:
         """Acquire n points.
 
-        Parameters
-        ----------
-        surrogateModel : Surrogate model
-            Surrogate model.
-        bounds : sequence
-            List with the limits [x_min,x_max] of each direction x in the search
-            space.
-        n : int, optional
-            Number of points to be acquired. The default is 1.
-        ybest : array-like, optional
-            Best point so far. If not provided, find the minimum value for
+        :param surrogateModel: Surrogate model.
+        :param sequence bounds: List with the limits [x_min,x_max] of each
+            direction x in the space.
+        :param n: Number of points to be acquired. The default is 1.
+        :param ybest: Best point so far. If not provided, find the minimum value for
             the surrogate.
         """
 
@@ -1614,12 +1528,10 @@ class MaximizeEI(AcquisitionFunction):
 
         # Generate the complete pool of candidates
         if isinstance(self.sampler, Mitchel91Sampler):
-            current_samples = np.concatenate(
-                (surrogateModel.samples(), [xs]), axis=0
+            current_sample = np.concatenate(
+                (surrogateModel.xtrain(), [xs]), axis=0
             )
-            x = self.sampler.get_sample(
-                bounds, current_samples=current_samples
-            )
+            x = self.sampler.get_sample(bounds, current_sample=current_sample)
         else:
             x = self.sampler.get_sample(bounds)
         x = np.concatenate(([xs], x), axis=0)

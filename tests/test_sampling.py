@@ -102,15 +102,13 @@ def test_normal_sampler(dim: int, strategy: SamplingStrategy):
 def test_mitchel91_sampler(dim: int, n0: int):
     n = 2 * (dim + 1)
     bounds = [(-1, 1)] * dim
-    samples0 = np.random.rand(n0, dim)
+    sample0 = np.random.rand(n0, dim)
 
     # Set seed to 5 for reproducibility
     np.random.seed(5)
 
     for i in range(3):
-        sample = Mitchel91Sampler(n).get_sample(
-            bounds, current_samples=samples0
-        )
+        sample = Mitchel91Sampler(n).get_sample(bounds, current_sample=sample0)
 
         # Check if the shape is correct
         assert sample.shape == (n, dim)
@@ -187,7 +185,7 @@ def test_iindex_mitchel91_sampler(boundx, n0: int):
     dim = 10
     n = 2 * (dim + 1)
     bounds = [boundx] * dim
-    samples0 = np.random.rand(n0, dim)
+    sample0 = np.random.rand(n0, dim)
 
     # Set seed to 5 for reproducibility
     np.random.seed(5)
@@ -196,7 +194,7 @@ def test_iindex_mitchel91_sampler(boundx, n0: int):
         iindex = np.random.choice(dim, size=dim // 2)
 
         sample = Mitchel91Sampler(n).get_sample(
-            bounds, iindex=iindex, current_samples=samples0
+            bounds, iindex=iindex, current_sample=sample0
         )
 
         # Check if the sample has integer values in the iindex

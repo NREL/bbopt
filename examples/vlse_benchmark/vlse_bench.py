@@ -84,12 +84,9 @@ myNargs["rastr"] = 4
 # Algorithms to be tested
 algorithms = {}
 algorithms["SRS"] = {
-    "model": rbf.RbfModel(
-        rbf.RbfKernel.CUBIC, filter=rbf.MedianLpfFilter()
-    ),
+    "model": rbf.RbfModel(rbf.RbfKernel.CUBIC, filter=rbf.MedianLpfFilter()),
     "optimizer": optimize.multistart_stochastic_response_surface,
-    "acquisition": acquisition.CoordinatePerturbation(
-        0,
+    "acquisition": acquisition.WeightedAcquisition(
         sampling.NormalSampler(
             1,
             sigma=0.2,
@@ -101,12 +98,9 @@ algorithms["SRS"] = {
     ),
 }
 algorithms["DYCORS"] = {
-    "model": rbf.RbfModel(
-        rbf.RbfKernel.CUBIC, filter=rbf.MedianLpfFilter()
-    ),
+    "model": rbf.RbfModel(rbf.RbfKernel.CUBIC, filter=rbf.MedianLpfFilter()),
     "optimizer": optimize.multistart_stochastic_response_surface,
-    "acquisition": acquisition.CoordinatePerturbation(
-        0,
+    "acquisition": acquisition.WeightedAcquisition(
         sampling.NormalSampler(
             1,
             sigma=0.2,
@@ -118,12 +112,9 @@ algorithms["DYCORS"] = {
     ),
 }
 algorithms["CPTV"] = {
-    "model": rbf.RbfModel(
-        rbf.RbfKernel.CUBIC, filter=rbf.MedianLpfFilter()
-    ),
+    "model": rbf.RbfModel(rbf.RbfKernel.CUBIC, filter=rbf.MedianLpfFilter()),
     "optimizer": optimize.cptv,
-    "acquisition": acquisition.CoordinatePerturbation(
-        0,
+    "acquisition": acquisition.WeightedAcquisition(
         sampling.NormalSampler(
             1,
             sigma=0.2,
@@ -135,12 +126,9 @@ algorithms["CPTV"] = {
     ),
 }
 algorithms["CPTVl"] = {
-    "model": rbf.RbfModel(
-        rbf.RbfKernel.CUBIC, filter=rbf.MedianLpfFilter()
-    ),
+    "model": rbf.RbfModel(rbf.RbfKernel.CUBIC, filter=rbf.MedianLpfFilter()),
     "optimizer": optimize.cptvl,
-    "acquisition": acquisition.CoordinatePerturbation(
-        0,
+    "acquisition": acquisition.WeightedAcquisition(
         sampling.NormalSampler(
             1,
             sigma=0.2,
@@ -152,9 +140,7 @@ algorithms["CPTVl"] = {
     ),
 }
 algorithms["MLSL"] = {
-    "model": rbf.RbfModel(
-        rbf.RbfKernel.CUBIC, filter=rbf.MedianLpfFilter()
-    ),
+    "model": rbf.RbfModel(rbf.RbfKernel.CUBIC, filter=rbf.MedianLpfFilter()),
     "optimizer": optimize.target_value_optimization,
     "acquisition": acquisition.MinimizeSurrogate(1, 0.005 * np.sqrt(2.0)),
 }
