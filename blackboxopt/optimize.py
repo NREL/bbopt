@@ -72,23 +72,7 @@ from .sampling import NormalSampler, Sampler
 
 @dataclass
 class OptimizeResult:
-    """Represents the optimization result.
-
-    Attributes
-    ----------
-    x : numpy.ndarray
-        The solution of the optimization.
-    fx : float | numpy.ndarray
-        The value of the objective function at the solution.
-    nit : int
-        Number of iterations performed.
-    nfev : int
-        Number of function evaluations done.
-    sample : numpy.ndarray
-        All sampled points.
-    fsample : numpy.ndarray
-        All objective function values on sampled points.
-    """
+    """Represents the optimization result."""
 
     x: Optional[np.ndarray] = None
     fx: Union[float, np.ndarray, None] = None
@@ -109,21 +93,13 @@ class OptimizeResult:
     ) -> None:
         """Initialize the output of the optimization.
 
-        Parameters
-        ----------
-        fun : callable
-            The objective function to be minimized.
-        bounds : sequence
-            List with the limits [x_min,x_max] of each direction x in the search
-            space.
-        mineval : int
-            Minimum number of function evaluations to build the surrogate model.
-        maxeval : int
-            Maximum number of function evaluations.
-        surrogateModel : surrogate model, optional
-            Surrogate model to be used. The default is RbfModel().
-        sample : np.ndarray, optional
-            Initial sample to be added to the surrogate model. The default is an
+        :param fun: The objective function to be minimized.
+        :param sequence bounds: List with the limits [x_min,x_max] of each
+            direction x in the space.
+        :param mineval: Minimum number of function evaluations to build the surrogate model.
+        :param maxeval: Maximum number of function evaluations.
+        :param surrogateModel: Surrogate model to be used. The default is RbfModel().
+        :param sample: Initial sample to be added to the surrogate model. The default is an
             empty array.
         """
         dim = len(bounds)  # Dimension of the problem
@@ -224,27 +200,15 @@ def initialize_moo_surrogate(
 ) -> OptimizeResult:
     """Initialize the surrogate model and the output of the optimization.
 
-    Parameters
-    ----------
-    fun : callable
-        The objective function to be minimized.
-    bounds : sequence
-        List with the limits [x_min,x_max] of each direction x in the search
+    :param fun: The objective function to be minimized.
+    :param bounds: List with the limits [x_min,x_max] of each direction x in the search
         space.
-    mineval : int
-        Minimum number of function evaluations to build the surrogate model.
-    maxeval : int
-        Maximum number of function evaluations.
-    surrogateModels : list, optional
-        Surrogate models to be used. The default is (RbfModel(),).
-    sample : np.ndarray, optional
-        Initial sample to be added to the surrogate model. The default is an
+    :param mineval: Minimum number of function evaluations to build the surrogate model.
+    :param maxeval: Maximum number of function evaluations.
+    :param surrogateModels: Surrogate models to be used. The default is (RbfModel(),).
+    :param sample: Initial sample to be added to the surrogate model. The default is an
         empty array.
-
-    Returns
-    -------
-    OptimizeResult
-        The optimization result.
+    :return: The optimization result.
     """
     dim = len(bounds)  # Dimension of the problem
     objdim = len(surrogateModels)  # Dimension of the objective function
@@ -344,31 +308,18 @@ def initialize_surrogate_constraints(
 ) -> OptimizeResult:
     """Initialize the surrogate models for the constraints.
 
-    Parameters
-    ----------
-    fun : callable
-        The objective function to be minimized.
-    gfun : callable
-        The constraint functions. Each constraint function must return a scalar
+    :param fun: The objective function to be minimized.
+    :param gfun: The constraint functions. Each constraint function must return a scalar
         value. If the constraint function returns a value greater than zero, it
         is considered a violation of the constraint.
-    bounds : sequence
-        List with the limits [x_min,x_max] of each direction x in the search
+    :param bounds: List with the limits [x_min,x_max] of each direction x in the search
         space.
-    mineval : int
-        Minimum number of function evaluations to build the surrogate model.
-    maxeval : int
-        Maximum number of function evaluations.
-    surrogateModels : list, optional
-        Surrogate models to be used. The default is (RbfModel(),).
-    sample : np.ndarray, optional
-        Initial sample to be added to the surrogate model. The default is an
+    :param mineval: Minimum number of function evaluations to build the surrogate model.
+    :param maxeval: Maximum number of function evaluations.
+    :param surrogateModels: Surrogate models to be used. The default is (RbfModel(),).
+    :param sample: Initial sample to be added to the surrogate model. The default is an
         empty array.
-
-    Returns
-    -------
-    OptimizeResult
-        The optimization result.
+    :return: The optimization result.
     """
     dim = len(bounds)  # Dimension of the problem
     gdim = len(surrogateModels)  # Number of constraints
@@ -474,51 +425,32 @@ def stochastic_response_surface(
 
     This method is based on [#]_.
 
-    Parameters
-    ----------
-    fun : callable
-        The objective function to be minimized.
-    bounds : sequence
-        List with the limits [x_min,x_max] of each direction x in the search
+    :param fun: The objective function to be minimized.
+    :param bounds: List with the limits [x_min,x_max] of each direction x in the search
         space.
-    maxeval : int
-        Maximum number of function evaluations.
-    x0y0 : tuple-like, optional
-        Initial guess for the solution and the value of the objective function
+    :param maxeval: Maximum number of function evaluations.
+    :param x0y0: Initial guess for the solution and the value of the objective function
         at the initial guess.
-    surrogateModel : surrogate model, optional
-        Surrogate model to be used. The default is RbfModel().
+    :param surrogateModel: Surrogate model to be used. The default is RbfModel().
         On exit, if provided, the surrogate model is updated to represent the
         one used in the last iteration.
-    acquisitionFunc : WeightedAcquisition, optional
-        Acquisition function to be used.
-    sample : np.ndarray, optional
-        Initial sample to be added to the surrogate model. The default is an
+    :param acquisitionFunc: Acquisition function to be used.
+    :param sample: Initial sample to be added to the surrogate model. The default is an
         empty array.
-    batchSize : int, optional
-        Number of new sample points to be generated per iteration. The default is 1.
-    expectedRelativeImprovement : float, optional
-        Expected relative improvement with respect to the current best value.
+    :param batchSize: Number of new sample points to be generated per iteration. The default is 1.
+    :param expectedRelativeImprovement: Expected relative improvement with respect to the current best value.
         An improvement is considered significant if it is greater than
         ``expectedRelativeImprovement`` times the absolute value of the current
         best value. The default is 1e-3.
-    failtolerance : int, optional
-        Number of consecutive insignificant improvements before the algorithm
+    :param failtolerance: Number of consecutive insignificant improvements before the algorithm
         modifies the sampler. The default is 5.
-    performContinuousSearch : bool, optional
-        If True, the algorithm will perform a continuous search when a
+    :param performContinuousSearch: If True, the algorithm will perform a continuous search when a
         significant improvement is found. The default is True.
-    disp : bool, optional
-        If True, print information about the optimization process. The default
+    :param disp: If True, print information about the optimization process. The default
         is False.
-    callback : callable, optional
-        If provided, the callback function will be called after each iteration
+    :param callback: If provided, the callback function will be called after each iteration
         with the current optimization result. The default is None.
-
-    Returns
-    -------
-    OptimizeResult
-        The optimization result.
+    :return: The optimization result.
 
     References
     ----------
@@ -710,37 +642,22 @@ def multistart_stochastic_response_surface(
 
     This method is based on [#]_.
 
-    Parameters
-    ----------
-    fun : callable
-        The objective function to be minimized.
-    bounds : sequence
-        List with the limits [x_min,x_max] of each direction x in the search
+    :param fun: The objective function to be minimized.
+    :param bounds: List with the limits [x_min,x_max] of each direction x in the search
         space.
-    maxeval : int
-        Maximum number of function evaluations.
-    surrogateModel : surrogate model, optional
-        Surrogate model to be used. The default is RbfModel().
-    acquisitionFunc : WeightedAcquisition, optional
-        Acquisition function to be used.
-    batchSize : int, optional
-        Number of new sample points to be generated per iteration. The default is 1.
-    performContinuousSearch : bool, optional
-        If True, the algorithm will perform a continuous search when a
+    :param maxeval: Maximum number of function evaluations.
+    :param surrogateModel: Surrogate model to be used. The default is RbfModel().
+    :param acquisitionFunc: Acquisition function to be used.
+    :param batchSize: Number of new sample points to be generated per iteration. The default is 1.
+    :param performContinuousSearch: If True, the algorithm will perform a continuous search when a
         significant improvement is found among the integer coordinates. The
         default is True.
-    disp : bool, optional
-        If True, print information about the optimization process. The default
+    :param disp: If True, print information about the optimization process. The default
         is False.
-    callback : callable, optional
-        If provided, the callback function will be called after each iteration
+    :param callback: If provided, the callback function will be called after each iteration
         with the current optimization result. The default is None. The callback
         function will be called internally at stochastic_response_surface().
-
-    Returns
-    -------
-    OptimizeResult
-        The optimization result.
+    :return: The optimization result.
 
     References
     ----------
@@ -818,49 +735,31 @@ def target_value_optimization(
     """Minimize a scalar function of one or more variables using the target
     value strategy from [#]_.
 
-    Parameters
-    ----------
-    fun : callable
-        The objective function to be minimized.
-    bounds : sequence
-        List with the limits [x_min,x_max] of each direction x in the search
+    :param fun: The objective function to be minimized.
+    :param bounds: List with the limits [x_min,x_max] of each direction x in the search
         space.
-    maxeval : int
-        Maximum number of function evaluations.
-    x0y0 : tuple-like, optional
-        Initial guess for the solution and the value of the objective function
+    :param maxeval: Maximum number of function evaluations.
+    :param x0y0: Initial guess for the solution and the value of the objective function
         at the initial guess.
-    surrogateModel : surrogate model, optional
-        Surrogate model to be used. The default is RbfModel().
+    :param surrogateModel: Surrogate model to be used. The default is RbfModel().
         On exit, if provided, the surrogate model is updated to represent the
         one used in the last iteration.
-    acquisitionFunc : AcquisitionFunction, optional
-        Acquisition function to be used. The default is TargetValueAcquisition().
-    sample : np.ndarray, optional
-        Initial sample to be added to the surrogate model. The default is an
+    :param acquisitionFunc: Acquisition function to be used. The default is TargetValueAcquisition().
+    :param sample: Initial sample to be added to the surrogate model. The default is an
         empty array.
-    batchSize : int, optional
-        Number of new sample points to be generated per iteration. The default is 1.
-    expectedRelativeImprovement : float, optional
-        Expected relative improvement with respect to the current best value.
+    :param batchSize: Number of new sample points to be generated per iteration. The default is 1.
+    :param expectedRelativeImprovement: Expected relative improvement with respect to the current best value.
         An improvement is considered significant if it is greater than
         ``expectedRelativeImprovement`` times the absolute value of the current
         best value. The default is 1e-3.
-    failtolerance : int, optional
-        Number of consecutive insignificant improvements before the algorithm
+    :param failtolerance: Number of consecutive insignificant improvements before the algorithm
         modifies the sampler. The default is -1, which means this parameter is
         not used.
-    disp : bool, optional
-        If True, print information about the optimization process. The default
+    :param disp: If True, print information about the optimization process. The default
         is False.
-    callback : callable, optional
-        If provided, the callback function will be called after each iteration
+    :param callback: If provided, the callback function will be called after each iteration
         with the current optimization result. The default is None.
-
-    Returns
-    -------
-    OptimizeResult
-        The optimization result.
+    :return: The optimization result.
 
     References
     ----------
@@ -1012,52 +911,35 @@ def cptv(
 
     This method is based on [#]_.
 
-    Parameters
-    ----------
-    fun : callable
-        The objective function to be minimized.
-    bounds : sequence
-        List with the limits [x_min,x_max] of each direction x in the search
+    :param fun: The objective function to be minimized.
+    :param bounds: List with the limits [x_min,x_max] of each direction x in the search
         space.
-    maxeval : int
-        Maximum number of function evaluations.
-    surrogateModel : surrogate model, optional
-        Surrogate model. The default is RbfModel().
-    acquisitionFunc : WeightedAcquisition, optional
-        Acquisition function to be used in the CP step. The default is
+    :param maxeval: Maximum number of function evaluations.
+    :param surrogateModel: Surrogate model. The default is RbfModel().
+    :param acquisitionFunc: Acquisition function to be used in the CP step. The default is
         WeightedAcquisition(0).
-    expectedRelativeImprovement : float, optional
-        Expected relative improvement with respect to the current best value.
+    :param expectedRelativeImprovement: Expected relative improvement with respect to the current best value.
         An improvement is considered significant if it is greater than
         ``expectedRelativeImprovement`` times the absolute value of the current
         best value. The default is 1e-3.
-    failtolerance : int, optional
-        Number of consecutive insignificant improvements before the algorithm
+    :param failtolerance: Number of consecutive insignificant improvements before the algorithm
         switches between the CP and TV steps. The default is 5.
-    consecutiveQuickFailuresTol : int, optional
-        Number of times that the CP step or the TV step fails quickly before the
+    :param consecutiveQuickFailuresTol: Number of times that the CP step or the TV step fails quickly before the
         algorithm stops. The default is 0, which means the algorithm will stop
         after ``maxeval`` function evaluations. A quick failure is when the
         acquisition function in the CP or TV step does not find any significant
         improvement.
-    useLocalSearch : bool, optional
-        If True, the algorithm will perform a local search when a significant
+    :param useLocalSearch: If True, the algorithm will perform a local search when a significant
         improvement is not found in a sequence of (CP,TV,CP) steps. The default
         is False.
-    disp : bool, optional
-        If True, print information about the optimization process. The default
+    :param disp: If True, print information about the optimization process. The default
         is False.
-    callback : callable, optional
-        If provided, the callback function will be called after each iteration
+    :param callback: If provided, the callback function will be called after each iteration
         with the current optimization result. The default is None. The callback
         function will be called internally at stochastic_response_surface() and
         target_value_optimization(), as well as in the local search if it is
         performed.
-
-    Returns
-    -------
-    OptimizeResult
-        The optimization result.
+    :return: The optimization result.
 
     References
     ----------
@@ -1276,7 +1158,7 @@ def cptvl(
     disp: bool = False,
     callback: Optional[Callable[[OptimizeResult], None]] = None,
 ) -> OptimizeResult:
-    """Wrapper to cptv. See :meth:`blackboxopt.optimize.cptv`."""
+    """Wrapper to cptv. See :func:`cptv()`."""
     return cptv(
         fun,
         bounds,
@@ -1307,37 +1189,22 @@ def socemo(
     """Minimize a multiobjective function using the surrogate model approach
     from [#]_.
 
-    Parameters
-    ----------
-    fun : callable
-        The objective function to be minimized.
-    bounds : sequence
-        List with the limits [x_min,x_max] of each direction x in the search
+    :param fun: The objective function to be minimized.
+    :param bounds: List with the limits [x_min,x_max] of each direction x in the search
         space.
-    maxeval : int
-        Maximum number of function evaluations.
-    surrogateModels : tuple, optional
-        Surrogate models to be used. The default is (RbfModel(),).
-    acquisitionFunc : WeightedAcquisition, optional
-        Acquisition function to be used in the CP step. The default is
+    :param maxeval: Maximum number of function evaluations.
+    :param surrogateModels: Surrogate models to be used. The default is (RbfModel(),).
+    :param acquisitionFunc: Acquisition function to be used in the CP step. The default is
         WeightedAcquisition(0).
-    acquisitionFuncGlobal : WeightedAcquisition, optional
-        Acquisition function to be used in the global step. The default is
+    :param acquisitionFuncGlobal: Acquisition function to be used in the global step. The default is
         WeightedAcquisition(Sampler(0), 0.95).
-    sample : np.ndarray, optional
-        Initial sample to be added to the surrogate model. The default is an
+    :param sample: Initial sample to be added to the surrogate model. The default is an
         empty array.
-    disp : bool, optional
-        If True, print information about the optimization process. The default
+    :param disp: If True, print information about the optimization process. The default
         is False.
-    callback : callable, optional
-        If provided, the callback function will be called after each iteration
+    :param callback: If provided, the callback function will be called after each iteration
         with the current optimization result. The default is None.
-
-    Returns
-    -------
-    OptimizeResult
-        The optimization result.
+    :return: The optimization result.
 
     References
     ----------
@@ -1578,34 +1445,20 @@ def gosac(
 
     This method is based on [#]_.
 
-    Parameters
-    ----------
-    fun : callable
-        The objective function to be minimized.
-    gfun : callable
-        The constraint function to be minimized. The constraints must be
+    :param fun: The objective function to be minimized.
+    :param gfun: The constraint function to be minimized. The constraints must be
         formulated as g(x) <= 0.
-    bounds : sequence
-        List with the limits [x_min,x_max] of each direction x in the search
+    :param bounds: List with the limits [x_min,x_max] of each direction x in the search
         space.
-    maxeval : int
-        Maximum number of function evaluations.
-    surrogateModels : tuple, optional
-        Surrogate models to be used. The default is (RbfModel(),).
-    sample : np.ndarray, optional
-        Initial sample to be added to the surrogate model. The default is an
+    :param maxeval: Maximum number of function evaluations.
+    :param surrogateModels: Surrogate models to be used. The default is (RbfModel(),).
+    :param sample: Initial sample to be added to the surrogate model. The default is an
         empty array.
-    disp : bool, optional
-        If True, print information about the optimization process. The default
+    :param disp: If True, print information about the optimization process. The default
         is False.
-    callback : callable, optional
-        If provided, the callback function will be called after each iteration
+    :param callback: If provided, the callback function will be called after each iteration
         with the current optimization result. The default is None.
-
-    Returns
-    -------
-    OptimizeResult
-        The optimization result.
+    :return: The optimization result.
 
     References
     ----------
@@ -1823,40 +1676,24 @@ def bayesian_optimization(
 
     See [#]_ for details.
 
-    Parameters
-    ----------
-    fun : callable
-        The objective function to be minimized.
-    bounds : sequence
-        List with the limits [x_min,x_max] of each direction x in the search
+    :param fun: The objective function to be minimized.
+    :param bounds: List with the limits [x_min,x_max] of each direction x in the search
         space.
-    maxeval : int
-        Maximum number of function evaluations.
-    x0y0 : tuple-like, optional
-        Initial guess for the solution and the value of the objective function
+    :param maxeval: Maximum number of function evaluations.
+    :param x0y0: Initial guess for the solution and the value of the objective function
         at the initial guess.
-    surrogateModel : surrogate model, optional
-        Gaussian Process surrogate model. The default is GaussianProcess().
+    :param surrogateModel: Gaussian Process surrogate model. The default is GaussianProcess().
         On exit, if provided, the surrogate model is updated to represent the
         one used in the last iteration.
-    acquisitionFunc : MaximizeEI, optional
-        Acquisition function to be used.
-    sample : np.ndarray, optional
-        Initial sample to be added to the surrogate model. The default is an
+    :param acquisitionFunc: Acquisition function to be used.
+    :param sample: Initial sample to be added to the surrogate model. The default is an
         empty array.
-    batchSize : int, optional
-        Number of new sample points to be generated per iteration. The default is 1.
-    disp : bool, optional
-        If True, print information about the optimization process. The default
+    :param batchSize: Number of new sample points to be generated per iteration. The default is 1.
+    :param disp: If True, print information about the optimization process. The default
         is False.
-    callback : callable, optional
-        If provided, the callback function will be called after each iteration
+    :param callback: If provided, the callback function will be called after each iteration
         with the current optimization result. The default is None.
-
-    Returns
-    -------
-    OptimizeResult
-        The optimization result.
+    :return: The optimization result.
 
     References
     ----------

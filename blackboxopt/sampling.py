@@ -34,6 +34,7 @@ __credits__ = [
 __version__ = "0.4.2"
 __deprecated__ = False
 
+from typing import Optional
 import numpy as np
 from enum import Enum
 
@@ -42,23 +43,38 @@ from scipy.spatial import KDTree
 
 
 class SamplingStrategy(Enum):
-    NORMAL = 1  # normal distribution
-    DDS = 2  # DDS. Used in the DYCORS algorithm
-    UNIFORM = 3  # uniform distribution
-    DDS_UNIFORM = 4  # sample half DDS, then half uniform distribution
-    SLHD = 5  # Symmetric Latin Hypercube Design
-    MITCHEL91 = 6  # Cover empty regions in the search space
+    """Sampling strategy tags to be used by :meth:`get_sample()` methods that
+    override :meth:`Sampler.get_sample()`.
+    """
+
+    NORMAL = 1  #: Normal distribution
+    DDS = 2  #: DDS sampling. Used in the DYCORS algorithm
+    UNIFORM = 3  #: Uniform distribution
+    DDS_UNIFORM = 4  #: Sample half via DDS, then half via uniform distribution
+    SLHD = 5  #: Symmetric Latin Hypercube Design
+    MITCHEL91 = 6  #: Cover empty regions in the search space
 
 
 class Sampler:
-    """Base class for samplers.
+    """Abstract base class for samplers.
 
-    Attributes
-    ----------
-    strategy : SamplingStrategy
-        Sampling strategy.
-    n : int
-        Number of sample points to be drawn.
+    The main goal of a sampler is to draw samples from a d-dimensional box.
+    For that, one should use :meth:`get_sample()` or the specific
+    :meth:`get_[strategy]_sample()`. The former uses the information in
+    :attr:`strategy` to decide which specific sampler to use.
+
+    :param n: Number of sample points. Stored in :attr:`n`.
+    :param strategy: Sampling strategy. Stored in :attr:`strategy`.
+
+    .. attribute:: n
+
+        Number of sample points returned by :meth:`get_[strategy]_sample()`.
+
+    .. attribute:: strategy
+
+        Sampling strategy that will be used by :meth:`get_sample()` and
+        :meth:`get_[strategy]_sample()`.
+
     """
 
     def __init__(
@@ -69,37 +85,23 @@ class Sampler:
         self.strategy = strategy
         self.n = n
 
-    def get_diameter(self, dim: int) -> float:
-        """Diameter of the sampling region in a [0,1]^dim volume.
+    def get_diameter(self, d: int) -> float:
+        """Diameter of the sampling region relative to a d-dimensional cube.
 
-        Parameters
-        ----------
-        dim : int
-            Number of dimensions in the space.
-
-        Return
-        ------
-        float
-            Diameter of the sampling region.
+        :param d: Number of dimensions in the space.
         """
-        return np.sqrt(dim)
+        return np.sqrt(d)
 
     def get_uniform_sample(
         self, bounds, *, iindex: tuple[int, ...] = ()
     ) -> np.ndarray:
         """Generate a sample from a uniform distribution inside the bounds.
 
-        Parameters
-        ----------
-        bounds : sequence
-            List with the limits [x_min,x_max] of each direction x in the space.
-        iindex : tuple, optional
-            Indices of the input space that are integer. The default is ().
+        :param sequence bounds: List with the limits [x_min,x_max] of each
+            direction x in the space.
+        :param iindex: Indices of the input space that are integer.
 
-        Returns
-        -------
-        numpy.ndarray
-            Matrix with the generated sample points.
+        :return: Matrix with a sample point per line.
         """
         dim = len(bounds)
         xlow = np.array([bounds[i][0] for i in range(dim)])
@@ -122,17 +124,11 @@ class Sampler:
         a SLHD. In this case, the algorithm will do its best to try not to
         repeat values in the integer variables.
 
-        Parameters
-        ----------
-        bounds : sequence
-            List with the limits [x_min,x_max] of each direction x in the space.
-        iindex : tuple, optional
-            Indices of the input space that are integer. The default is ().
+        :param sequence bounds: List with the limits [x_min,x_max] of each
+            direction x in the space.
+        :param iindex: Indices of the input space that are integer.
 
-        Returns
-        -------
-        numpy.ndarray
-            Matrix with the generated sample points.
+        :return: Matrix with a sample point per line.
         """
         d = len(bounds)
         m = self.n
@@ -184,14 +180,13 @@ class Sampler:
     def get_sample(
         self, bounds, *, iindex: tuple[int, ...] = (), **kwargs
     ) -> np.ndarray:
-        """Generate a sample.
+        """Generate a sample based on :attr:`Sampler.strategy`.
 
-        Parameters
-        ----------
-        bounds : sequence
-            List with the limits [x_min,x_max] of each direction x in the space.
-        iindex : tuple, optional
-            Indices of the input space that are integer. The default is ().
+        :param sequence bounds: List with the limits [x_min,x_max] of each
+            direction x in the space.
+        :param iindex: Indices of the input space that are integer.
+
+        :return: Matrix with a sample point per line.
         """
         if self.strategy == SamplingStrategy.UNIFORM:
             return self.get_uniform_sample(bounds, iindex=iindex)
@@ -204,17 +199,29 @@ class Sampler:
 class NormalSampler(Sampler):
     """Sampler that generates sample points from a normal distribution.
 
-    Attributes
-    ----------
-    sigma : float
-        Standard deviation of the normal distribution, relative to the bounds
-        [0, 1].
-    sigma_min : float
-        Minimum standard deviation of the normal distribution, relative to the
-        bounds [0, 1].
-    sigma_max : float
-        Maximum standard deviation of the normal distribution, relative to the
-        bounds [0, 1].
+    :param sigma: Standard deviation of the normal distribution, relative to
+        a unitary interval. Stored in :attr:`sigma`.
+    :param sigma_min: Minimum limit for the standard deviation, relative to
+        a unitary interval. Stored in :attr:`sigma_min`.
+    :param sigma_max: Maximum limit for the standard deviation, relative to
+        a unitary interval. Stored in :attr:`sigma_max`.
+
+    .. attribute:: sigma
+
+        Standard deviation of the normal distribution, relative to a unitary
+        interval. Used by :meth:`get_normal_sample()` and
+        :meth:`get_dds_sample()`.
+
+    .. attribute:: sigma_min
+
+        Minimum standard deviation of the normal distribution, relative to a
+        unitary interval.
+
+    .. attribute:: sigma_max
+
+        Maximum standard deviation of the normal distribution, relative to a
+        unitary interval.
+
     """
 
     def __init__(
@@ -230,28 +237,18 @@ class NormalSampler(Sampler):
         self.sigma = sigma
         self.sigma_min = sigma_min
         self.sigma_max = sigma_max
-        assert (
-            0 <= self.sigma_min <= self.sigma <= self.sigma_max <= float("inf")
-        )
+        assert 0 <= self.sigma_min <= self.sigma <= self.sigma_max
 
-    def get_diameter(self, dim: int) -> float:
-        """Diameter of the sampling region in a [0,1]^dim volume.
+    def get_diameter(self, d: int) -> float:
+        """Diameter of the sampling region relative to a d-dimensional cube.
 
         For the normal sampler, the diameter is relative to the std. This
         implementation considers the region of 95% of the values on each
         coordinate, which has diameter `4*sigma`.
 
-        Parameters
-        ----------
-        dim : int
-            Number of dimensions in the space.
-
-        Return
-        ------
-        float
-            Diameter of the sampling region.
+        :param d: Number of dimensions in the space.
         """
-        return min(4 * self.sigma, 1.0) * np.sqrt(dim)
+        return min(4 * self.sigma, 1.0) * np.sqrt(d)
 
     def get_normal_sample(
         self,
@@ -262,20 +259,14 @@ class NormalSampler(Sampler):
     ) -> np.ndarray:
         """Generate a sample from a normal distribution around a given point mu.
 
-        Parameters
-        ----------
-        bounds : sequence
-            List with the limits [x_min,x_max] of each direction x in the space.
-        mu : array-like
-            Point around which the sample will be generated.
-        coord : tuple, optional
-            Coordinates of the input space that will vary. The default is (),
-            which means that all coordinates will vary.
+        :param sequence bounds: List with the limits [x_min,x_max] of each
+            direction x in the space.
+        :param mu: Point around which the sample will be generated.
+        :param sequence coord:
+            Coordinates of the input space that will vary. If (), all
+            coordinates will vary.
 
-        Returns
-        -------
-        numpy.ndarray
-            Matrix with the generated sample points.
+        :return: Matrix with a sample point per line.
         """
         dim = len(bounds)
         xlow = np.array([bounds[i][0] for i in range(dim)])
@@ -283,8 +274,6 @@ class NormalSampler(Sampler):
         sigma = np.array([self.sigma * (xup[i] - xlow[i]) for i in range(dim)])
 
         # Create xnew
-        if mu is None:
-            mu = np.zeros(dim)
         xnew = np.tile(mu, (self.n, 1))
         assert xnew.shape == (self.n, dim)
 
@@ -305,26 +294,32 @@ class NormalSampler(Sampler):
         iindex: tuple[int, ...] = (),
         coord=(),
     ) -> np.ndarray:
-        """Generate a DDS sample.
+        """Generate a sample based on the Dynamically Dimensioned Search (DDS)
+        algorithm described in [#]_.
 
-        Parameters
+        This algorithm generated a sample by perturbing a subset of the
+        coordinates of `mu`. The set of coordinates perturbed varies for each
+        sample point and is determined probabilistically. When a perturbation
+        occurs, it is guided by a normal distribution with mean zero and
+        standard deviation :attr:`sigma`.
+
+        :param sequence bounds: List with the limits [x_min,x_max] of each
+            direction x in the space.
+        :param mu: Point around which the sample will be generated.
+        :param probability: Perturbation probability.
+        :param iindex: Indices of the input space that are integer.
+        :param coord:
+            Coordinates of the input space that will vary.  If (), all
+            coordinates will vary.
+
+        :return: Matrix with a sample point per line.
+
+        References
         ----------
-        bounds : sequence
-            List with the limits [x_min,x_max] of each direction x in the space.
-        mu : array-like
-            Point around which the sample will be generated.
-        probability : float
-            Perturbation probability.
-        iindex : tuple, optional
-            Indices of the input space that are integer. The default is ().
-        coord : tuple, optional
-            Coordinates of the input space that will vary. The default is (),
-            which means that all coordinates will vary.
-
-        Returns
-        -------
-        numpy.ndarray
-            Matrix with the generated sample points.
+        .. [#] Tolson, B. A., and C. A. Shoemaker (2007), Dynamically
+            dimensioned search algorithm for computationally efficient watershed
+            model calibration, Water Resour. Res., 43, W01413,
+            https://doi.org/10.1029/2005WR004723.
         """
         dim = len(bounds)
         xlow = np.array([bounds[i][0] for i in range(dim)])
@@ -332,8 +327,6 @@ class NormalSampler(Sampler):
         sigma = np.array([self.sigma * (xup[i] - xlow[i]) for i in range(dim)])
 
         # Create xnew
-        if mu is None:
-            mu = np.zeros(dim)
         xnew = np.tile(mu, (self.n, 1))
         assert xnew.shape == (self.n, dim)
 
@@ -378,37 +371,29 @@ class NormalSampler(Sampler):
     ) -> np.ndarray:
         """Generate a sample.
 
-        Parameters
-        ----------
-        bounds : sequence
-            List with the limits [x_min,x_max] of each direction x in the space.
-        iindex : tuple, optional
-            Indices of the input space that are integer. The default is ().
-        mu : array-like, optional
-            Point around which the sample will be generated. Used by:
+        :param sequence bounds: List with the limits [x_min,x_max] of each
+            direction x in the space.
+        :param iindex: Indices of the input space that are integer.
+        :param mu: Point around which the sample will be generated. Used by:
 
-            * `SamplingStrategy.NORMAL`
-            * `SamplingStrategy.DDS`
-            * `SamplingStrategy.DDS_UNIFORM`
+            * :attr:`SamplingStrategy.NORMAL`
+            * :attr:`SamplingStrategy.DDS`
+            * :attr:`SamplingStrategy.DDS_UNIFORM`
 
-        coord : tuple, optional
-            Coordinates of the input space that will vary. The default is (),
-            which means that all coordinates will vary. Used by:
+        :param coord:
+            Coordinates of the input space that will vary.  If (), all
+            coordinates will vary. Used by:
 
-            * `SamplingStrategy.NORMAL`
-            * `SamplingStrategy.DDS`
-            * `SamplingStrategy.DDS_UNIFORM`
+            * :attr:`SamplingStrategy.NORMAL`
+            * :attr:`SamplingStrategy.DDS`
+            * :attr:`SamplingStrategy.DDS_UNIFORM`
 
-        probability : float, optional
-            Perturbation probability. Used by:
+        :param probability: Perturbation probability. Used by:
 
-            * `SamplingStrategy.DDS`
-            * `SamplingStrategy.DDS_UNIFORM`
+            * :attr:`SamplingStrategy.DDS`
+            * :attr:`SamplingStrategy.DDS_UNIFORM`
 
-        Returns
-        -------
-        numpy.ndarray
-            Matrix with the generated sample points.
+        :return: Matrix with a sample point per line.
         """
         if self.strategy == SamplingStrategy.NORMAL:
             assert (
@@ -453,16 +438,23 @@ class NormalSampler(Sampler):
 
 
 class Mitchel91Sampler(Sampler):
-    """Best candidate algorithm from [#]_.
+    """Sampler based on the algorithm from [#]_.
 
-    Attributes
-    ----------
-    maxCand : int | None
-        The maximum number of random candidates from which each new sample
-        points is selected. Defaults to 10*n
-    scale : float
-        A scale factor. The bigger it is, the more candidates in each iteration.
-        Defaults to 2.0
+    :param maxCand: The maximum number of random candidates from which each
+        sample points is selected. If None it receives the value `10*n` instead.
+        Stored in :attr:`maxCand`.
+    :param scale: A scaling factor proportional to the number of candidates used
+        to select each sample point. Stored in :attr:`scale`.
+
+    .. attribute:: maxCand
+
+        The maximum number of random candidates from which each
+        sample points is selected. Used by :meth:`get_mitchel91_sample()`.
+
+    .. attribute:: scale
+
+        A scaling factor proportional to the number of candidates used
+        to select each sample point. Used by :meth:`get_mitchel91_sample()`.
 
     References
     ----------
@@ -475,11 +467,11 @@ class Mitchel91Sampler(Sampler):
         n: int,
         strategy: SamplingStrategy = SamplingStrategy.MITCHEL91,
         *,
-        maxCand: int = 0,
+        maxCand: Optional[int] = None,
         scale: float = 2.0,
     ) -> None:
         super().__init__(n, strategy)
-        self.maxCand = maxCand if maxCand > 0 else 10 * n
+        self.maxCand = 10 * n if maxCand is None else maxCand
         self.scale = scale
 
     def get_mitchel91_sample(
@@ -487,26 +479,17 @@ class Mitchel91Sampler(Sampler):
     ) -> np.ndarray:
         """Generate a sample that aims to fill gaps in the search space.
 
-        Algorithm from [#]_.
+        This algorithm generates a sample that fills gaps in the search space.
+        In each iteration, it generates a pool of candidates, and selects the
+        point that is farthest from current sample points to integrate the new
+        sample. This algorithm was proposed by Mitchel (1991).
 
-        Parameters
-        ----------
-        bounds : sequence
-            List with the limits [x_min,x_max] of each direction x in the space.
-        iindex : tuple, optional
-            Indices of the input space that are integer. The default is ().
-        current_sample : array-like, optional
-            Sample points already drawn.
+        :param sequence bounds: List with the limits [x_min,x_max] of each
+            direction x in the space.
+        :param iindex: Indices of the input space that are integer.
+        :param current_sample: Sample points already drawn.
 
-        Returns
-        -------
-        numpy.ndarray
-            Matrix with the generated sample points.
-
-        References
-        ----------
-        .. [#] Mitchell, D. P. (1991). Spectrally optimal sampling for distribution
-            ray tracing. Computer Graphics, 25, 157–164.
+        :return: Matrix with a sample point per line.
         """
         dim = len(bounds)
         ncurrent = len(current_sample)
@@ -546,16 +529,16 @@ class Mitchel91Sampler(Sampler):
     def get_sample(
         self, bounds, *, iindex: tuple[int, ...] = (), **kwargs
     ) -> np.ndarray:
-        """Generate a sample that aims to fill gaps in the search space.
+        """Generates a sample.
 
-        Parameters
-        ----------
-        bounds : sequence
-            List with the limits [x_min,x_max] of each direction x in the space.
-        iindex : tuple, optional
-            Indices of the input space that are integer. The default is ().
-        current_sample : array-like, optional
-            Sample points already drawn. Used by: `SamplingStrategy.MITCHEL91`
+        :param sequence bounds: List with the limits [x_min,x_max] of each
+            direction x in the space.
+        :param iindex: Indices of the input space that are integer.
+        :param current_sample:
+            Sample points already drawn. Used by
+            :attr:`SamplingStrategy.MITCHEL91`.
+
+        :return: Matrix with a sample point per line.
         """
         if self.strategy == SamplingStrategy.MITCHEL91:
             current_sample = (

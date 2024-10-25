@@ -49,15 +49,8 @@ class MedianLpfFilter(RbfFilter):
 
         This strategy was proposed by [#]_ based on results from [#]_.
 
-        Parameters
-        ----------
-        x : numpy.ndarray
-            Values.
-
-        Returns
-        -------
-        numpy.ndarray
-            Filtered values.
+        :param x: Values.
+        :return: Filtered values.
 
         References
         ----------
@@ -93,19 +86,23 @@ class RbfModel:
     - :math:`p_i` are the basis functions of the polynomial tail.
     - :math:`n` is the dimension of the polynomial tail.
 
-    Attributes
-    ----------
-    type : RbfKernel, optional
+    .. attribute:: type
+
         Defines the function phi used in the RBF model. The options are:
 
         - RbfKernel.LINEAR: phi(r) = r.
         - RbfKernel.CUBIC: phi(r) = r^3.
         - RbfKernel.THINPLATE: phi(r) = r^2 * log(r).
-    iindex : tuple, optional
-        Indices of the input space that are integer. The default is ().
-    filter : RbfFilter, optional
+
+    .. attribute:: iindex
+
+        Indices of the input space that are integer.
+
+    .. attribute:: filter
+
         Filter used with the function values. The default is RbfFilter() which
         is the identity function.
+
     """
 
     def __init__(
@@ -132,12 +129,8 @@ class RbfModel:
         If the input maxeval is smaller than the current number of sample
         points, nothing is done.
 
-        Parameters
-        ----------
-        maxeval : int
-            Maximum number of function evaluations allowed.
-        dim : int
-            Dimension of the domain space.
+        :param maxeval: Maximum number of function evaluations allowed.
+        :param dim: Dimension of the domain space.
         """
         if maxeval < self._m:
             return
@@ -199,13 +192,7 @@ class RbfModel:
             )
 
     def dim(self) -> int:
-        """Get the dimension of the domain space.
-
-        Returns
-        -------
-        out: int
-            Dimension of the domain space.
-        """
+        """Get the dimension of the domain space."""
         assert self._x.size == 0 or self._x.ndim == 2
         if self._x.ndim == 2:
             return self._x.shape[1]
@@ -213,27 +200,13 @@ class RbfModel:
             return 0
 
     def pdim(self) -> int:
-        """Get the dimension of the polynomial tail.
-
-        Returns
-        -------
-        out: int
-            Dimension of the polynomial tail.
-        """
+        """Get the dimension of the polynomial tail."""
         return self.min_design_space_size(self.dim())
 
     def phi(self, r):
         """Applies the function phi to the distance(s) r.
 
-        Parameters
-        ----------
-        r : array_like
-            Distance(s) between points.
-
-        Returns
-        -------
-        out: array_like
-            Phi-value of the distances provided on input.
+        :param r: Vector with distance(s).
         """
         if self.type == RbfKernel.LINEAR:
             return r
@@ -257,15 +230,7 @@ class RbfModel:
     def dphi(self, r):
         """Derivative of the function phi at the distance(s) r.
 
-        Parameters
-        ----------
-        r : array_like
-            Distance(s) between points.
-
-        Returns
-        -------
-        out: array_like
-            Derivative of the phi-value of the distances provided on input.
+        :param r: Vector with distance(s).
         """
         if self.type == RbfKernel.LINEAR:
             return np.ones(r.shape)
@@ -289,16 +254,7 @@ class RbfModel:
     def dphiOverR(self, r):
         """Derivative of the function phi divided by r at the distance(s) r.
 
-        Parameters
-        ----------
-        r : array_like
-            Distance(s) between points.
-
-        Returns
-        -------
-        out: array_like
-            Derivative of the phi-value of the distances provided on input
-            divided by the distance.
+        :param r: Vector with distance(s).
         """
         if self.type == RbfKernel.LINEAR:
             return np.ones(r.shape) / r
@@ -320,15 +276,7 @@ class RbfModel:
     def ddphi(self, r):
         """Second derivative of the function phi at the distance(s) r.
 
-        Parameters
-        ----------
-        r : array_like
-            Distance(s) between points.
-
-        Returns
-        -------
-        out: array_like
-            Second derivative of the phi-value of the distances provided on input.
+        :param r: Vector with distance(s).
         """
         if self.type == RbfKernel.LINEAR:
             return np.zeros(r.shape)
@@ -350,15 +298,7 @@ class RbfModel:
     def pbasis(self, x: np.ndarray) -> np.ndarray:
         """Computes the polynomial tail matrix for a given set of points.
 
-        Parameters
-        ----------
-        x : numpy.ndarray
-            m-by-d matrix with m point coordinates in a d-dimensional space.
-
-        Returns
-        -------
-        out: numpy.ndarray
-            Site matrix, needed for determining parameters of the polynomial tail.
+        :param x: m-by-d matrix with m point coordinates in a d-dimensional space.
         """
         m = len(x)
 
@@ -373,15 +313,7 @@ class RbfModel:
     def dpbasis(self, x: np.ndarray) -> np.ndarray:
         """Computes the derivative of the polynomial tail matrix for a given x.
 
-        Parameters
-        ----------
-        x : numpy.ndarray
-            Point in a d-dimensional space.
-
-        Returns
-        -------
-        out: numpy.ndarray
-            Derivative of the polynomial tail matrix for the input point.
+        :param x: Point in a d-dimensional space.
         """
         dim = self.dim()
 
@@ -396,18 +328,8 @@ class RbfModel:
         """Computes the second derivative of the polynomial tail matrix for a
         given x and direction p.
 
-        Parameters
-        ----------
-        x : numpy.ndarray
-            Point in a d-dimensional space.
-        p : numpy.ndarray
-            Direction in which the second derivative is evaluated.
-
-        Returns
-        -------
-        out: numpy.ndarray
-            Second derivative of the polynomial tail matrix for the input point
-            and direction.
+        :param x: Point in a d-dimensional space.
+        :param p: Direction in which the second derivative is evaluated.
         """
         dim = self.dim()
 
@@ -421,18 +343,13 @@ class RbfModel:
     def __call__(self, x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Evaluates the model at one or multiple points.
 
-        Parameters
-        ----------
-        x : np.ndarray
-            m-by-d matrix with m point coordinates in a d-dimensional space.
+        :param x: m-by-d matrix with m point coordinates in a d-dimensional space.
+        :return:
 
-        Returns
-        -------
-        numpy.ndarray
-            Value for the RBF model on each of the input points.
-        numpy.ndarray
-            Matrix D where D[i, j] is the distance between the i-th input point
-            and the j-th sampled point.
+            * Value for the RBF model on each of the input points.
+
+            * Matrix D where D[i, j] is the distance between the i-th input
+              point and the j-th sampled point.
         """
         if self._valid_coefficients is False:
             raise RuntimeError(
@@ -459,15 +376,7 @@ class RbfModel:
             \nabla f(x) = \sum_{i=1}^{m} \beta_i \frac{\phi'(\|x - x_i\|)}{\|x - x_i\|} x
                         + \sum_{i=1}^{n} \beta_{m+i} \nabla p_i(x).
 
-        Parameters
-        ----------
-        x : np.ndarray
-            Point in a d-dimensional space.
-
-        Returns
-        -------
-        numpy.ndarray
-            Value for the derivative of the RBF model on the input point.
+        :param x: Point in a d-dimensional space.
         """
         if self._valid_coefficients is False:
             raise RuntimeError(
@@ -500,17 +409,8 @@ class RbfModel:
                         \right)
                         + \sum_{i=1}^{n} \beta_{m+i} H(p_i)(x) v.
 
-        Parameters
-        ----------
-        x : np.ndarray
-            Point in a d-dimensional space.
-        p : np.ndarray
-            Direction in which the Hessian is evaluated.
-
-        Returns
-        -------
-        numpy.ndarray
-            Value for the Hessian of the RBF model at x in the direction of p.
+        :param x: Point in a d-dimensional space.
+        :param p: Direction in which the Hessian is evaluated.
         """
         if self._valid_coefficients is False:
             raise RuntimeError(
@@ -543,12 +443,8 @@ class RbfModel:
     ) -> None:
         """Updates the coefficients of the RBF model.
 
-        Parameters
-        ----------
-        fx : array-like
-            Function values on the sampled points.
-        filter : RbfFilter | None, optional
-            Filter used with the function values. The default is None, which
+        :param fx: Function values on the sampled points.
+        :param filter: Filter used with the function values. The default is None, which
             means the filter used in the initialization of the RBF model is
             used.
         """
@@ -586,12 +482,8 @@ class RbfModel:
     def update_xtrain(self, xNew: np.ndarray, distNew=None) -> None:
         """Updates the RBF model with new points.
 
-        Parameters
-        ----------
-        xNew : np.ndarray
-            m-by-d matrix with m point coordinates in a d-dimensional space.
-        distNew : array-like, optional
-            m-by-(self.ntrain() + m) matrix with distances between points in
+        :param xNew: m-by-d matrix with m point coordinates in a d-dimensional space.
+        :param distNew: m-by-(self.ntrain() + m) matrix with distances between points in
             xNew and points in (self.xtrain(), xNew). If not provided, the
             distances are computed.
         """
@@ -633,12 +525,8 @@ class RbfModel:
     def update(self, Xnew, ynew) -> None:
         """Updates the model with new pairs of data (x,y).
 
-        Parameters
-        ----------
-        Xnew : array-like
-            m-by-d matrix with m point coordinates in a d-dimensional space.
-        ynew : array-like
-            Function values on the sampled points.
+        :param Xnew: m-by-d matrix with m point coordinates in a d-dimensional space.
+        :param ynew: Function values on the sampled points.
         """
         self.update_xtrain(Xnew)
         self.update_coefficients(ynew)
@@ -650,18 +538,12 @@ class RbfModel:
 
         The points are generated using a symmetric Latin hypercube design.
 
-        Parameters
-        ----------
-        dim : int
-            Dimension of the domain space.
-        bounds : sequence
-            List with the limits [x_min,x_max] of each direction x in the domain
+        :param dim: Dimension of the domain space.
+        :param bounds: List with the limits [x_min,x_max] of each direction x in the domain
             space.
-        minm : int, optional
-            Minimum number of points to generate. If not provided, the initial
+        :param minm: Minimum number of points to generate. If not provided, the initial
             design will have min(2 * pdim(),maxm) points.
-        maxm : int, optional
-            Maximum number of points to generate. If not provided, the initial
+        :param maxm: Maximum number of points to generate. If not provided, the initial
             design will have max(2 * pdim(),minm) points.
         """
         self.reserve(0, dim)
@@ -697,13 +579,7 @@ class RbfModel:
         self._valid_coefficients = False
 
     def ntrain(self) -> int:
-        """Get the number of sampled points.
-
-        Returns
-        -------
-        out: int
-            Number of sampled points.
-        """
+        """Get the number of sampled points."""
         return self._m
 
     def reset(self) -> None:
@@ -713,40 +589,22 @@ class RbfModel:
     def xtrain(self) -> np.ndarray:
         """Get the sampled points.
 
-        Returns
-        -------
-        out: np.ndarray
-            m-by-d matrix with m point coordinates in a d-dimensional space.
+        :return: m-by-d matrix with m training points in a d-dimensional space.
         """
         return self._x[0 : self._m, :]
 
     def ytrain(self) -> np.ndarray:
-        """Get f(x) for the sampled points.
-
-        Returns
-        -------
-        out: np.ndarray
-            m vector with the function values.
-        """
+        """Get f(x) for the sampled points."""
         return self._fx[0 : self._m]
 
     def get_matrixP(self) -> np.ndarray:
-        """Get the matrix P.
-
-        Returns
-        -------
-        out: np.ndarray
-            m-by-pdim matrix with the polynomial tail.
-        """
+        """Get the m-by-pdim matrix with the polynomial tail."""
         return self._P[0 : self._m, :]
 
     def get_RBFmatrix(self) -> np.ndarray:
         """Get the matrix used to compute the RBF weights.
 
-        Returns
-        -------
-        out: np.ndarray
-            (m+pdim)-by-(m+pdim) matrix used to compute the RBF weights.
+        :return: (m+pdim)-by-(m+pdim) matrix used to compute the RBF weights.
         """
         pdim = self.pdim()
         return np.block(
@@ -759,15 +617,7 @@ class RbfModel:
     def sample(self, i: int) -> np.ndarray:
         """Get the i-th sampled point.
 
-        Parameters
-        ----------
-        i : int
-            Index of the sampled point.
-
-        Returns
-        -------
-        out: np.ndarray
-            i-th sampled point.
+        :param i: Index of the sampled point.
         """
         return self.xtrain()[i, :]
 
@@ -775,21 +625,11 @@ class RbfModel:
         """Compute the value of abs(mu) in the inf step of the target value
         sampling strategy. See [#]_ for more details.
 
-        Parameters
-        ----------
-        x : np.ndarray
-            Possible point to be added to the surrogate model.
-        xdist : array-like, optional
-            Distances between x and the sampled points. If not provided, the
+        :param x: Possible point to be added to the surrogate model.
+        :param xdist: Distances between x and the sampled points. If not provided, the
             distances are computed.
-        LDLt : (lu,d,perm), optional
-            LDLt factorization of the matrix A as returned by the function
+        :param LDLt: LDLt factorization of the matrix A as returned by the function
             scipy.linalg.ldl. If not provided, the factorization is computed.
-
-        Returns
-        -------
-        float
-            Value of abs(mu) when adding the new x.
 
         References
         ----------
@@ -886,20 +726,10 @@ class RbfModel:
         """Compute the bumpiness of the surrogate model for a potential sample
         point x as defined in [#]_.
 
-        Parameters
-        ----------
-        x : np.ndarray
-            Possible point to be added to the surrogate model.
-        target : a number
-            Target value.
-        LDLt : (lu,d,perm), optional
-            LDLt factorization of the matrix A as returned by the function
+        :param x: Possible point to be added to the surrogate model.
+        :param target: Target value.
+        :param LDLt: LDLt factorization of the matrix A as returned by the function
             scipy.linalg.ldl. If not provided, the factorization is computed.
-
-        Returns
-        -------
-        float
-            Bumpiness measure of x.
 
         References
         ----------

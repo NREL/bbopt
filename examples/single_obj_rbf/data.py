@@ -48,8 +48,8 @@ class Data:
         Objective function.
     dim : int
         Dimension of the input space.
-    iindex : tuple, optional
-        Indices of the input space that are integer. The default is ().
+    iindex : tuple = ()
+        Indices of the input space that are integer.
     """
 
     xlow: np.ndarray

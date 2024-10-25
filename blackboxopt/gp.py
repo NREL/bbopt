@@ -37,14 +37,9 @@ def expected_improvement(mu, sigma, ybest):
 
     This is
 
-    Parameters
-    ----------
-    mu : float
-        The average value of a variable.
-    sigma : float
-        The standard deviation associated to the same variable.
-    ybest : float
-        The best (smallest) known value in the current Gaussian Process.
+    :param mu: The average value of a variable.
+    :param sigma: The standard deviation associated to the same variable.
+    :param ybest: The best (smallest) known value in the current Gaussian Process.
 
     References
     ----------
@@ -94,27 +89,19 @@ class GaussianProcess(GaussianProcessRegressor):
     def __call__(self, x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Evaluates the model at one or multiple points.
 
-        Parameters
-        ----------
-        x : np.ndarray
-            m-by-d matrix with m point coordinates in a d-dimensional space.
+        :param x: m-by-d matrix with m point coordinates in a d-dimensional
+            space.
+        :return:
 
-        Returns
-        -------
-        numpy.ndarray
-            Mean value predicted by the GP model on each of the input points.
-        numpy.ndarray
-            Std value predicted by the GP model on each of the input points.
+            * Mean value predicted by the GP model on each of the input points.
+            * Std value predicted by the GP model on each of the input points.
         """
         return self.predict(x, return_std=True, return_cov=False)
 
     def xtrain(self) -> np.ndarray:
         """Get the training data points.
 
-        Returns
-        -------
-        out: np.ndarray
-            m-by-d matrix with m point coordinates in a d-dimensional space.
+        :return: m-by-d matrix with m training points in a d-dimensional space.
         """
         return self.X_train_
 
@@ -141,12 +128,8 @@ class GaussianProcess(GaussianProcessRegressor):
     def update(self, Xnew, ynew) -> None:
         """Updates the model with new pairs of data (x,y).
 
-        Parameters
-        ----------
-        Xnew : array-like
-            m-by-d matrix with m point coordinates in a d-dimensional space.
-        ynew : array-like
-            Function values on the sampled points.
+        :param Xnew: m-by-d matrix with m point coordinates in a d-dimensional space.
+        :param ynew: Function values on the sampled points.
         """
         if self.ntrain() > 0:
             X = np.concatenate((self.xtrain(), Xnew), axis=0)
@@ -157,13 +140,7 @@ class GaussianProcess(GaussianProcessRegressor):
         self.fit(X, y)
 
     def ntrain(self) -> int:
-        """Get the number of sampled points.
-
-        Returns
-        -------
-        out: int
-            Number of sampled points.
-        """
+        """Get the number of sampled points."""
         return len(self.xtrain())
 
     def get_iindex(self) -> tuple[int, ...]:
@@ -171,11 +148,5 @@ class GaussianProcess(GaussianProcessRegressor):
         return ()
 
     def ytrain(self) -> np.ndarray:
-        """Get f(x) for the sampled points.
-
-        Returns
-        -------
-        out: np.ndarray
-            m vector with the function values.
-        """
+        """Get f(x) for the sampled points."""
         return self._y_train_mean + self.y_train_ * self._y_train_std
