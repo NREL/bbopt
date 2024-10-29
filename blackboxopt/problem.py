@@ -34,7 +34,7 @@ from pymoo.core.duplicate import DefaultDuplicateElimination
 
 
 def _get_vars(bounds, iindex=()) -> dict:
-    """Get the type of variables for the problem.
+    """Get the type of variables for a problem.
 
     :param bounds: Bounds for the variables.
     :param iindex: Indices of the input space that are integer.
@@ -64,7 +64,13 @@ def _dict_to_array(xdict: Union[dict, list[dict]]) -> np.ndarray:
 
 
 class BBOptDuplicateElimination(DefaultDuplicateElimination):
-    """Specialization of DefaultDuplicateElimination for better performance."""
+    """Specialization of DefaultDuplicateElimination for better performance
+    in the problems we have.
+
+    The particularity in this software is that the labels for the variables
+    always go from 0 to n-1, so we can rely on that information to using
+    ElementwiseDuplicateElimination.
+    """
 
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
