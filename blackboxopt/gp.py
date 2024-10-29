@@ -28,28 +28,13 @@ __version__ = "0.4.2"
 __deprecated__ = False
 
 import copy
+import warnings
 import numpy as np
+from sklearn import preprocessing
+from sklearn.exceptions import ConvergenceWarning
 from sklearn.gaussian_process import GaussianProcessRegressor
-
-
-def expected_improvement(mu, sigma, ybest):
-    """Expected Improvement function for the Gaussian Process from [#]_.
-
-    This is
-
-    :param mu: The average value of a variable.
-    :param sigma: The standard deviation associated to the same variable.
-    :param ybest: The best (smallest) known value in the current Gaussian Process.
-
-    References
-    ----------
-    .. [#] Donald R. Jones, Matthias Schonlau, and William J. Welch. Efficient
-        global optimization of expensive black-box functions. Journal of Global
-        Optimization, 13(4):455–492, 1998."""
-    from scipy.stats import norm
-
-    nu = (ybest - mu) / sigma
-    return (ybest - mu) * norm.cdf(nu) + sigma * norm.pdf(nu)
+import scipy.optimize as scipy_opt
+from sklearn.gaussian_process.kernels import RBF as GPkernelRBF
 
 
 class GaussianProcess(GaussianProcessRegressor):
@@ -59,32 +44,26 @@ class GaussianProcess(GaussianProcessRegressor):
     Scikit-Learn, e.g., https://scikit-learn.org/dev/modules/generated/sklearn.gaussian_process.GaussianProcessRegressor.html.
     """
 
-    def __init__(
-        self,
-        kernel=None,
-        *,
-        alpha=1e-10,
-        optimizer="fmin_l_bfgs_b",
-        n_restarts_optimizer=0,
-        normalize_y=False,
-        copy_X_train=True,
-        n_targets=None,
-        random_state=None,
-    ) -> None:
-        super().__init__(
-            kernel,
-            alpha=alpha,
-            optimizer=optimizer,
-            n_restarts_optimizer=n_restarts_optimizer,
-            normalize_y=normalize_y,
-            copy_X_train=copy_X_train,
-            n_targets=n_targets,
-            random_state=random_state,
-        )
+    def __init__(self, kernel=None, *, maxiter=1, **kwargs) -> None:
+        super().__init__(kernel, **kwargs)
         self.X_train_ = np.array([])
         self.y_train_ = np.array([])
         self._y_train_mean = np.array([])
         self._y_train_std = np.array([])
+
+        # Not in GaussianProcessRegressor:
+        self.scaler = preprocessing.MinMaxScaler()
+        self.maxiter = maxiter
+
+        # Redefine some of the defaults:
+        if kernel is None:
+            self.kernel = GPkernelRBF()
+        if "optimizer" not in kwargs:
+            self.optimizer = self._optimizer
+        if "normalize_y" not in kwargs:
+            self.normalize_y = True
+        if "n_restarts_optimizer" not in kwargs:
+            self.n_restarts_optimizer = 10
 
     def __call__(self, x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Evaluates the model at one or multiple points.
@@ -96,14 +75,19 @@ class GaussianProcess(GaussianProcessRegressor):
             * Mean value predicted by the GP model on each of the input points.
             * Std value predicted by the GP model on each of the input points.
         """
-        return self.predict(x, return_std=True, return_cov=False)
+        return self.predict(
+            self.scaler.transform(x), return_std=True, return_cov=False
+        )
 
     def xtrain(self) -> np.ndarray:
         """Get the training data points.
 
         :return: m-by-d matrix with m training points in a d-dimensional space.
         """
-        return self.X_train_
+        if len(self.X_train_) > 0:
+            return self.scaler.inverse_transform(self.X_train_)
+        else:
+            return self.X_train_
 
     def get_kernel(self):
         """Get the kernel used for prediction. The structure of the kernel is
@@ -120,7 +104,10 @@ class GaussianProcess(GaussianProcessRegressor):
         if sample.ndim != 2 or len(sample) < 1:
             return False
         try:
-            copy.deepcopy(self).fit(sample, np.ones(len(sample)))
+            copy.deepcopy(self).fit(
+                preprocessing.MinMaxScaler().fit_transform(sample),
+                np.ones(len(sample)),
+            )
             return True
         except np.linalg.LinAlgError:
             return False
@@ -137,7 +124,8 @@ class GaussianProcess(GaussianProcessRegressor):
         else:
             X = Xnew
             y = ynew
-        self.fit(X, y)
+        self.scaler = preprocessing.MinMaxScaler().fit(X)
+        self.fit(self.scaler.transform(X), y)
 
     def ntrain(self) -> int:
         """Get the number of sampled points."""
@@ -150,3 +138,35 @@ class GaussianProcess(GaussianProcessRegressor):
     def ytrain(self) -> np.ndarray:
         """Get f(x) for the sampled points."""
         return self._y_train_mean + self.y_train_ * self._y_train_std
+
+    def _optimizer(self, obj_func, initial_theta, bounds):
+        """Optimizer used in the GP fitting.
+
+        :param obj_func: The objective function to be minimized, which
+            takes the hyperparameters theta as a parameter and an
+            optional flag eval_gradient, which determines if the
+            gradient is returned additionally to the function value.
+        :param initial_theta: The initial value for theta, which can be
+            used by local optimizers.
+        :param bounds: The bounds on the values of theta.
+        :return: Returned are the best found hyperparameters theta and
+            the corresponding value of the target function.
+        """
+        res = scipy_opt.OptimizeResult()
+        res.x = initial_theta
+        res.success = False
+        count = 0
+        while res.success is False and count < self.maxiter:
+            res = scipy_opt.minimize(
+                obj_func, res.x, method="L-BFGS-B", jac=True, bounds=bounds
+            )
+            count += 1
+        if res.success is False:
+            warnings.warn(
+                "Consider using a larger value for maxiter. Current value is "
+                + str(self.maxiter),
+                ConvergenceWarning,
+                stacklevel=2,
+            )
+
+        return res.x, res.fun
