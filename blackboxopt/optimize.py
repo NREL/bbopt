@@ -41,15 +41,8 @@ from dataclasses import dataclass
 from copy import deepcopy
 
 # Scipy imports
-from scipy.optimize import minimize
+from scipy.optimize import minimize, differential_evolution
 from scipy.spatial.distance import cdist
-
-# Pymoo imports
-from pymoo.operators.survival.rank_and_crowding import RankAndCrowding
-from pymoo.core.mixed import MixedVariableGA, MixedVariableMating
-
-# Scikit-Learn imports
-from sklearn.gaussian_process.kernels import RBF as GPkernelRBF
 
 # Local imports
 from .acquisition import (
@@ -545,7 +538,7 @@ def stochastic_response_surface(
             print("Time to acquire new sample points: %f s" % (tf - t0))
 
         # Compute f(xselected)
-        batchSize = xselected.shape[0]
+        selectedBatchSize = xselected.shape[0]
         ySelected = np.asarray(fun(xselected))
 
         # determine if significant improvement
@@ -576,9 +569,9 @@ def stochastic_response_surface(
             out.fx = fxSelectedBest
 
         # Update x, y, out.nit and out.nfev
-        out.sample[out.nfev : out.nfev + batchSize, :] = xselected
-        out.fsample[out.nfev : out.nfev + batchSize] = ySelected
-        out.nfev = out.nfev + batchSize
+        out.sample[out.nfev : out.nfev + selectedBatchSize, :] = xselected
+        out.fsample[out.nfev : out.nfev + selectedBatchSize] = ySelected
+        out.nfev = out.nfev + selectedBatchSize
         out.nit = out.nit + 1
 
         # Call the callback function
@@ -850,7 +843,7 @@ def target_value_optimization(
             print("Time to acquire new sample points: %f s" % (tf - t0))
 
         # Compute f(xselected)
-        batchSize = xselected.shape[0]
+        selectedBatchSize = xselected.shape[0]
         ySelected = np.asarray(fun(xselected))
 
         # Update maxf
@@ -872,9 +865,9 @@ def target_value_optimization(
             out.fx = fxSelectedBest
 
         # Update remaining output variables
-        out.sample[out.nfev : out.nfev + batchSize, :] = xselected
-        out.fsample[out.nfev : out.nfev + batchSize] = ySelected
-        out.nfev = out.nfev + batchSize
+        out.sample[out.nfev : out.nfev + selectedBatchSize, :] = xselected
+        out.fsample[out.nfev : out.nfev + selectedBatchSize] = ySelected
+        out.nfev = out.nfev + selectedBatchSize
         out.nit = out.nit + 1
 
         # Call the callback function
@@ -1045,7 +1038,7 @@ def cptv(
                 maxeval - out.nfev,
                 x0y0=(out.x, out.fx),
                 surrogateModel=surrogateModel,
-                acquisitionFunc=TargetValueAcquisition(tol),
+                acquisitionFunc=TargetValueAcquisition(tol=tol),
                 expectedRelativeImprovement=expectedRelativeImprovement,
                 failtolerance=failtolerance,
                 disp=disp,
@@ -1250,30 +1243,12 @@ def socemo(
     )
     assert isinstance(out.fx, np.ndarray)
 
-    # Objects needed for the iterations
-    mooptimizer = MixedVariableGA(
-        pop_size=100,
-        survival=RankAndCrowding(),
-        eliminate_duplicates=BBOptDuplicateElimination(),
-        mating=MixedVariableMating(
-            eliminate_duplicates=BBOptDuplicateElimination()
-        ),
-    )
-    gaoptimizer = MixedVariableGA(
-        pop_size=100,
-        eliminate_duplicates=BBOptDuplicateElimination(),
-        mating=MixedVariableMating(
-            eliminate_duplicates=BBOptDuplicateElimination()
-        ),
-    )
-    nGens = 100
-    tol = acquisitionFunc.tol(dim)
-
     # Define acquisition functions
-    step1acquisition = ParetoFront(mooptimizer, nGens)
+    tol = acquisitionFunc.tol(dim)
+    step1acquisition = ParetoFront()
     step2acquisition = CoordinatePerturbationOverNondominated(acquisitionFunc)
-    step3acquisition = EndPointsParetoFront(gaoptimizer, nGens, tol)
-    step5acquisition = MinimizeMOSurrogate(mooptimizer, nGens, tol)
+    step3acquisition = EndPointsParetoFront(tol=tol)
+    step5acquisition = MinimizeMOSurrogate(tol=tol)
 
     # do until max number of f-evals reached or local min found
     xselected = np.empty((0, dim))
@@ -1491,31 +1466,10 @@ def gosac(
     )
     assert isinstance(out.fx, np.ndarray)
 
-    # Parameters
-    nGens1 = 100
-    popsize1 = 15
-    nGens2 = 100
-    popsize2 = 15
+    # Acquisition functions
     tol = 1e-3
-
-    # Objects needed for the iterations
-    mooptimizer = MixedVariableGA(
-        pop_size=popsize1,
-        survival=RankAndCrowding(),
-        eliminate_duplicates=BBOptDuplicateElimination(),
-        mating=MixedVariableMating(
-            eliminate_duplicates=BBOptDuplicateElimination()
-        ),
-    )
-    gaoptimizer = MixedVariableGA(
-        pop_size=popsize2,
-        eliminate_duplicates=BBOptDuplicateElimination(),
-        mating=MixedVariableMating(
-            eliminate_duplicates=BBOptDuplicateElimination()
-        ),
-    )
-    acquisition1 = MinimizeMOSurrogate(mooptimizer, nGens1, tol)
-    acquisition2 = GosacSample(fun, gaoptimizer, nGens2, tol)
+    acquisition1 = MinimizeMOSurrogate(tol=tol)
+    acquisition2 = GosacSample(fun, tol=tol)
 
     xselected = np.empty((0, dim))
     ySelected = np.copy(out.fsample[0 : out.nfev, 1:])
@@ -1540,9 +1494,7 @@ def gosac(
 
         # Solve the surrogate multiobjective problem
         t0 = time.time()
-        bestCandidates = acquisition1.acquire(
-            surrogateModels, bounds, n=popsize1
-        )
+        bestCandidates = acquisition1.acquire(surrogateModels, bounds, n=0)
         tf = time.time()
         if disp:
             print(
@@ -1703,12 +1655,11 @@ def bayesian_optimization(
     """
     dim = len(bounds)  # Dimension of the problem
     assert dim > 0
+    tol = 1e-6
 
     # Initialize optional variables
     if surrogateModel is None:
-        surrogateModel = GaussianProcess(
-            kernel=GPkernelRBF(), n_restarts_optimizer=20, normalize_y=True
-        )
+        surrogateModel = GaussianProcess()
     if sample is None:
         sample = np.empty((0, dim))
     if acquisitionFunc is None:
@@ -1736,6 +1687,10 @@ def bayesian_optimization(
     if callback is not None:
         callback(out)
 
+    # xup and xlow
+    xup = np.array([b[1] for b in bounds])
+    xlow = np.array([b[0] for b in bounds])
+
     # do until max number of f-evals reached or local min found
     xselected = np.copy(out.sample[0 : out.nfev, :])
     ySelected = np.copy(out.fsample[0 : out.nfev])
@@ -1755,17 +1710,51 @@ def bayesian_optimization(
         if disp:
             print("Time to update surrogate model: %f s" % (tf - t0))
 
-        # Acquire new sample points
+        # Use the current minimum of the GP in the sample if not there yet
+        # and if the batch size is greater than 1
+        xselected = np.empty((0, dim))
+        if batchSize > 1:
+            t0 = time.time()
+            res = differential_evolution(
+                lambda x: surrogateModel([x])[0], bounds
+            )
+            if res.x is not None:
+                if (
+                    cdist(
+                        ([res.x] - xlow) / (xup - xlow),
+                        (surrogateModel.xtrain() - xlow) / (xup - xlow),
+                    ).min()
+                    >= tol
+                ):
+                    xselected = np.concatenate((xselected, [res.x]), axis=0)
+            tf = time.time()
+            if disp:
+                print(
+                    "Time to acquire the minimum of the GP: %f s" % (tf - t0)
+                )
+
+        # Acquire new sample points through minimization of EI
         t0 = time.time()
-        xselected = acquisitionFunc.acquire(
-            surrogateModel, bounds, batchSize, ybest=out.fx
+        xMinEI = acquisitionFunc.acquire(
+            surrogateModel, bounds, batchSize - len(xselected), ybest=out.fx
         )
+        if len(xselected) > 0:
+            aux = cdist(
+                (xselected - xlow) / (xup - xlow),
+                (xMinEI - xlow) / (xup - xlow),
+            )[0]
+            xselected = np.concatenate((xselected, xMinEI[aux >= tol]), axis=0)
+        else:
+            xselected = xMinEI
         tf = time.time()
         if disp:
-            print("Time to acquire new sample points: %f s" % (tf - t0))
+            print(
+                "Time to acquire new sample points using acquisitionFunc: %f s"
+                % (tf - t0)
+            )
 
         # Compute f(xselected)
-        batchSize = len(xselected)
+        selectedBatchSize = len(xselected)
         ySelected = np.asarray(fun(xselected))
 
         # Update best point found so far if necessary
@@ -1776,9 +1765,9 @@ def bayesian_optimization(
             out.fx = fxSelectedBest
 
         # Update remaining output variables
-        out.sample[out.nfev : out.nfev + batchSize, :] = xselected
-        out.fsample[out.nfev : out.nfev + batchSize] = ySelected
-        out.nfev = out.nfev + batchSize
+        out.sample[out.nfev : out.nfev + selectedBatchSize, :] = xselected
+        out.fsample[out.nfev : out.nfev + selectedBatchSize] = ySelected
+        out.nfev = out.nfev + selectedBatchSize
         out.nit = out.nit + 1
 
         # Call the callback function
