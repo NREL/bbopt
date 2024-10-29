@@ -48,17 +48,15 @@ class GaussianProcess(GaussianProcessRegressor):
     * :attr:`normalize_y`: Default is `True`.
     * :attr:`n_restarts_optimizer`: Default is 10.
 
-    Moreover, this class uses `sklearn.preprocessing.MinMaxScaler` for the
-    training data by default so the user doesn't need to do it elsewhere. This
-    may be easily avoided in the future if there is a need to.
-
     Check other attributes and parameters for GaussianProcessRegressor at
     https://scikit-learn.org/dev/modules/generated/sklearn.gaussian_process.GaussianProcessRegressor.html.
 
-    :param maxiter: Maximum number of iterations for the L-BFGS-B optimizer.
-        Stored in :attr:`maxiter`.
+    :param scaler: Scaler for the input data. For details, see
+        https://scikit-learn.org/stable/modules/preprocessing.html.
+    :param maxiterLBFGS: Maximum number of iterations for the L-BFGS-B optimizer.
+        Stored in :attr:`maxiterLBFGS`.
 
-    .. attribute:: maxiter
+    .. attribute:: maxiterLBFGS
 
         Maximum number of iterations for the L-BFGS-B optimizer. Used in the
         training of the gaussian process.
@@ -69,7 +67,14 @@ class GaussianProcess(GaussianProcessRegressor):
 
     """
 
-    def __init__(self, kernel=None, *, maxiter=15000, **kwargs) -> None:
+    def __init__(
+        self,
+        kernel=None,
+        *,
+        scaler=None,
+        maxiterLBFGS: int = 15000,
+        **kwargs,
+    ) -> None:
         super().__init__(kernel, **kwargs)
         self.X_train_ = np.array([])
         self.y_train_ = np.array([])
@@ -77,8 +82,8 @@ class GaussianProcess(GaussianProcessRegressor):
         self._y_train_std = np.array([])
 
         # Not in GaussianProcessRegressor:
-        self.scaler = preprocessing.MinMaxScaler()
-        self.maxiter = maxiter
+        self.scaler = scaler
+        self.maxiterLBFGS = maxiterLBFGS
 
         # Redefine some of the defaults:
         if kernel is None:
@@ -101,7 +106,9 @@ class GaussianProcess(GaussianProcessRegressor):
             * Std value predicted by the GP model on each of the input points.
         """
         return self.predict(
-            self.scaler.transform(x), return_std=True, return_cov=False
+            x if self.scaler is None else self.scaler.transform(x),
+            return_std=True,
+            return_cov=False,
         )
 
     def xtrain(self) -> np.ndarray:
@@ -109,10 +116,10 @@ class GaussianProcess(GaussianProcessRegressor):
 
         :return: m-by-d matrix with m training points in a d-dimensional space.
         """
-        if len(self.X_train_) > 0:
-            return self.scaler.inverse_transform(self.X_train_)
-        else:
+        if len(self.X_train_) == 0 or self.scaler is None:
             return self.X_train_
+        else:
+            return self.scaler.inverse_transform(self.X_train_)
 
     def get_kernel(self):
         """Get the kernel used for prediction. The structure of the kernel is
@@ -144,6 +151,14 @@ class GaussianProcess(GaussianProcessRegressor):
     def update(self, Xnew, ynew) -> None:
         """Updates the model with new pairs of data (x,y).
 
+        When the default optimizer method, :meth:`_optimizer()`, is used as
+        :attr:`optimizer`, this routine reports different warnings compared to
+        `sklearn.gaussian_process.GaussianProcessRegressor.fit()`. The latter
+        reports any convergence failure in L-BFGS-B. This implementation reports
+        the last convergence failure in the multiple L-BFGS-B runs only if there
+        all the runs end up failing. The number of optimization runs is
+        :attr:`n_restarts_optimizer` + 1.
+
         :param Xnew: m-by-d matrix with m point coordinates in a d-dimensional
             space.
         :param ynew: Function values on the sampled points.
@@ -154,8 +169,37 @@ class GaussianProcess(GaussianProcessRegressor):
         else:
             X = Xnew
             y = ynew
-        self.scaler = preprocessing.MinMaxScaler().fit(X)
-        self.fit(self.scaler.transform(X), y)
+
+        if self.optimizer == self._optimizer:
+            # Prepare flag for verifying overall optimizer success
+            self._optimizer_success = False
+            self._optimizer_status = 0
+            self._optimizer_message = ""
+
+        if self.scaler is None:
+            self.fit(X, y)
+        else:
+            self.scaler = preprocessing.MinMaxScaler().fit(X)
+            self.fit(self.scaler.transform(X), y)
+
+        if self.optimizer == self._optimizer:
+            # Check for overall failure
+            if not self._optimizer_success:
+                warnings.warn(
+                    (
+                        "L-BFGS-B failed to converge (status={}):\n{}.\n\n"
+                        "Increase the number of iterations (maxiterLBFGS > {}) "
+                        "or scale the data as shown in:\n"
+                        "    https://scikit-learn.org/stable/modules/"
+                        "preprocessing.html"
+                    ).format(
+                        self._optimizer_status,
+                        self._optimizer_message,
+                        self.maxiterLBFGS,
+                    ),
+                    ConvergenceWarning,
+                    stacklevel=2,
+                )
 
     def ntrain(self) -> int:
         """Get the number of sampled points."""
@@ -171,6 +215,10 @@ class GaussianProcess(GaussianProcessRegressor):
 
     def _optimizer(self, obj_func, initial_theta, bounds):
         """Optimizer used in the GP fitting.
+
+        This function also sets the attributes: :attr:`_optimizer_success`,
+        :attr:`self._optimizer_status` and :attr:`self._optimizer_message` to
+        be used by :meth:`update()`.
 
         :param obj_func: The objective function to be minimized, which
             takes the hyperparameters theta as a parameter and an
@@ -188,16 +236,13 @@ class GaussianProcess(GaussianProcessRegressor):
             method="L-BFGS-B",
             jac=True,
             bounds=bounds,
-            options={"maxiter": self.maxiter},
+            options={"maxiter": self.maxiterLBFGS},
         )
 
-        # Check for success
-        if res.success is False:
-            warnings.warn(
-                "Consider using a larger value for maxiter. Current value is "
-                + str(self.maxiter),
-                ConvergenceWarning,
-                stacklevel=2,
-            )
+        if res.success:
+            self._optimizer_success = True
+        else:
+            self._optimizer_status = res.status
+            self._optimizer_message = res.message
 
         return res.x, res.fun
