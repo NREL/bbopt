@@ -388,7 +388,7 @@ def main(args):
     elif args.config == 5:
         optres = read_and_run(
             data_file="datainput_BraninWithInteger",
-            acquisitionFunc=TargetValueAcquisition(0.001),
+            acquisitionFunc=TargetValueAcquisition(tol=0.001),
             filter=rbf.RbfFilter(),
             maxeval=100,
             Ntrials=3,

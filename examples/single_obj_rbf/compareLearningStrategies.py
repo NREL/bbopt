@@ -361,7 +361,7 @@ if __name__ == "__main__":
         strategyName.append("TargetValue")
         optresList[5] = read_and_run(
             data_file="datainput_BraninWithInteger",
-            acquisitionFunc=TargetValueAcquisition(0.001),
+            acquisitionFunc=TargetValueAcquisition(tol=0.001),
             filter=rbf.RbfFilter(),
             maxeval=100,
             Ntrials=3,

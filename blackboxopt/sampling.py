@@ -356,6 +356,7 @@ class NormalSampler(Sampler):
                             s_std = np.round(s_std)
                     xnew[ii, j] = xnew[ii, j] + s_std
 
+                    # Make sure all points are within the bounds
                     if xnew[ii, j] < xlow[j]:
                         xnew[ii, j] = xlow[j] + (xlow[j] - xnew[ii, j])
                         if xnew[ii, j] > xup[j]:
@@ -438,7 +439,7 @@ class NormalSampler(Sampler):
 
 
 class Mitchel91Sampler(Sampler):
-    """Sampler based on the algorithm from [#]_.
+    """Sampler based from [#]_ that fills gaps in the search space.
 
     :param maxCand: The maximum number of random candidates from which each
         sample points is selected. If None it receives the value `10*n` instead.

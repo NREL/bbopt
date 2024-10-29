@@ -49,12 +49,12 @@ from scipy.optimize import minimize, differential_evolution
 from pymoo.operators.survival.rank_and_crowding import RankAndCrowding
 from pymoo.core.mixed import MixedVariableGA, MixedVariableMating
 from pymoo.optimize import minimize as pymoo_minimize
+from pymoo.termination.max_gen import MaximumGenerationTermination
 # from pymoo.core.problem import StarmapParallelization
 
 # Local imports
 from .sampling import NormalSampler, Sampler, Mitchel91Sampler
 from .rbf import RbfModel, RbfKernel
-from .gp import expected_improvement
 from .problem import (
     ProblemWithConstraint,
     ProblemNoConstraint,
@@ -62,6 +62,24 @@ from .problem import (
     MultiobjSurrogateProblem,
     BBOptDuplicateElimination,
 )
+
+
+def expected_improvement(mu, sigma, ybest):
+    """Expected Improvement function for a distribution from [#]_.
+
+    :param mu: The average value of a variable.
+    :param sigma: The standard deviation associated to the same variable.
+    :param ybest: The best (smallest) known value in the distribution.
+
+    References
+    ----------
+    .. [#] Donald R. Jones, Matthias Schonlau, and William J. Welch. Efficient
+        global optimization of expensive black-box functions. Journal of Global
+        Optimization, 13(4):455–492, 1998."""
+    from scipy.stats import norm
+
+    nu = (ybest - mu) / sigma
+    return (ybest - mu) * norm.cdf(nu) + sigma * norm.pdf(nu)
 
 
 def find_pareto_front(fx, iStart: int = 0) -> list:
@@ -127,8 +145,16 @@ class WeightedAcquisition(AcquisitionFunction):
 
     The weighted average is :math:`w f_s(x) + (1-w) (-d_s(x))`, where
     :math:`f_s(x)` is the surrogate value at :math:`x` and :math:`d_s(x)` is the
-    distance of :math:`x` to its closest neighbor in the current sample. The
-    sampler generates candidate points to be scored and then selected.
+    distance of :math:`x` to its closest neighbor in the current sample. Both
+    values are scaled to the interval [0, 1], based on the maximum and minimum
+    values for the pool of candidates. The sampler generates the candidate
+    points to be scored and then selected.
+
+    This acquisition method is prepared deals with multi-objective optimization
+    following the random perturbation strategy in [#]_. More specificaly, the
+    algorithm takes the average value among the predicted target values given by
+    the surrogate. In other words, :math:`f_s(x)` is the average value between
+    the target components of the surrogate model evaluate at :math:`x`.
 
     :param Sampler sampler: Sampler to generate candidate points.
         Stored in :attr:`sampler`.
@@ -163,6 +189,12 @@ class WeightedAcquisition(AcquisitionFunction):
 
         Maximum number of evaluations. A value 0 means there is no maximum.
 
+    References
+    ----------
+    .. [#] Juliane Mueller. SOCEMO: Surrogate Optimization of Computationally
+        Expensive Multiobjective Problems.
+        INFORMS Journal on Computing, 29(4):581-783, 2017.
+        https://doi.org/10.1287/ijoc.2017.0749
     """
 
     def __init__(
@@ -437,11 +469,11 @@ class TargetValueAcquisition(AcquisitionFunction):
     :attr:`cycleLength` (inclusive) and runs one of the procedures:
 
     * Inf-step (0): Selects a sample point that minimizes the
-      :math:`\mu`-measure, i.e., :meth:`blackboxopt.rbf.RbfModel.mu_measure()`.
+      :math:`\\mu`-measure, i.e., :meth:`blackboxopt.rbf.RbfModel.mu_measure()`.
 
     * Global search (1 to :attr:`cycleLength`): Finds the global minimum of the
       surrogate and defines a (lower) target value to be achieved. Choose a
-      sample point that minimizes the product of :math:`\mu`-measure by the
+      sample point that minimizes the product of :math:`\\mu`-measure by the
       distance to the target value. The described measure is known as 'bumpiness
       measure'.
 
@@ -450,32 +482,19 @@ class TargetValueAcquisition(AcquisitionFunction):
       improvement, use that point in the new sample. Otherwise, do the
       global search.
 
+    :param optimizer: Single-objective optimizer. If None, use MixedVariableGA
+        from pymoo.
     :param tol: Tolerance value for excluding candidate points that are too
-        close to already sampled points.
-    :param popsize: Population size of the genetic algorithm.
-    :param ngen: Maximum number of generations for the genetic algorithm.
+        close to already sampled points. Stored in :attr:`tol`.
 
-    .. attribute:: cycleLength
+    .. attribute:: optimizer
 
-        Length of the cycle.
+        Single-objective optimizer.
 
     .. attribute:: tol
 
         Tolerance value for excluding candidate points that are too close to
         already sampled points.
-        Default is 1e-3.
-
-    .. attribute:: GA
-
-        Tolerance value for excluding candidate points that are too close to
-        already sampled points.
-        Default is 1e-3.
-
-    .. attribute:: ngen
-
-        Tolerance value for excluding candidate points that are too close to
-        already sampled points.
-        Default is 1e-3.
 
     References
     ----------
@@ -485,19 +504,21 @@ class TargetValueAcquisition(AcquisitionFunction):
         https://doi.org/10.1007/s11081-008-9037-3
     """
 
-    def __init__(
-        self, tol: float = 1e-3, popsize: int = 10, ngen: int = 10
-    ) -> None:
+    def __init__(self, optimizer=None, tol: float = 1e-3) -> None:
         self.cycleLength = 10
         self.tol = tol
-        self.GA = MixedVariableGA(
-            pop_size=popsize,
-            eliminate_duplicates=BBOptDuplicateElimination(),
-            mating=MixedVariableMating(
-                eliminate_duplicates=BBOptDuplicateElimination()
-            ),
+        self.optimizer = (
+            MixedVariableGA(
+                pop_size=10,
+                eliminate_duplicates=BBOptDuplicateElimination(),
+                mating=MixedVariableMating(
+                    eliminate_duplicates=BBOptDuplicateElimination()
+                ),
+                termination=MaximumGenerationTermination(10),
+            )
+            if optimizer is None
+            else optimizer
         )
-        self.ngen = ngen
 
     def acquire(
         self,
@@ -514,7 +535,7 @@ class TargetValueAcquisition(AcquisitionFunction):
         :param surrogateModel: Surrogate model.
         :param sequence bounds: List with the limits [x_min,x_max] of each
             direction x in the space.
-        :param n: Number of points to be acquired. The default is 1.
+        :param n: Number of points to be acquired.
         :param sampleStage: Stage of the sampling process. The default is -1,
             which means that the stage is not specified.
         :param fbounds:
@@ -557,8 +578,7 @@ class TargetValueAcquisition(AcquisitionFunction):
 
                 res = pymoo_minimize(
                     problem,
-                    self.GA,
-                    ("n_gen", self.ngen),
+                    self.optimizer,
                     seed=surrogateModel.ntrain(),
                     verbose=False,
                 )
@@ -581,8 +601,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                 )
                 res = pymoo_minimize(
                     problem,
-                    self.GA,
-                    ("n_gen", self.ngen),
+                    self.optimizer,
                     seed=surrogateModel.ntrain(),
                     verbose=False,
                 )
@@ -615,8 +634,7 @@ class TargetValueAcquisition(AcquisitionFunction):
 
                 res = pymoo_minimize(
                     problem,
-                    self.GA,
-                    ("n_gen", self.ngen),
+                    self.optimizer,
                     seed=surrogateModel.ntrain(),
                     verbose=False,
                 )
@@ -636,8 +654,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                 )
                 res = pymoo_minimize(
                     problem,
-                    self.GA,
-                    ("n_gen", self.ngen),
+                    self.optimizer,
                     seed=surrogateModel.ntrain(),
                     verbose=False,
                 )
@@ -681,8 +698,7 @@ class TargetValueAcquisition(AcquisitionFunction):
 
                     res = pymoo_minimize(
                         problem,
-                        self.GA,
-                        ("n_gen", self.ngen),
+                        self.optimizer,
                         seed=surrogateModel.ntrain(),
                         verbose=False,
                     )
@@ -760,10 +776,13 @@ class MinimizeSurrogate(AcquisitionFunction):
     ) -> np.ndarray:
         """Acquire n points based on MISO-MS from Müller (2016).
 
+        The critical distance is the same used in the seminal work from
+        Rinnooy Kan and Timmer (1987).
+
         :param surrogateModel: Surrogate model.
         :param sequence bounds: List with the limits [x_min,x_max] of each
             direction x in the space.
-        :param n: Max number of points to be acquired. The default is 1.
+        :param n: Max number of points to be acquired.
         :return: n-by-dim matrix with the selected points.
         """
         dim = len(bounds)
@@ -936,42 +955,72 @@ class MinimizeSurrogate(AcquisitionFunction):
 
 
 class ParetoFront(AcquisitionFunction):
-    """Obtain sample points that fill gaps in the Pareto front.
+    """Obtain sample points that fill gaps in the Pareto front from [#]_.
+
+    The algorithm proceeds as follows to find each new point:
+
+    1. Find a target value :math:`\\tau` that should fill a gap in the Pareto
+       front. Make sure to use a target value that wasn't used before.
+    2. Solve a multi-objective optimization problem that minimizes
+       :math:`\|s_i(x)-\\tau\|` for all :math:`x` in the search space, where
+       :math:`s_i(x)` is the i-th target value predicted by the surrogate for
+       :math:`x`.
+    3. If a Pareto-optimal solution was found for the problem above, chooses the
+       point that minimizes the L1 distance to :math:`\\tau` to be part of the
+       new sample.
+
+    :param mooptimizer: Multi-objective optimizer. If None, use MixedVariableGA
+        from pymoo with RankAndCrowding survival strategy.
+    :param oldTV: Old target values to be avoided in the acquisition.
+        Copied to :attr:`oldTV`.
 
     .. attribute:: mooptimizer
 
-        Multi-objective optimizer. Default is MixedVariableGA from pymoo with
-        RankAndCrowding survival strategy.
-
-    .. attribute:: nGens
-
-        Number of generations for the multi-objective optimizer. Default is 100.
+        Multi-objective optimizer used in the step 2 of the algorithm.
 
     .. attribute:: oldTV
 
-        Old target values to be avoided in the acquisition.
-        Default is an empty array.
+        Old target values to be avoided in the acquisition of step 1.
 
+    References
+    ----------
+    .. [#] Juliane Mueller. SOCEMO: Surrogate Optimization of Computationally
+        Expensive Multiobjective Problems.
+        INFORMS Journal on Computing, 29(4):581-783, 2017.
+        https://doi.org/10.1287/ijoc.2017.0749
     """
 
     def __init__(
         self,
         mooptimizer=None,
-        nGens: int = 100,
         oldTV=(),
     ) -> None:
         self.mooptimizer = (
-            MixedVariableGA(survival=RankAndCrowding())
+            MixedVariableGA(
+                eliminate_duplicates=BBOptDuplicateElimination(),
+                mating=MixedVariableMating(
+                    eliminate_duplicates=BBOptDuplicateElimination()
+                ),
+                survival=RankAndCrowding(),
+                termination=MaximumGenerationTermination(100),
+            )
             if mooptimizer is None
             else mooptimizer
         )
-        self.nGens = nGens
         self.oldTV = np.array(oldTV)
 
     def pareto_front_target(self, paretoFront: np.ndarray) -> np.ndarray:
         """Find a target value that should fill a gap in the Pareto front.
 
+        As suggested by Mueller (2017), the algorithm fits a linear RBF
+        model with the points in the Pareto front. This will represent the
+        (d-1)-dimensional Pareto front surface. Then, the algorithm searches the
+        a value in the surface that maximizes the distances to previously
+        selected target values and to the training points of the RBF model. This
+        value is projected in the d-dimensional space to obtain :math:`\\tau`.
+
         :param paretoFront: Pareto front in the objective space.
+        :return: The target value :math:`\\tau`.
         """
         objdim = paretoFront.shape[1]
         assert objdim > 1
@@ -1018,14 +1067,16 @@ class ParetoFront(AcquisitionFunction):
         paretoFront=(),
         **kwargs,
     ) -> np.ndarray:
-        """Acquire n points.
+        """Acquire k points, where k <= n.
+
+        Perform n attempts to find n points to fill gaps in the Pareto front.
 
         :param surrogateModels: List of surrogate models.
         :param sequence bounds: List with the limits [x_min,x_max] of each
             direction x in the space.
-        :param n: Number of points to be acquired. The default is 1.
-        :param paretoFront: Pareto front in the objective space. The default is an empty tuple.
-        :return: n-by-dim matrix with the selected points.
+        :param n: Number of points to be acquired.
+        :param paretoFront: Pareto front in the objective space.
+        :return: k-by-dim matrix with the selected points.
         """
         dim = len(bounds)
         objdim = len(surrogateModels)
@@ -1050,7 +1101,6 @@ class ParetoFront(AcquisitionFunction):
             res = pymoo_minimize(
                 multiobjTVProblem,
                 self.mooptimizer,
-                ("n_gen", self.nGens),
                 seed=len(paretoFront),
                 verbose=False,
             )
@@ -1071,21 +1121,49 @@ class ParetoFront(AcquisitionFunction):
 
 
 class EndPointsParetoFront(AcquisitionFunction):
-    """Obtain endpoints of the Pareto front.
+    """Obtain endpoints of the Pareto front as described in [#]_.
+
+    For each component i in the targhet space, this algorithm solves a cheap
+    auxiliary optimization problem to minimize the i-th component of the
+    trained surrogate model. Points that are too close to each other and to
+    training sample points are eliminated. If all points were to be eliminated,
+    consider the whole variable domain and sample at the point that maximizes
+    the minimum distance to training sample points.
+
+    :param optimizer: Single-objective optimizer. If None, use MixedVariableGA
+        from pymoo.
+    :param tol: Tolerance value for excluding candidate points that are too
+        close to already sampled points. Stored in :attr:`tol`.
 
     .. attribute:: optimizer
-        Single-objective optimizer. Default is MixedVariableGA from pymoo.
+
+        Single-objective optimizer.
 
     .. attribute:: tol
 
         Tolerance value for excluding candidate points that are too close to
         already sampled points.
 
+    References
+    ----------
+    .. [#] Juliane Mueller. SOCEMO: Surrogate Optimization of Computationally
+        Expensive Multiobjective Problems.
+        INFORMS Journal on Computing, 29(4):581-783, 2017.
+        https://doi.org/10.1287/ijoc.2017.0749
     """
 
-    def __init__(self, optimizer=None, nGens: int = 100, tol=1e-3) -> None:
-        self.optimizer = MixedVariableGA() if optimizer is None else optimizer
-        self.nGens = nGens
+    def __init__(self, optimizer=None, tol=1e-3) -> None:
+        self.optimizer = (
+            MixedVariableGA(
+                eliminate_duplicates=BBOptDuplicateElimination(),
+                mating=MixedVariableMating(
+                    eliminate_duplicates=BBOptDuplicateElimination()
+                ),
+                termination=MaximumGenerationTermination(100),
+            )
+            if optimizer is None
+            else optimizer
+        )
         self.tol = tol
 
     def acquire(
@@ -1095,12 +1173,12 @@ class EndPointsParetoFront(AcquisitionFunction):
         n: int = 1,
         **kwargs,
     ) -> np.ndarray:
-        """Acquire n points at most.
+        """Acquire k points at most, where k <= n.
 
         :param surrogateModels: List of surrogate models.
         :param sequence bounds: List with the limits [x_min,x_max] of each
             direction x in the space.
-        :param n: Maximum number of points to be acquired. The default is 1.
+        :param n: Maximum number of points to be acquired.
         :return: k-by-dim matrix with the selected points.
         """
         dim = len(bounds)
@@ -1116,7 +1194,6 @@ class EndPointsParetoFront(AcquisitionFunction):
             res = pymoo_minimize(
                 minimumPointProblem,
                 self.optimizer,
-                ("n_gen", self.nGens),
                 seed=surrogateModels[0].ntrain(),
                 verbose=False,
             )
@@ -1164,7 +1241,6 @@ class EndPointsParetoFront(AcquisitionFunction):
             res = pymoo_minimize(
                 minimumPointProblem,
                 self.optimizer,
-                ("n_gen", self.nGens),
                 verbose=False,
                 seed=surrogateModels[0].ntrain() + 1,
             )
@@ -1181,29 +1257,35 @@ class MinimizeMOSurrogate(AcquisitionFunction):
     """Obtain pareto-optimal sample points for the multi-objective surrogate
     model.
 
+    :param mooptimizer: Multi-objective optimizer. If None, use MixedVariableGA
+        from pymoo with RankAndCrowding survival strategy.
+    :param tol: Tolerance value for excluding candidate points that are too
+        close to already sampled points. Stored in :attr:`tol`.
+
     .. attribute:: mooptimizer
 
-        Multi-objective optimizer. Default is MixedVariableGA from pymoo with
-        RankAndCrowding survival strategy.
-
-    .. attribute:: nGens
-
-        Number of generations for the multi-objective optimizer. Default is 100.
+        Multi-objective optimizer for the surrogate optimization problem.
 
     .. attribute:: tol
 
         Tolerance value for excluding candidate points that are too close to
-        already sampled points. Default is 1e-3.
+        already sampled points.
 
     """
 
-    def __init__(self, mooptimizer=None, nGens=100, tol=1e-3) -> None:
+    def __init__(self, mooptimizer=None, tol=1e-3) -> None:
         self.mooptimizer = (
-            MixedVariableGA(survival=RankAndCrowding())
+            MixedVariableGA(
+                eliminate_duplicates=BBOptDuplicateElimination(),
+                mating=MixedVariableMating(
+                    eliminate_duplicates=BBOptDuplicateElimination()
+                ),
+                survival=RankAndCrowding(),
+                termination=MaximumGenerationTermination(100),
+            )
             if mooptimizer is None
             else mooptimizer
         )
-        self.nGens = nGens
         self.tol = tol
 
     def acquire(
@@ -1218,7 +1300,8 @@ class MinimizeMOSurrogate(AcquisitionFunction):
         :param surrogateModels: List of surrogate models.
         :param sequence bounds: List with the limits [x_min,x_max] of each
             direction x in the space.
-        :param n: Maximum number of points to be acquired. The default is 1.
+        :param n: Maximum number of points to be acquired. If n is zero, use all
+            points in the Pareto front.
         :return: k-by-dim matrix with the selected points.
         """
         dim = len(bounds)
@@ -1230,16 +1313,19 @@ class MinimizeMOSurrogate(AcquisitionFunction):
         res = pymoo_minimize(
             multiobjSurrogateProblem,
             self.mooptimizer,
-            ("n_gen", self.nGens),
             seed=surrogateModels[0].ntrain(),
             verbose=False,
         )
 
-        # If the Pareto-optimal solution set exists, randomly select 2*objdim
+        # If the Pareto-optimal solution set exists, randomly select n
         # points from the Pareto front
         if res.X is not None:
             nMax = len(res.X)
-            idxs = np.random.choice(nMax, size=min(n, nMax))
+            idxs = (
+                np.random.choice(nMax, size=min(n, nMax))
+                if n > 0
+                else np.arange(nMax)
+            )
             bestCandidates = np.array(
                 [[res.X[idx][i] for i in range(dim)] for idx in idxs]
             )
@@ -1281,14 +1367,28 @@ class MinimizeMOSurrogate(AcquisitionFunction):
 class CoordinatePerturbationOverNondominated(AcquisitionFunction):
     """Coordinate perturbation acquisition function over the nondominated set.
 
+    This acquisition method was proposed in [#]_. It perturbs locally each of
+    the non-dominated sample points to find new sample points. The perturbation
+    is performed by :attr:`acquisitionFunc`.
+
+    :param acquisitionFunc: Weighted acquisition function with a normal sampler.
+        Stored in :attr:`acquisitionFunc`.
+
     .. attribute:: acquisitionFunc
 
-         Coordinate perturbation acquisition function.
+        Weighted acquisition function with a normal sampler.
 
+    References
+    ----------
+    .. [#] Juliane Mueller. SOCEMO: Surrogate Optimization of Computationally
+        Expensive Multiobjective Problems.
+        INFORMS Journal on Computing, 29(4):581-783, 2017.
+        https://doi.org/10.1287/ijoc.2017.0749
     """
 
     def __init__(self, acquisitionFunc: WeightedAcquisition) -> None:
         self.acquisitionFunc = acquisitionFunc
+        assert isinstance(self.acquisitionFunc.sampler, NormalSampler)
 
     def acquire(
         self,
@@ -1300,18 +1400,18 @@ class CoordinatePerturbationOverNondominated(AcquisitionFunction):
         paretoFront=(),
         **kwargs,
     ) -> np.ndarray:
-        """Acquire n points.
+        """Acquire k points, where k <= n.
 
         :param surrogateModels: List of surrogate models.
         :param sequence bounds: List with the limits [x_min,x_max] of each
             direction x in the space.
-        :param n: Maximum number of points to be acquired. The default is 1.
-        :param nondominated: Nondominated set in the objective space. The default is an empty
-            tuple.
-        :param paretoFront: Pareto front in the objective space. The default is an empty tuple.
+        :param n: Maximum number of points to be acquired.
+        :param nondominated: Nondominated set in the objective space.
+        :param paretoFront: Pareto front in the objective space.
         """
         dim = len(bounds)
         tol = self.acquisitionFunc.tol(dim)
+        assert isinstance(self.acquisitionFunc.sampler, NormalSampler)
 
         # Create vectors xlow and xup
         xlow = np.array([bounds[i][0] for i in range(dim)])
@@ -1342,9 +1442,6 @@ class CoordinatePerturbationOverNondominated(AcquisitionFunction):
                     )
 
         # Eliminate points predicted to be dominated
-        nondominatedAndBestCandidates = np.concatenate(
-            (nondominated, bestCandidates), axis=0
-        )
         fnondominatedAndBestCandidates = np.concatenate(
             (
                 paretoFront,
@@ -1369,13 +1466,26 @@ class CoordinatePerturbationOverNondominated(AcquisitionFunction):
 class GosacSample(AcquisitionFunction):
     """GOSAC acquisition function as described in [#]_.
 
+    Minimize the objective function with surrogate constraints. If a feasible
+    solution is found and is different from previous sample points, return it as
+    the new sample. Otherwise, the new sample is the point that is farthest from
+    previously selected sample points.
+
+    This acquisition function is only able to acuire 1 point at a time.
+
+    :param fun: Objective function. Stored in :attr:`fun`.
+    :param optimizer: Single-objective optimizer. If None, use MixedVariableGA
+        from pymoo.
+    :param tol: Tolerance value for excluding candidate points that are too
+        close to already sampled points. Stored in :attr:`tol`.
+
     .. attribute:: fun
 
         Objective function.
 
     .. attribute:: optimizer
 
-        Optimizer for the acquisition function.
+        Single-objective optimizer.
 
     .. attribute:: tol
 
@@ -1390,12 +1500,19 @@ class GosacSample(AcquisitionFunction):
         https://doi.org/10.1007/s10898-017-0496-y
     """
 
-    def __init__(
-        self, fun, optimizer=None, nGens: int = 100, tol: float = 1e-3
-    ):
+    def __init__(self, fun, optimizer=None, tol: float = 1e-3):
         self.fun = fun
-        self.optimizer = MixedVariableGA() if optimizer is None else optimizer
-        self.nGens = nGens
+        self.optimizer = (
+            MixedVariableGA(
+                eliminate_duplicates=BBOptDuplicateElimination(),
+                mating=MixedVariableMating(
+                    eliminate_duplicates=BBOptDuplicateElimination()
+                ),
+                termination=MaximumGenerationTermination(100),
+            )
+            if optimizer is None
+            else optimizer
+        )
         self.tol = tol
 
     def acquire(
@@ -1405,13 +1522,13 @@ class GosacSample(AcquisitionFunction):
         n: int = 1,
         **kwargs,
     ) -> np.ndarray:
-        """Acquire n points (Currently only n=1 is supported).
+        """Acquire 1 point.
 
         :param surrogateModels: List of surrogate models for the constraints.
         :param sequence bounds: List with the limits [x_min,x_max] of each
             direction x in the space.
-        :param n: Number of points to be acquired. The default is 1.
-        :return: n-by-dim matrix with the selected points.
+        :param n: Unused.
+        :return: 1-by-dim matrix with the selected points.
         """
         dim = len(bounds)
         gdim = len(surrogateModels)
@@ -1436,7 +1553,6 @@ class GosacSample(AcquisitionFunction):
         res = pymoo_minimize(
             cheapProblem,
             self.optimizer,
-            ("n_gen", self.nGens),
             seed=surrogateModels[0].ntrain(),
             verbose=False,
         )
@@ -1462,7 +1578,6 @@ class GosacSample(AcquisitionFunction):
             res = pymoo_minimize(
                 minimumPointProblem,
                 self.optimizer,
-                ("n_gen", self.nGens),
                 seed=surrogateModels[0].ntrain() + 1,
                 verbose=False,
             )
@@ -1473,7 +1588,23 @@ class GosacSample(AcquisitionFunction):
 
 
 class MaximizeEI(AcquisitionFunction):
-    """Acquisition by maximization of the expected improvement.
+    """Acquisition by maximization of the expected improvement of a Gaussian
+    Process.
+
+    It starts by running a
+    global optimization algorithm to find a point `xs` that maximizes the EI. If
+    this point is found and the sample size is 1, return this point. Else,
+    creates a pool of candidates using :attr:`sampler` and `xs`. From this pool,
+    select the set of points with that maximize the expected improvement. If
+    :attr:`avoid_clusters` is `True` avoid points that are too close to already
+    chosen ones inspired in the strategy from [#]_. Mind that the latter
+    strategy can slow down considerably the acquisition process, although is
+    advisable for a sample of good quality.
+
+    :param sampler: Sampler to generate candidate points. Stored in
+        :attr:`sampler`.
+    :param avoid_clusters: When `True`, use a strategy that avoids points too
+        close to already chosen ones. Stored in :attr:`avoid_clusters`.
 
     .. attribute:: sampler
 
@@ -1481,8 +1612,8 @@ class MaximizeEI(AcquisitionFunction):
 
     .. attribute:: avoid_clusters
 
-        When sampling in batch, penalize candidates that are close to already
-        chosen ones. Inspired in [#]_. Default is False.
+        When `True`, use a strategy that avoids points too close to already
+        chosen ones.
 
     References
     ----------
@@ -1491,9 +1622,9 @@ class MaximizeEI(AcquisitionFunction):
         40: 131–144. https://doi.org/10.1002/qre.3245
     """
 
-    def __init__(self, sampler=None, avoid_clusters: bool = False) -> None:
+    def __init__(self, sampler=None, avoid_clusters: bool = True) -> None:
         super().__init__()
-        self.sampler = Sampler(1) if sampler is None else sampler
+        self.sampler = Sampler(0) if sampler is None else sampler
         self.avoid_clusters = avoid_clusters
 
     def acquire(
@@ -1501,40 +1632,61 @@ class MaximizeEI(AcquisitionFunction):
     ) -> np.ndarray:
         """Acquire n points.
 
+        Run a global optimization procedure to try to find a point that has the
+        highest expected improvement for the Gaussian Process.
+        Moreover, if `ybest` isn't provided, run a global optimization procedure
+        to find the minimum value of the surrogate model. Use the minimum point
+        as a candidate for this acquisition.
+
+        This implementation only works for continuous design variables.
+
         :param surrogateModel: Surrogate model.
         :param sequence bounds: List with the limits [x_min,x_max] of each
             direction x in the space.
-        :param n: Number of points to be acquired. The default is 1.
-        :param ybest: Best point so far. If not provided, find the minimum value for
-            the surrogate.
+        :param n: Number of points to be acquired.
+        :param ybest: Best point so far. If not provided, find the minimum value
+            for the surrogate. Use it as a possible candidate.
         """
+        assert len(surrogateModel.get_iindex()) == 0
 
+        xbest = None
         if ybest is None:
             # Compute an estimate for ybest using the surrogate.
             res = differential_evolution(
                 lambda x: surrogateModel([x])[0], bounds
             )
-            ybest = res.fun.eval()
+            ybest = res.fun
+            if res.success:
+                xbest = res.x
 
         # Use the point that maximizes the EI
         res = differential_evolution(
             lambda x: -expected_improvement(*surrogateModel([x]), ybest),
             bounds,
-            # popsize=15,
-            # maxiter=100,
-            # polish=False,
         )
-        xs = res.x
+        xs = res.x if res.success else None
+
+        # Returns xs if n == 1
+        if res.success and n == 1:
+            return np.asarray([xs])
 
         # Generate the complete pool of candidates
         if isinstance(self.sampler, Mitchel91Sampler):
-            current_sample = np.concatenate(
-                (surrogateModel.xtrain(), [xs]), axis=0
-            )
+            current_sample = surrogateModel.xtrain()
+            if xs is not None:
+                current_sample = np.concatenate((current_sample, [xs]), axis=0)
+            if xbest is not None:
+                current_sample = np.concatenate(
+                    (current_sample, [xbest]), axis=0
+                )
             x = self.sampler.get_sample(bounds, current_sample=current_sample)
         else:
             x = self.sampler.get_sample(bounds)
-        x = np.concatenate(([xs], x), axis=0)
+
+        if xs is not None:
+            x = np.concatenate(([xs], x), axis=0)
+        if xbest is not None:
+            x = np.concatenate((x, [xbest]), axis=0)
         nCand = len(x)
 
         # Create EI and kernel matrices
@@ -1543,8 +1695,9 @@ class MaximizeEI(AcquisitionFunction):
         )
 
         # If there is no need to avoid clustering return the maximum of EI
-        if not self.avoid_clusters:
+        if not self.avoid_clusters or n == 1:
             return x[np.flip(np.argsort(eiCand)[-n:]), :]
+        # Otherwise see what follows...
 
         # Rescale EI to [0,1] and create the kernel matrix with all candidates
         if eiCand.max() > eiCand.min():
