@@ -30,39 +30,46 @@ from enum import Enum
 
 # Scipy imports
 from scipy.spatial.distance import cdist
-from scipy.linalg import solve, solve_triangular
+from scipy.linalg import solve
 
 # Local imports
 from .sampling import Sampler
 
-RbfKernel = Enum("RbfKernel", ["LINEAR", "CUBIC", "THINPLATE"])
+
+class RbfKernel(Enum):
+    """RBF kernel tags."""
+
+    LINEAR = 1  #: Linear kernel, i.e., :math:`\phi(r) = r`
+    THINPLATE = 2  #: Thinplate spline: :math:`\phi(r) = r^2 \log(r)`
+    CUBIC = 3  #: Cubic kernel, i.e., :math:`\phi(r) = r^3`
 
 
 class RbfFilter:
+    """Base filter class for the RBF target training set. Trivial identity
+    filter."""
+
     def __call__(self, x) -> np.ndarray:
         return x
 
 
 class MedianLpfFilter(RbfFilter):
+    """Filter values by replacing large function values by the median of all.
+
+    This strategy was proposed by [#]_ based on results from [#]_.
+
+    References
+    ----------
+
+    .. [#] Gutmann, HM. A Radial Basis Function Method for Global Optimization.
+        Journal of Global Optimization 19, 201–227 (2001).
+        https://doi.org/10.1023/A:1011255519438
+
+    .. [#] Björkman, M., Holmström, K. Global Optimization of Costly Nonconvex
+        Functions Using Radial Basis Functions. Optimization and Engineering 1,
+        373–397 (2000). https://doi.org/10.1023/A:1011584207202
+    """
+
     def __call__(self, x) -> np.ndarray:
-        """Filter values by replacing large function values by the median of all.
-
-        This strategy was proposed by [#]_ based on results from [#]_.
-
-        :param x: Values.
-        :return: Filtered values.
-
-        References
-        ----------
-
-        .. [#] Gutmann, HM. A Radial Basis Function Method for Global Optimization.
-            Journal of Global Optimization 19, 201–227 (2001).
-            https://doi.org/10.1023/A:1011255519438
-
-        .. [#] Björkman, M., Holmström, K. Global Optimization of Costly Nonconvex
-            Functions Using Radial Basis Functions. Optimization and Engineering 1,
-            373–397 (2000). https://doi.org/10.1023/A:1011584207202
-        """
         mx = np.median(x)
         filtered_x = np.copy(x)
         filtered_x[x > mx] = mx
@@ -82,26 +89,28 @@ class RbfModel:
     - :math:`m` is the number of sampled points.
     - :math:`x_i` are the sampled points.
     - :math:`\beta_i` are the coefficients of the RBF model.
-    - :math:`\phi` is the function that defines the RBF model.
+    - :math:`\phi` is the kernel function.
     - :math:`p_i` are the basis functions of the polynomial tail.
     - :math:`n` is the dimension of the polynomial tail.
 
-    .. attribute:: type
+    This implementation focuses on quick successive updates of the model, which
+    is essential for the good performance of active learning processes.
 
-        Defines the function phi used in the RBF model. The options are:
+    :param kernel: Kernel function :math:`\phi` used in the RBF model.
+    :param iindex: Indices of integer variables in the feature space.
+    :param filter: Filter to be used in the target (image) space.
 
-        - RbfKernel.LINEAR: phi(r) = r.
-        - RbfKernel.CUBIC: phi(r) = r^3.
-        - RbfKernel.THINPLATE: phi(r) = r^2 * log(r).
+    .. attribute:: kernel
+
+        Kernel function :math:`\phi` used in the RBF model.
 
     .. attribute:: iindex
 
-        Indices of the input space that are integer.
+        Indices of integer variables in the feature (domain) space.
 
     .. attribute:: filter
 
-        Filter used with the function values. The default is RbfFilter() which
-        is the identity function.
+        Filter to be used in the target (image) space.
 
     """
 
@@ -111,7 +120,7 @@ class RbfModel:
         iindex: tuple[int, ...] = (),
         filter: Optional[RbfFilter] = None,
     ):
-        self.type = kernel
+        self.kernel = kernel
         self.iindex = iindex
         self.filter = RbfFilter() if filter is None else filter
 
@@ -126,10 +135,11 @@ class RbfModel:
     def reserve(self, maxeval: int, dim: int) -> None:
         """Reserve space for the RBF model.
 
-        If the input maxeval is smaller than the current number of sample
-        points, nothing is done.
+        This routine avoids successive dynamic memory allocations with
+        successive calls of :meth:`update()`. If the input `maxeval` is smaller
+        than the current number of sample points, nothing is done.
 
-        :param maxeval: Maximum number of function evaluations allowed.
+        :param maxeval: Maximum number of function evaluations.
         :param dim: Dimension of the domain space.
         """
         if maxeval < self._m:
@@ -204,15 +214,15 @@ class RbfModel:
         return self.min_design_space_size(self.dim())
 
     def phi(self, r):
-        """Applies the function phi to the distance(s) r.
+        """Applies the kernel function phi to the distance(s) r.
 
         :param r: Vector with distance(s).
         """
-        if self.type == RbfKernel.LINEAR:
+        if self.kernel == RbfKernel.LINEAR:
             return r
-        elif self.type == RbfKernel.CUBIC:
+        elif self.kernel == RbfKernel.CUBIC:
             return np.power(r, 3)
-        elif self.type == RbfKernel.THINPLATE:
+        elif self.kernel == RbfKernel.THINPLATE:
             if not hasattr(r, "__len__"):
                 if r > 0:
                     return r**2 * np.log(r)
@@ -228,15 +238,15 @@ class RbfModel:
             raise ValueError("Unknown RBF type")
 
     def dphi(self, r):
-        """Derivative of the function phi at the distance(s) r.
+        """Derivative of the kernel function phi at the distance(s) r.
 
         :param r: Vector with distance(s).
         """
-        if self.type == RbfKernel.LINEAR:
+        if self.kernel == RbfKernel.LINEAR:
             return np.ones(r.shape)
-        elif self.type == RbfKernel.CUBIC:
+        elif self.kernel == RbfKernel.CUBIC:
             return 3 * np.power(r, 2)
-        elif self.type == RbfKernel.THINPLATE:
+        elif self.kernel == RbfKernel.THINPLATE:
             if not hasattr(r, "__len__"):
                 if r > 0:
                     return 2 * r * np.log(r) + r
@@ -252,15 +262,19 @@ class RbfModel:
             raise ValueError("Unknown RBF type")
 
     def dphiOverR(self, r):
-        """Derivative of the function phi divided by r at the distance(s) r.
+        """Derivative of the kernel function phi divided by r at the distance(s)
+        r.
+
+        This routine may avoid excessive numerical accumulation errors when
+        phi(r)/r is needed.
 
         :param r: Vector with distance(s).
         """
-        if self.type == RbfKernel.LINEAR:
+        if self.kernel == RbfKernel.LINEAR:
             return np.ones(r.shape) / r
-        elif self.type == RbfKernel.CUBIC:
+        elif self.kernel == RbfKernel.CUBIC:
             return 3 * r
-        elif self.type == RbfKernel.THINPLATE:
+        elif self.kernel == RbfKernel.THINPLATE:
             if not hasattr(r, "__len__"):
                 if r > 0:
                     return 2 * np.log(r) + 1
@@ -274,15 +288,15 @@ class RbfModel:
             raise ValueError("Unknown RBF type")
 
     def ddphi(self, r):
-        """Second derivative of the function phi at the distance(s) r.
+        """Second derivative of the kernel function phi at the distance(s) r.
 
         :param r: Vector with distance(s).
         """
-        if self.type == RbfKernel.LINEAR:
+        if self.kernel == RbfKernel.LINEAR:
             return np.zeros(r.shape)
-        elif self.type == RbfKernel.CUBIC:
+        elif self.kernel == RbfKernel.CUBIC:
             return 6 * r
-        elif self.type == RbfKernel.THINPLATE:
+        elif self.kernel == RbfKernel.THINPLATE:
             if not hasattr(r, "__len__"):
                 if r > 0:
                     return 2 * np.log(r) + 3
@@ -298,14 +312,15 @@ class RbfModel:
     def pbasis(self, x: np.ndarray) -> np.ndarray:
         """Computes the polynomial tail matrix for a given set of points.
 
-        :param x: m-by-d matrix with m point coordinates in a d-dimensional space.
+        :param x: m-by-d matrix with m point coordinates in a d-dimensional
+            space.
         """
         m = len(x)
 
         # Set up the polynomial tail matrix P
-        if self.type == RbfKernel.LINEAR:
+        if self.kernel == RbfKernel.LINEAR:
             return np.ones((m, 1))
-        elif self.type in (RbfKernel.CUBIC, RbfKernel.THINPLATE):
+        elif self.kernel in (RbfKernel.CUBIC, RbfKernel.THINPLATE):
             return np.concatenate((np.ones((m, 1)), x), axis=1)
         else:
             raise ValueError("Invalid polynomial tail")
@@ -317,9 +332,9 @@ class RbfModel:
         """
         dim = self.dim()
 
-        if self.type == RbfKernel.LINEAR:
+        if self.kernel == RbfKernel.LINEAR:
             return np.zeros((1, 1))
-        elif self.type in (RbfKernel.CUBIC, RbfKernel.THINPLATE):
+        elif self.kernel in (RbfKernel.CUBIC, RbfKernel.THINPLATE):
             return np.concatenate((np.zeros((1, dim)), np.eye(dim)), axis=0)
         else:
             raise ValueError("Invalid polynomial tail")
@@ -333,9 +348,9 @@ class RbfModel:
         """
         dim = self.dim()
 
-        if self.type == RbfKernel.LINEAR:
+        if self.kernel == RbfKernel.LINEAR:
             return np.zeros((1, 1))
-        elif self.type in (RbfKernel.CUBIC, RbfKernel.THINPLATE):
+        elif self.kernel in (RbfKernel.CUBIC, RbfKernel.THINPLATE):
             return np.zeros((dim + 1, dim))
         else:
             raise ValueError("Invalid polynomial tail")
@@ -343,7 +358,8 @@ class RbfModel:
     def __call__(self, x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         """Evaluates the model at one or multiple points.
 
-        :param x: m-by-d matrix with m point coordinates in a d-dimensional space.
+        :param x: m-by-d matrix with m point coordinates in a d-dimensional
+            space.
         :return:
 
             * Value for the RBF model on each of the input points.
@@ -444,9 +460,9 @@ class RbfModel:
         """Updates the coefficients of the RBF model.
 
         :param fx: Function values on the sampled points.
-        :param filter: Filter used with the function values. The default is None, which
-            means the filter used in the initialization of the RBF model is
-            used.
+        :param filter: Filter used with the function values. The default is
+            None, which means the filter used in the initialization of the RBF
+            model is used.
         """
         if len(fx) <= self._m:
             self._fx[self._m - len(fx) : self._m] = fx
@@ -480,10 +496,15 @@ class RbfModel:
         self._valid_coefficients = True
 
     def update_xtrain(self, xNew: np.ndarray, distNew=None) -> None:
-        """Updates the RBF model with new points.
+        """Updates the RBF model with new points, without retraining.
 
-        :param xNew: m-by-d matrix with m point coordinates in a d-dimensional space.
-        :param distNew: m-by-(self.ntrain() + m) matrix with distances between points in
+        For training the model one still needs to call
+        :meth:`update_coefficients()`.
+
+        :param xNew: m-by-d matrix with m point coordinates in a d-dimensional
+            space.
+        :param distNew: m-by-(self.ntrain() + m) matrix with distances between
+            points in
             xNew and points in (self.xtrain(), xNew). If not provided, the
             distances are computed.
         """
@@ -525,7 +546,8 @@ class RbfModel:
     def update(self, Xnew, ynew) -> None:
         """Updates the model with new pairs of data (x,y).
 
-        :param Xnew: m-by-d matrix with m point coordinates in a d-dimensional space.
+        :param Xnew: m-by-d matrix with m point coordinates in a d-dimensional
+            space.
         :param ynew: Function values on the sampled points.
         """
         self.update_xtrain(Xnew)
@@ -587,7 +609,7 @@ class RbfModel:
         self._m = 0
 
     def xtrain(self) -> np.ndarray:
-        """Get the sampled points.
+        """Get the training data points.
 
         :return: m-by-d matrix with m training points in a d-dimensional space.
         """
@@ -602,7 +624,11 @@ class RbfModel:
         return self._P[0 : self._m, :]
 
     def get_RBFmatrix(self) -> np.ndarray:
-        """Get the matrix used to compute the RBF weights.
+        r"""Get the complete matrix used to compute the RBF weights.
+
+        This is a blocked matrix :math:`[[\Phi, P],[P^T, 0]]`, where
+        :math:`\Phi` is the kernel matrix, and
+        :math:`P` is the polynomial tail basis matrix.
 
         :return: (m+pdim)-by-(m+pdim) matrix used to compute the RBF weights.
         """
@@ -621,154 +647,21 @@ class RbfModel:
         """
         return self.xtrain()[i, :]
 
-    def mu_measure(self, x: np.ndarray, xdist=None, LDLt=()) -> float:
-        """Compute the value of abs(mu) in the inf step of the target value
-        sampling strategy. See [#]_ for more details.
-
-        :param x: Possible point to be added to the surrogate model.
-        :param xdist: Distances between x and the sampled points. If not provided, the
-            distances are computed.
-        :param LDLt: LDLt factorization of the matrix A as returned by the function
-            scipy.linalg.ldl. If not provided, the factorization is computed.
-
-        References
-        ----------
-        .. [#] Gutmann, HM. A Radial Basis Function Method for Global
-            Optimization. Journal of Global Optimization 19, 201–227 (2001).
-            https://doi.org/10.1023/A:1011255519438
-        """
-        # compute rbf value of the new point x
-        if xdist is None:
-            xdist = cdist(x.reshape(1, -1), self.xtrain())
-        newRow = np.concatenate(
-            (
-                np.asarray(self.phi(xdist)).flatten(),
-                self.pbasis(x.reshape(1, -1)).flatten(),
-            )
-        )
-
-        if LDLt:
-            p0tL0, d0, p0 = LDLt
-            L0 = p0tL0[p0, :]
-
-            # 1. Solve P_0 [a;b] = L_0 (D_0 l_{01}) for (D_0 l_{01})
-            D0l01 = solve_triangular(
-                L0,
-                newRow[p0],
-                lower=True,
-                unit_diagonal=True,
-                # check_finite=False,
-            )
-
-            # 2. Invert D_0 to compute l_{01}
-            l01 = D0l01.copy()
-            i = 0
-            while i < l01.size - 1:
-                if d0[i + 1, i] == 0:
-                    # Invert block of size 1x1
-                    l01[i] /= d0[i, i]
-                    i += 1
-                else:
-                    # Invert block of size 2x2
-                    det = d0[i, i] * d0[i + 1, i + 1] - d0[i, i + 1] ** 2
-                    l01[i], l01[i + 1] = (
-                        (l01[i] * d0[i + 1, i + 1] - l01[i + 1] * d0[i, i + 1])
-                        / det,
-                        (l01[i + 1] * d0[i, i] - l01[i] * d0[i, i + 1]) / det,
-                    )
-                    i += 2
-            if i == l01.size - 1:
-                # Invert last block of size 1x1
-                l01[i] /= d0[i, i]
-
-            # 3. d = \phi(0) - l_{01}^T D_0 l_{01} and \mu = 1/d
-            d = self.phi(0) - np.dot(l01, D0l01)
-            mu = 1 / d if d != 0 else np.inf
-
-        if not LDLt or mu == np.inf:
-            # set up matrices for solving the linear system
-            A_aug = np.block(
-                [
-                    [self.get_RBFmatrix(), newRow.reshape(-1, 1)],
-                    [newRow, self.phi(0)],
-                ]
-            )
-
-            # set up right hand side
-            rhs = np.zeros(A_aug.shape[0])
-            rhs[-1] = 1
-
-            # solve linear system and get mu
-            try:
-                coeff = solve(A_aug, rhs, assume_a="sym")
-                mu = float(coeff[-1].item())
-            except np.linalg.LinAlgError:
-                # Return huge value, only occurs if the matrix is ill-conditioned
-                mu = np.inf
-
-        # Order of the polynomial tail
-        if self.type == RbfKernel.LINEAR:
-            m0 = 0
-        elif self.type in (RbfKernel.CUBIC, RbfKernel.THINPLATE):
-            m0 = 1
-        else:
-            raise ValueError("Unknown RBF type")
-
-        # Get the absolute value of mu
-        mu *= (-1) ** (m0 + 1)
-        if mu < 0:
-            # Return huge value, only occurs if the matrix is ill-conditioned
-            return np.inf
-        else:
-            return mu
-
-    def bumpiness_measure(self, x: np.ndarray, target, LDLt=()) -> float:
-        """Compute the bumpiness of the surrogate model for a potential sample
-        point x as defined in [#]_.
-
-        :param x: Possible point to be added to the surrogate model.
-        :param target: Target value.
-        :param LDLt: LDLt factorization of the matrix A as returned by the function
-            scipy.linalg.ldl. If not provided, the factorization is computed.
-
-        References
-        ----------
-        .. [#] Gutmann, HM. A Radial Basis Function Method for Global
-            Optimization. Journal of Global Optimization 19, 201–227 (2001).
-            https://doi.org/10.1023/A:1011255519438
-        """
-        absmu = self.mu_measure(x, LDLt=LDLt)
-        assert (
-            absmu > 0
-        )  # if absmu == 0, the linear system in the surrogate model singular
-        if absmu == np.inf:
-            # Return huge value, only occurs if the matrix is ill-conditioned
-            return np.inf
-
-        # predict RBF value of x
-        yhat, _ = self(x)
-        assert yhat.size == 1  # sanity check
-
-        # Compute the distance between the predicted value and the target
-        dist = abs(yhat[0] - target)
-        # if dist < tol:
-        #     dist = tol
-
-        # use sqrt(gn) as the bumpiness measure to avoid underflow
-        sqrtgn = np.sqrt(absmu) * dist
-        return sqrtgn
-
     def min_design_space_size(self, dim: int) -> int:
         """Return the minimum design space size for a given space dimension."""
-        if self.type == RbfKernel.LINEAR:
+        if self.kernel == RbfKernel.LINEAR:
             return 1
-        elif self.type in (RbfKernel.CUBIC, RbfKernel.THINPLATE):
+        elif self.kernel in (RbfKernel.CUBIC, RbfKernel.THINPLATE):
             return 1 + dim
         else:
             raise ValueError("Unknown RBF type")
 
     def check_initial_design(self, sample: np.ndarray) -> bool:
-        """Check if the sample is able to generate a valid surrogate."""
+        """Check if the sample is able to generate a valid surrogate.
+
+        :param sample: m-by-d matrix with m training points in a d-dimensional
+            space.
+        """
         if sample.ndim != 2 or len(sample) < 1:
             return False
         P = self.pbasis(sample)

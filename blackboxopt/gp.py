@@ -40,11 +40,36 @@ from sklearn.gaussian_process.kernels import RBF as GPkernelRBF
 class GaussianProcess(GaussianProcessRegressor):
     """Gaussian Process model.
 
-    Check or attributes and parameters in GaussianProcessRegressor from
-    Scikit-Learn, e.g., https://scikit-learn.org/dev/modules/generated/sklearn.gaussian_process.GaussianProcessRegressor.html.
+    This model uses default attributes and parameters from
+    GaussianProcessRegressor with the following exceptions:
+
+    * :attr:`kernel`: Default is `sklearn.gaussian_process.kernels.RBF()`.
+    * :attr:`optimizer`: Default is :meth:`_optimizer()`.
+    * :attr:`normalize_y`: Default is `True`.
+    * :attr:`n_restarts_optimizer`: Default is 10.
+
+    Moreover, this class uses `sklearn.preprocessing.MinMaxScaler` for the
+    training data by default so the user doesn't need to do it elsewhere. This
+    may be easily avoided in the future if there is a need to.
+
+    Check other attributes and parameters for GaussianProcessRegressor at
+    https://scikit-learn.org/dev/modules/generated/sklearn.gaussian_process.GaussianProcessRegressor.html.
+
+    :param maxiter: Maximum number of iterations for the L-BFGS-B optimizer.
+        Stored in :attr:`maxiter`.
+
+    .. attribute:: maxiter
+
+        Maximum number of iterations for the L-BFGS-B optimizer. Used in the
+        training of the gaussian process.
+
+    .. attribute:: scaler
+
+        Scaler used to preprocess input data.
+
     """
 
-    def __init__(self, kernel=None, *, maxiter=1, **kwargs) -> None:
+    def __init__(self, kernel=None, *, maxiter=15000, **kwargs) -> None:
         super().__init__(kernel, **kwargs)
         self.X_train_ = np.array([])
         self.y_train_ = np.array([])
@@ -100,7 +125,11 @@ class GaussianProcess(GaussianProcessRegressor):
         return 1 if dim > 0 else 0
 
     def check_initial_design(self, sample: np.ndarray) -> bool:
-        """Check if the sample is able to generate a valid surrogate."""
+        """Check if the sample is able to generate a valid surrogate.
+
+        :param sample: m-by-d matrix with m training points in a d-dimensional
+            space.
+        """
         if sample.ndim != 2 or len(sample) < 1:
             return False
         try:
@@ -115,7 +144,8 @@ class GaussianProcess(GaussianProcessRegressor):
     def update(self, Xnew, ynew) -> None:
         """Updates the model with new pairs of data (x,y).
 
-        :param Xnew: m-by-d matrix with m point coordinates in a d-dimensional space.
+        :param Xnew: m-by-d matrix with m point coordinates in a d-dimensional
+            space.
         :param ynew: Function values on the sampled points.
         """
         if self.ntrain() > 0:
@@ -152,15 +182,16 @@ class GaussianProcess(GaussianProcessRegressor):
         :return: Returned are the best found hyperparameters theta and
             the corresponding value of the target function.
         """
-        res = scipy_opt.OptimizeResult()
-        res.x = initial_theta
-        res.success = False
-        count = 0
-        while res.success is False and count < self.maxiter:
-            res = scipy_opt.minimize(
-                obj_func, res.x, method="L-BFGS-B", jac=True, bounds=bounds
-            )
-            count += 1
+        res = scipy_opt.minimize(
+            obj_func,
+            initial_theta,
+            method="L-BFGS-B",
+            jac=True,
+            bounds=bounds,
+            options={"maxiter": self.maxiter},
+        )
+
+        # Check for success
         if res.success is False:
             warnings.warn(
                 "Consider using a larger value for maxiter. Current value is "

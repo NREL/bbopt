@@ -28,9 +28,17 @@ extensions = [
     "sphinx.ext.mathjax",
 ]
 
+# General config
 templates_path = ["_templates"]
 exclude_patterns = ["_build", "Thumbs.db", ".DS_Store"]
 
+# sphinx.ext.autodoc
+autodoc_default_options = {
+    "special-members": "__call__",
+    "exclude-members": "set_predict_request, set_score_request",
+}
+
+# sphinx_autodoc_typehints
 typehints_use_signature = True
 typehints_use_signature_return = True
 typehints_defaults = "braces-after"

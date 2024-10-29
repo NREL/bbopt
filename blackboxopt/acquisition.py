@@ -42,7 +42,7 @@ from math import log
 from scipy.spatial.distance import cdist
 from scipy.spatial import KDTree
 from scipy.special import gamma
-from scipy.linalg import ldl, cholesky, solve_triangular
+from scipy.linalg import ldl, cholesky, solve_triangular, solve
 from scipy.optimize import minimize, differential_evolution
 
 # Pymoo imports
@@ -520,9 +520,154 @@ class TargetValueAcquisition(AcquisitionFunction):
             else optimizer
         )
 
+    @staticmethod
+    def mu_measure(
+        surrogate: RbfModel, x: np.ndarray, xdist=None, LDLt=()
+    ) -> float:
+        """Compute the value of abs(mu) in the inf step of the target value
+        sampling strategy. See [#]_ for more details.
+
+        :param surrogate: RBF surrogate model.
+        :param x: Possible point to be added to the surrogate model.
+        :param xdist: Distances between x and the sampled points. If not provided, the
+            distances are computed.
+        :param LDLt: LDLt factorization of the matrix A as returned by the function
+            scipy.linalg.ldl. If not provided, the factorization is computed.
+
+        References
+        ----------
+        .. [#] Gutmann, HM. A Radial Basis Function Method for Global
+            Optimization. Journal of Global Optimization 19, 201–227 (2001).
+            https://doi.org/10.1023/A:1011255519438
+        """
+        # compute rbf value of the new point x
+        if xdist is None:
+            xdist = cdist(x.reshape(1, -1), surrogate.xtrain())
+        newRow = np.concatenate(
+            (
+                np.asarray(surrogate.phi(xdist)).flatten(),
+                surrogate.pbasis(x.reshape(1, -1)).flatten(),
+            )
+        )
+
+        if LDLt:
+            p0tL0, d0, p0 = LDLt
+            L0 = p0tL0[p0, :]
+
+            # 1. Solve P_0 [a;b] = L_0 (D_0 l_{01}) for (D_0 l_{01})
+            D0l01 = solve_triangular(
+                L0,
+                newRow[p0],
+                lower=True,
+                unit_diagonal=True,
+                # check_finite=False,
+            )
+
+            # 2. Invert D_0 to compute l_{01}
+            l01 = D0l01.copy()
+            i = 0
+            while i < l01.size - 1:
+                if d0[i + 1, i] == 0:
+                    # Invert block of size 1x1
+                    l01[i] /= d0[i, i]
+                    i += 1
+                else:
+                    # Invert block of size 2x2
+                    det = d0[i, i] * d0[i + 1, i + 1] - d0[i, i + 1] ** 2
+                    l01[i], l01[i + 1] = (
+                        (l01[i] * d0[i + 1, i + 1] - l01[i + 1] * d0[i, i + 1])
+                        / det,
+                        (l01[i + 1] * d0[i, i] - l01[i] * d0[i, i + 1]) / det,
+                    )
+                    i += 2
+            if i == l01.size - 1:
+                # Invert last block of size 1x1
+                l01[i] /= d0[i, i]
+
+            # 3. d = \phi(0) - l_{01}^T D_0 l_{01} and \mu = 1/d
+            d = surrogate.phi(0) - np.dot(l01, D0l01)
+            mu = 1 / d if d != 0 else np.inf
+
+        if not LDLt or mu == np.inf:
+            # set up matrices for solving the linear system
+            A_aug = np.block(
+                [
+                    [surrogate.get_RBFmatrix(), newRow.reshape(-1, 1)],
+                    [newRow, surrogate.phi(0)],
+                ]
+            )
+
+            # set up right hand side
+            rhs = np.zeros(A_aug.shape[0])
+            rhs[-1] = 1
+
+            # solve linear system and get mu
+            try:
+                coeff = solve(A_aug, rhs, assume_a="sym")
+                mu = float(coeff[-1].item())
+            except np.linalg.LinAlgError:
+                # Return huge value, only occurs if the matrix is ill-conditioned
+                mu = np.inf
+
+        # Order of the polynomial tail
+        if surrogate.kernel == RbfKernel.LINEAR:
+            m0 = 0
+        elif surrogate.kernel in (RbfKernel.CUBIC, RbfKernel.THINPLATE):
+            m0 = 1
+        else:
+            raise ValueError("Unknown RBF type")
+
+        # Get the absolute value of mu
+        mu *= (-1) ** (m0 + 1)
+        if mu < 0:
+            # Return huge value, only occurs if the matrix is ill-conditioned
+            return np.inf
+        else:
+            return mu
+
+    @staticmethod
+    def bumpiness_measure(
+        surrogate: RbfModel, x: np.ndarray, target, LDLt=()
+    ) -> float:
+        """Compute the bumpiness of the surrogate model for a potential sample
+        point x as defined in [#]_.
+
+        :param surrogate: RBF surrogate model.
+        :param x: Possible point to be added to the surrogate model.
+        :param target: Target value.
+        :param LDLt: LDLt factorization of the matrix A as returned by the function
+            scipy.linalg.ldl. If not provided, the factorization is computed internally.
+
+        References
+        ----------
+        .. [#] Gutmann, HM. A Radial Basis Function Method for Global
+            Optimization. Journal of Global Optimization 19, 201–227 (2001).
+            https://doi.org/10.1023/A:1011255519438
+        """
+        absmu = TargetValueAcquisition.mu_measure(surrogate, x, LDLt=LDLt)
+        assert (
+            absmu > 0
+        )  # if absmu == 0, the linear system in the surrogate model singular
+        if absmu == np.inf:
+            # Return huge value, only occurs if the matrix is ill-conditioned
+            return np.inf
+
+        # predict RBF value of x
+        yhat, _ = surrogate(x)
+        assert yhat.size == 1  # sanity check
+
+        # Compute the distance between the predicted value and the target
+        dist = abs(yhat[0] - target)
+        # if dist < tol:
+        #     dist = tol
+
+        # use sqrt(gn) as the bumpiness measure to avoid underflow
+        sqrtgn = np.sqrt(absmu) * dist
+        return sqrtgn
+
     def acquire(
         self,
-        surrogateModel,
+        surrogateModel: RbfModel,
         bounds,
         n: int = 1,
         *,
@@ -563,7 +708,9 @@ class TargetValueAcquisition(AcquisitionFunction):
             if sample_stage == 0:  # InfStep - minimize Mu_n
                 LDLt = ldl(surrogateModel.get_RBFmatrix())
                 problem = ProblemWithConstraint(
-                    lambda x: surrogateModel.mu_measure(x, LDLt=LDLt),
+                    lambda x: TargetValueAcquisition.mu_measure(
+                        surrogateModel, x, LDLt=LDLt
+                    ),
                     lambda x: self.tol
                     - tree.query((x - xlow) / (xup - xlow))[0],
                     bounds,
@@ -617,8 +764,8 @@ class TargetValueAcquisition(AcquisitionFunction):
                 # use GA method to minimize bumpiness measure
                 LDLt = ldl(surrogateModel.get_RBFmatrix())
                 problem = ProblemWithConstraint(
-                    lambda x: surrogateModel.bumpiness_measure(
-                        x, f_target, LDLt
+                    lambda x: TargetValueAcquisition.bumpiness_measure(
+                        surrogateModel, x, f_target, LDLt
                     ),
                     lambda x: self.tol
                     - tree.query((x - xlow) / (xup - xlow))[0],
@@ -681,8 +828,8 @@ class TargetValueAcquisition(AcquisitionFunction):
                     # use GA method to minimize bumpiness measure
                     LDLt = ldl(surrogateModel.get_RBFmatrix())
                     problem = ProblemWithConstraint(
-                        lambda x: surrogateModel.bumpiness_measure(
-                            x, f_target, LDLt
+                        lambda x: TargetValueAcquisition.bumpiness_measure(
+                            surrogateModel, x, f_target, LDLt
                         ),
                         lambda x: self.tol
                         - tree.query((x - xlow) / (xup - xlow))[0],

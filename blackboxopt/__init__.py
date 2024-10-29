@@ -15,10 +15,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-__all__ = ["acquisition", "optimize", "sampling", "rbf"]
+__all__ = ["acquisition", "optimize", "sampling", "rbf", "gp"]
 __version__ = "0.4.2"
 
 from . import acquisition
 from . import optimize
 from . import sampling
 from . import rbf
+from . import gp
