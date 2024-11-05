@@ -70,10 +70,7 @@ class MedianLpfFilter(RbfFilter):
     """
 
     def __call__(self, x) -> np.ndarray:
-        mx = np.median(x)
-        filtered_x = np.copy(x)
-        filtered_x[x > mx] = mx
-        return filtered_x
+        return np.where(x > np.median(x), np.median(x), x)
 
 
 class RbfModel:
