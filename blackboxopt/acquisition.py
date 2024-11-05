@@ -36,13 +36,12 @@ __deprecated__ = False
 
 import numpy as np
 from math import log
-# from multiprocessing.pool import ThreadPool
 
 # Scipy imports
 from scipy.spatial.distance import cdist
 from scipy.spatial import KDTree
 from scipy.special import gamma
-from scipy.linalg import ldl, cholesky, solve_triangular, solve
+from scipy.linalg import ldl, cholesky, solve_triangular
 from scipy.optimize import minimize, differential_evolution
 
 # Pymoo imports
@@ -50,7 +49,6 @@ from pymoo.operators.survival.rank_and_crowding import RankAndCrowding
 from pymoo.core.mixed import MixedVariableGA, MixedVariableMating
 from pymoo.optimize import minimize as pymoo_minimize
 from pymoo.termination.max_gen import MaximumGenerationTermination
-# from pymoo.core.problem import StarmapParallelization
 
 # Local imports
 from .sampling import NormalSampler, Sampler, Mitchel91Sampler
@@ -75,7 +73,8 @@ def expected_improvement(mu, sigma, ybest):
     ----------
     .. [#] Donald R. Jones, Matthias Schonlau, and William J. Welch. Efficient
         global optimization of expensive black-box functions. Journal of Global
-        Optimization, 13(4):455–492, 1998."""
+        Optimization, 13(4):455–492, 1998.
+    """
     from scipy.stats import norm
 
     nu = (ybest - mu) / sigma
@@ -151,7 +150,8 @@ class WeightedAcquisition(AcquisitionFunction):
     points to be scored and then selected.
 
     This acquisition method is prepared deals with multi-objective optimization
-    following the random perturbation strategy in [#]_. More specificaly, the
+    following the random perturbation strategy in [#]_ and [#]_. More
+    specificaly, the
     algorithm takes the average value among the predicted target values given by
     the surrogate. In other words, :math:`f_s(x)` is the average value between
     the target components of the surrogate model evaluate at :math:`x`.
@@ -191,6 +191,11 @@ class WeightedAcquisition(AcquisitionFunction):
 
     References
     ----------
+    .. [#] Regis, R. G., & Shoemaker, C. A. (2012). Combining radial basis
+        function surrogates and dynamic coordinate search in
+        high-dimensional expensive black-box optimization.
+        Engineering Optimization, 45(5), 529–555.
+        https://doi.org/10.1080/0305215X.2012.687731
     .. [#] Juliane Mueller. SOCEMO: Surrogate Optimization of Computationally
         Expensive Multiobjective Problems.
         INFORMS Journal on Computing, 29(4):581-783, 2017.
@@ -372,26 +377,22 @@ class WeightedAcquisition(AcquisitionFunction):
         When `sampler.strategy` is
         :attr:`blackboxopt.sampling.SamplingStrategy.DDS` or
         :attr:`blackboxopt.sampling.SamplingStrategy.DDS_UNIFORM`, the
-        probability is computed based on the DYCORS method as proposed in [#]_.
+        probability is computed based on the DYCORS method as proposed by Regis
+        and Shoemaker (2012).
 
         :param surrogateModel: Surrogate model.
         :param sequence bounds: List with the limits [x_min,x_max] of each
             direction x in the space.
         :param n: Number of points to be acquired.
-        :param xbest: Best point so far. Used if :attr:`sampler` is an instance of
-            :class:`blackboxopt.sampling.NormalSampler`.
-        :param sequence coord: Coordinates of the input space that will vary. If
-            (), all coordinates will vary.
+        :param xbest: Best point so far. Used if :attr:`sampler` is an instance
+            of :class:`blackboxopt.sampling.NormalSampler`. If not provided,
+            compute it based on the training data for the surrogate.
+        :param bool countinuousSearch:
+            If True,
+            optimize over the continuous variables only. Used if :attr:`sampler`
+            is an instance of :class:`blackboxopt.sampling.NormalSampler`.
         :return: n-by-dim matrix with the selected points.
         :return: m-by-dim matrix with the selected points, where m <= n.
-
-        References
-        ----------
-        .. [#] Regis, R. G., & Shoemaker, C. A. (2012). Combining radial basis
-            function surrogates and dynamic coordinate search in
-            high-dimensional expensive black-box optimization.
-            Engineering Optimization, 45(5), 529–555.
-            https://doi.org/10.1080/0305215X.2012.687731
         """
         dim = len(bounds)  # Dimension of the problem
 
@@ -405,6 +406,23 @@ class WeightedAcquisition(AcquisitionFunction):
 
         # Generate candidates
         if isinstance(self.sampler, NormalSampler):
+            if "xbest" in kwargs:
+                xbest = kwargs["xbest"]
+            elif listOfSurrogates:
+                xbest = surrogateModel.samples()[
+                    find_pareto_front(surrogateModel.ytrain())
+                ]
+            else:
+                xbest = surrogateModel.samples()[
+                    surrogateModel.ytrain().argmin()
+                ]
+
+            # Do local continuous search when asked
+            if "countinuousSearch" in kwargs and kwargs["countinuousSearch"]:
+                coord = [i for i in range(dim) if i not in iindex]
+            else:
+                coord = [i for i in range(dim)]
+
             # Compute probability in case DDS is used
             if self.maxeval > 1:
                 prob = min(20 / dim, 1) * (
@@ -416,9 +434,9 @@ class WeightedAcquisition(AcquisitionFunction):
             x = self.sampler.get_sample(
                 bounds,
                 iindex=iindex,
-                mu=kwargs["xbest"],
+                mu=xbest,
                 probability=prob,
-                coord=kwargs["coord"] if "coord" in kwargs else (),
+                coord=coord,
             )
         else:
             x = self.sampler.get_sample(bounds, iindex=iindex)
@@ -463,29 +481,33 @@ class WeightedAcquisition(AcquisitionFunction):
 
 
 class TargetValueAcquisition(AcquisitionFunction):
-    """Target value acquisition function for the RBF model based on [#]_.
+    """Target value acquisition function for the RBF model based on [#]_, [#]_,
+    and [#]_.
 
-    Every iteration of the algorithm randomly chooses a number from 0 to
-    :attr:`cycleLength` (inclusive) and runs one of the procedures:
+    Every iteration of the algorithm sequentially chooses a number from 0 to
+    :attr:`cycleLength` + 1 (inclusive) and runs one of the procedures:
 
     * Inf-step (0): Selects a sample point that minimizes the
-      :math:`\\mu`-measure, i.e., :meth:`blackboxopt.rbf.RbfModel.mu_measure()`.
+      :math:`\\mu` measure, i.e., :meth:`mu_measure()`. The point selected is
+      the farthest from the current sample using the kernel measure.
 
-    * Global search (1 to :attr:`cycleLength`): Finds the global minimum of the
-      surrogate and defines a (lower) target value to be achieved. Choose a
-      sample point that minimizes the product of :math:`\\mu`-measure by the
-      distance to the target value. The described measure is known as 'bumpiness
-      measure'.
+    * Global search (1 to :attr:`cycleLength`): Minimizes the product of
+      :math:`\\mu` measure by the distance to a target value. The target value
+      is based on the distance to the current minimum of the surrogate. The
+      described measure is known as the 'bumpiness measure'.
 
-    * Local search (:attr:`cycleLength`): Finds the global minimum of the
-      surrogate. If the global minimum is predicted to have a sufficient (>1e-6)
-      improvement, use that point in the new sample. Otherwise, do the
-      global search.
+    * Local search (:attr:`cycleLength` + 1): Minimizes the bumpiness measure with
+      a target value equal to the current minimum of the surrogate. If the
+      current minimum is already represented by the training points of the
+      surrogate, do a global search with a target value slightly smaller than
+      the current minimum.
 
     :param optimizer: Single-objective optimizer. If None, use MixedVariableGA
         from pymoo.
     :param tol: Tolerance value for excluding candidate points that are too
         close to already sampled points. Stored in :attr:`tol`.
+    :param cycleLength: Length of the global search cycle. Stored in
+        :attr:`cycleLength`.
 
     .. attribute:: optimizer
 
@@ -496,174 +518,186 @@ class TargetValueAcquisition(AcquisitionFunction):
         Tolerance value for excluding candidate points that are too close to
         already sampled points.
 
+    .. attribute:: cycleLength
+
+        Length of the global search cycle to be used in :meth:`acquire()`.
+
+    .. attribute:: _cycle
+
+        Internal counter of cycles. The value to be used in the next call of
+        :meth:`acquire()`.
+
     References
     ----------
-    .. [#] Holmström, K., Quttineh, NH. & Edvall, M.M. An adaptive radial
-        basis algorithm (ARBF) for expensive black-box mixed-integer
-        constrained global optimization. Optim Eng 9, 311–339 (2008).
-        https://doi.org/10.1007/s11081-008-9037-3
+    .. [#] Gutmann, HM. A Radial Basis Function Method for Global
+        Optimization. Journal of Global Optimization 19, 201–227 (2001).
+        https://doi.org/10.1023/A:1011255519438
+    .. [#] Björkman, M., Holmström, K. Global Optimization of Costly
+        Nonconvex Functions Using Radial Basis Functions. Optimization and
+        Engineering 1, 373–397 (2000). https://doi.org/10.1023/A:1011584207202
+    .. [#] Holmström, K. An adaptive radial basis algorithm (ARBF) for expensive
+        black-box global optimization. J Glob Optim 41, 447–464 (2008).
+        https://doi.org/10.1007/s10898-007-9256-8
     """
 
-    def __init__(self, optimizer=None, tol: float = 1e-3) -> None:
-        self.cycleLength = 10
+    def __init__(
+        self, optimizer=None, tol: float = 1e-6, cycleLength: int = 10
+    ) -> None:
+        self._cycle = 0
+        self.cycleLength = cycleLength
         self.tol = tol
         self.optimizer = (
             MixedVariableGA(
-                pop_size=10,
                 eliminate_duplicates=BBOptDuplicateElimination(),
                 mating=MixedVariableMating(
                     eliminate_duplicates=BBOptDuplicateElimination()
                 ),
-                termination=MaximumGenerationTermination(10),
             )
             if optimizer is None
             else optimizer
         )
 
     @staticmethod
-    def mu_measure(
-        surrogate: RbfModel, x: np.ndarray, xdist=None, LDLt=()
-    ) -> float:
-        """Compute the value of abs(mu) in the inf step of the target value
-        sampling strategy. See [#]_ for more details.
+    def mu_measure(surrogate: RbfModel, x: np.ndarray, LDLt):
+        """Compute the value of abs(mu) for an RBF model.
+
+        The mu measure was first defined in [#]_ with suggestions of usage for
+        global optimization with RBF functions. In [#]_, the authors detail the
+        strategy to make the evaluations computationally viable.
+
+        The current
+        implementation, uses a different strategy than that from Björkman and
+        Holmström (2000), where a single LDLt factorization is used instead of
+        the QR and Cholesky factorizations. The new algorithm's performs 10
+        times less operations than the former. Like the former, the new
+        algorithm is also able to use high-intensity linear algebra operations
+        when the routine is called with multiple points :math:`x` are evaluated
+        at once.
 
         :param surrogate: RBF surrogate model.
         :param x: Possible point to be added to the surrogate model.
-        :param xdist: Distances between x and the sampled points. If not provided, the
-            distances are computed.
-        :param LDLt: LDLt factorization of the matrix A as returned by the function
-            scipy.linalg.ldl. If not provided, the factorization is computed.
+        :param LDLt: LDLt factorization of the matrix A as returned by the
+            function scipy.linalg.ldl.
 
         References
         ----------
         .. [#] Gutmann, HM. A Radial Basis Function Method for Global
             Optimization. Journal of Global Optimization 19, 201–227 (2001).
             https://doi.org/10.1023/A:1011255519438
+        .. [#] Björkman, M., Holmström, K. Global Optimization of Costly
+            Nonconvex Functions Using Radial Basis Functions. Optimization and
+            Engineering 1, 373–397 (2000). https://doi.org/10.1023/A:1011584207202
         """
         # compute rbf value of the new point x
-        if xdist is None:
-            xdist = cdist(x.reshape(1, -1), surrogate.xtrain())
-        newRow = np.concatenate(
-            (
-                np.asarray(surrogate.phi(xdist)).flatten(),
-                surrogate.pbasis(x.reshape(1, -1)).flatten(),
-            )
+        xdist = cdist(surrogate.xtrain(), x)
+        newCols = np.concatenate(
+            (np.asarray(surrogate.phi(xdist)), surrogate.pbasis(x).T), axis=0
         )
 
-        if LDLt:
-            p0tL0, d0, p0 = LDLt
-            L0 = p0tL0[p0, :]
+        # Get the L factor, the block-diagonal matrix D, and the permutation
+        # vector p
+        ptL, D, p = LDLt
+        L = ptL[p]
 
-            # 1. Solve P_0 [a;b] = L_0 (D_0 l_{01}) for (D_0 l_{01})
-            D0l01 = solve_triangular(
-                L0,
-                newRow[p0],
-                lower=True,
-                unit_diagonal=True,
-                # check_finite=False,
-            )
+        # 0. Permute the new terms
+        newCols = newCols[p]
 
-            # 2. Invert D_0 to compute l_{01}
-            l01 = D0l01.copy()
-            i = 0
-            while i < l01.size - 1:
-                if d0[i + 1, i] == 0:
-                    # Invert block of size 1x1
-                    l01[i] /= d0[i, i]
-                    i += 1
-                else:
-                    # Invert block of size 2x2
-                    det = d0[i, i] * d0[i + 1, i + 1] - d0[i, i + 1] ** 2
-                    l01[i], l01[i + 1] = (
-                        (l01[i] * d0[i + 1, i + 1] - l01[i + 1] * d0[i, i + 1])
-                        / det,
-                        (l01[i + 1] * d0[i, i] - l01[i] * d0[i, i + 1]) / det,
-                    )
-                    i += 2
-            if i == l01.size - 1:
-                # Invert last block of size 1x1
-                l01[i] /= d0[i, i]
+        # 1. Solve P [a;b] = L (D l) for (D l)
+        Dl = solve_triangular(
+            L,
+            newCols,
+            lower=True,
+            unit_diagonal=True,
+            # check_finite=False,
+            overwrite_b=True,
+        )
 
-            # 3. d = \phi(0) - l_{01}^T D_0 l_{01} and \mu = 1/d
-            d = surrogate.phi(0) - np.dot(l01, D0l01)
-            mu = 1 / d if d != 0 else np.inf
+        # 2. Compute l := inv(D) (Dl)
+        ell = Dl.copy()
+        i = 0
+        while i < len(ell) - 1:
+            if D[i + 1, i] == 0:
+                # Invert block of size 1x1
+                ell[i] /= D[i, i]
+                i += 1
+            else:
+                # Invert block of size 2x2
+                det = D[i, i] * D[i + 1, i + 1] - D[i, i + 1] ** 2
+                ell[i], ell[i + 1] = (
+                    (ell[i] * D[i + 1, i + 1] - ell[i + 1] * D[i, i + 1])
+                    / det,
+                    (ell[i + 1] * D[i, i] - ell[i] * D[i, i + 1]) / det,
+                )
+                i += 2
+        if i == len(ell) - 1:
+            # Invert last block of size 1x1
+            ell[i] /= D[i, i]
 
-        if not LDLt or mu == np.inf:
-            # set up matrices for solving the linear system
-            A_aug = np.block(
-                [
-                    [surrogate.get_RBFmatrix(), newRow.reshape(-1, 1)],
-                    [newRow, surrogate.phi(0)],
-                ]
-            )
-
-            # set up right hand side
-            rhs = np.zeros(A_aug.shape[0])
-            rhs[-1] = 1
-
-            # solve linear system and get mu
-            try:
-                coeff = solve(A_aug, rhs, assume_a="sym")
-                mu = float(coeff[-1].item())
-            except np.linalg.LinAlgError:
-                # Return huge value, only occurs if the matrix is ill-conditioned
-                mu = np.inf
-
-        # Order of the polynomial tail
-        if surrogate.kernel == RbfKernel.LINEAR:
-            m0 = 0
-        elif surrogate.kernel in (RbfKernel.CUBIC, RbfKernel.THINPLATE):
-            m0 = 1
-        else:
-            raise ValueError("Unknown RBF type")
+        # 3. d = \phi(0) - l^T D l and \mu = 1/d
+        d = surrogate.phi(0) - (ell * Dl).sum(axis=0)
+        mu = np.where(d != 0, 1 / d, np.inf)
 
         # Get the absolute value of mu
-        mu *= (-1) ** (m0 + 1)
-        if mu < 0:
-            # Return huge value, only occurs if the matrix is ill-conditioned
-            return np.inf
-        else:
-            return mu
+        if surrogate.kernel == RbfKernel.LINEAR:
+            mu = -mu
+        elif surrogate.kernel not in (RbfKernel.CUBIC, RbfKernel.THINPLATE):
+            raise ValueError("Unknown RBF type")
+
+        # Return huge value if the matrix is ill-conditioned
+        mu = np.where(mu <= 0, np.inf, mu)
+
+        return mu
 
     @staticmethod
-    def bumpiness_measure(
-        surrogate: RbfModel, x: np.ndarray, target, LDLt=()
-    ) -> float:
-        """Compute the bumpiness of the surrogate model for a potential sample
-        point x as defined in [#]_.
+    def bumpiness_measure(surrogate: RbfModel, x: np.ndarray, target, LDLt):
+        """Compute the bumpiness of the surrogate model.
+
+        The bumpiness measure :math:`g_y` was first defined by Gutmann (2001)
+        with
+        suggestions of usage for global optimization with RBF functions. Gutmann
+        notes that :math:`g_y(x)` tends to infinity
+        when :math:`x` tends to a training point of the surrogate, and so they
+        use :math:`-1/g_y(x)` for the minimization problem. Björkman and
+        Holmström use :math:`-\log(1/g_y(x))`, which is the same as minimizing
+        :math:`\log(g_y(x))`, to avoid a flat minimum. This option seems to
+        slow down convergence rates for :math:`g_y(x)` in `[0,1]` since it
+        increases distances in that range.
+
+        The present implementation uses genetic algorithms, so we see no point
+        in trying to make :math:`g_y` smoother. Since :math:`g_y` involves
+        squaring numbers, we choose to minimize :math:`\sqrt{g_y}` instead which
+        avoids numerical issues.
 
         :param surrogate: RBF surrogate model.
         :param x: Possible point to be added to the surrogate model.
         :param target: Target value.
         :param LDLt: LDLt factorization of the matrix A as returned by the function
-            scipy.linalg.ldl. If not provided, the factorization is computed internally.
-
-        References
-        ----------
-        .. [#] Gutmann, HM. A Radial Basis Function Method for Global
-            Optimization. Journal of Global Optimization 19, 201–227 (2001).
-            https://doi.org/10.1023/A:1011255519438
+            scipy.linalg.ldl.
         """
-        absmu = TargetValueAcquisition.mu_measure(surrogate, x, LDLt=LDLt)
-        assert (
+        absmu = TargetValueAcquisition.mu_measure(surrogate, x, LDLt)
+        assert all(
             absmu > 0
         )  # if absmu == 0, the linear system in the surrogate model singular
-        if absmu == np.inf:
-            # Return huge value, only occurs if the matrix is ill-conditioned
-            return np.inf
 
         # predict RBF value of x
         yhat, _ = surrogate(x)
-        assert yhat.size == 1  # sanity check
 
         # Compute the distance between the predicted value and the target
-        dist = abs(yhat[0] - target)
-        # if dist < tol:
-        #     dist = tol
+        dist = np.absolute(yhat - target)
 
-        # use sqrt(gn) as the bumpiness measure to avoid underflow
-        sqrtgn = np.sqrt(absmu) * dist
-        return sqrtgn
+        # Use sqrt(gy) as the bumpiness measure to avoid overflow due to
+        # squaring big values. We do not make the function continuSee
+        # Gutmann (2001). Underflow may happen when candidates are close to the
+        # desired target value.
+        #
+        # Gutmann (2001):
+        # return -1 / ((absmu * dist) * dist)
+        #
+        # Björkman, M., Holmström (2000):
+        # return np.log((absmu * dist) * dist)
+        #
+        # Here:
+        return np.sqrt(absmu) * dist
 
     def acquire(
         self,
@@ -672,7 +706,6 @@ class TargetValueAcquisition(AcquisitionFunction):
         n: int = 1,
         *,
         sampleStage: int = -1,
-        fbounds=(),
         **kwargs,
     ) -> np.ndarray:
         """Acquire n points following the algorithm from Holmström et al.(2008).
@@ -683,45 +716,45 @@ class TargetValueAcquisition(AcquisitionFunction):
         :param n: Number of points to be acquired.
         :param sampleStage: Stage of the sampling process. The default is -1,
             which means that the stage is not specified.
-        :param fbounds:
-            Bounds of the objective function so far. Optional if sampleStage is
-            0.
         :return: n-by-dim matrix with the selected points.
         """
         dim = len(bounds)  # Dimension of the problem
+        assert n <= self.cycleLength + 2
 
         # Create scaled sample and KDTree with that
         xlow = np.array([bounds[i][0] for i in range(dim)])
         xup = np.array([bounds[i][1] for i in range(dim)])
-        ssample = (surrogateModel.xtrain() - xlow) / (xup - xlow)
-        tree = KDTree(ssample)
 
-        # see Holmstrom 2008 "An adaptive radial basis algorithm (ARBF) for
-        # expensive black-box global optimization", JOGO
+        # Compute fbounds of the surrogate. Use the filter as suggested by
+        # Björkman and Holmström (2000)
+        fbounds = [
+            surrogateModel.ytrain().min(),
+            surrogateModel.filter(surrogateModel.ytrain()).max(),
+        ]
+
+        # Allocate variables a priori targeting batched sampling
         x = np.empty((n, dim))
+        LDLt = None
+        x_rbf = None
+        f_rbf = None
+
+        # Loop following Holmström (2008)
         for i in range(n):
-            sample_stage = (
-                sampleStage
-                if sampleStage >= 0
-                else np.random.choice(self.cycleLength + 2)
-            )
+            if sampleStage >= 0:
+                sample_stage = sampleStage
+            else:
+                sample_stage = self._cycle
+                self._cycle = (self._cycle + 1) % (self.cycleLength + 2)
             if sample_stage == 0:  # InfStep - minimize Mu_n
-                LDLt = ldl(surrogateModel.get_RBFmatrix())
-                problem = ProblemWithConstraint(
+                if LDLt is None:
+                    LDLt = ldl(surrogateModel.get_RBFmatrix())
+                problem = ProblemNoConstraint(
                     lambda x: TargetValueAcquisition.mu_measure(
-                        surrogateModel, x, LDLt=LDLt
+                        surrogateModel, x, LDLt
                     ),
-                    lambda x: self.tol
-                    - tree.query((x - xlow) / (xup - xlow))[0],
                     bounds,
                     surrogateModel.iindex,
                 )
-                problem.elementwise = True
-
-                # # initialize the thread pool and create the runner
-                # pool = ThreadPool()
-                # runner = StarmapParallelization(pool.starmap)
-                # problem.elementwise_runner=runner
 
                 res = pymoo_minimize(
                     problem,
@@ -729,9 +762,6 @@ class TargetValueAcquisition(AcquisitionFunction):
                     seed=surrogateModel.ntrain(),
                     verbose=False,
                 )
-
-                # # close pool
-                # pool.close()
 
                 assert res.X is not None
                 xselected = np.asarray([res.X[i] for i in range(dim)])
@@ -739,45 +769,42 @@ class TargetValueAcquisition(AcquisitionFunction):
             elif (
                 1 <= sample_stage <= self.cycleLength
             ):  # cycle step global search
-                assert len(fbounds) == 2
                 # find min of surrogate model
-                problem = ProblemNoConstraint(
-                    lambda x: surrogateModel(x)[0],
-                    bounds,
-                    surrogateModel.iindex,
-                )
-                res = pymoo_minimize(
-                    problem,
-                    self.optimizer,
-                    seed=surrogateModel.ntrain(),
-                    verbose=False,
-                )
-                assert res.F is not None
-                f_rbf = res.F[0]
+                if f_rbf is None:
+                    problem = ProblemNoConstraint(
+                        lambda x: surrogateModel(x)[0],
+                        bounds,
+                        surrogateModel.iindex,
+                    )
+                    res = pymoo_minimize(
+                        problem,
+                        self.optimizer,
+                        seed=surrogateModel.ntrain(),
+                        verbose=False,
+                    )
+                    assert res.X is not None
+                    assert res.F is not None
+
+                    x_rbf = np.asarray([res.X[i] for i in range(dim)])
+                    f_rbf = res.F[0]
+
                 wk = (
-                    1 - sample_stage / self.cycleLength
+                    1 - (sample_stage - 1) / self.cycleLength
                 ) ** 2  # select weight for computing target value
                 f_target = f_rbf - wk * (
                     fbounds[1] - f_rbf
                 )  # target for objective function value
 
                 # use GA method to minimize bumpiness measure
-                LDLt = ldl(surrogateModel.get_RBFmatrix())
-                problem = ProblemWithConstraint(
+                if LDLt is None:
+                    LDLt = ldl(surrogateModel.get_RBFmatrix())
+                problem = ProblemNoConstraint(
                     lambda x: TargetValueAcquisition.bumpiness_measure(
                         surrogateModel, x, f_target, LDLt
                     ),
-                    lambda x: self.tol
-                    - tree.query((x - xlow) / (xup - xlow))[0],
                     bounds,
                     surrogateModel.iindex,
                 )
-                problem.elementwise = True
-
-                # # initialize the thread pool and create the runner
-                # pool = ThreadPool()
-                # runner = StarmapParallelization(pool.starmap)
-                # problem.elementwise_runner=runner
 
                 res = pymoo_minimize(
                     problem,
@@ -785,63 +812,47 @@ class TargetValueAcquisition(AcquisitionFunction):
                     seed=surrogateModel.ntrain(),
                     verbose=False,
                 )
-
-                # # close pool
-                # pool.close()
 
                 assert res.X is not None
                 xselected = np.asarray([res.X[i] for i in range(dim)])
             else:  # cycle step local search
-                assert len(fbounds) == 2
                 # find the minimum of RBF surface
-                problem = ProblemNoConstraint(
-                    lambda x: surrogateModel(x)[0],
-                    bounds,
-                    surrogateModel.iindex,
-                )
-                res = pymoo_minimize(
-                    problem,
-                    self.optimizer,
-                    seed=surrogateModel.ntrain(),
-                    verbose=False,
-                )
-                assert res.F is not None
-                f_rbf = res.F[0]
-                if f_rbf < (fbounds[0] - 1e-6 * abs(fbounds[0])):
-                    # select minimum point as new sample point if sufficient improvements
-                    assert res.X is not None
-                    xselected = np.asarray([res.X[i] for i in range(dim)])
-                    while np.any(
-                        tree.query((xselected - xlow) / (xup - xlow))[0]
-                        < self.tol
-                    ):
-                        # the selected point is too close to already evaluated point
-                        # randomly select point from variable domain
-                        # May only happen after a local search step
-                        xselected = Sampler(1).get_uniform_sample(
-                            bounds, iindex=surrogateModel.iindex
-                        )
-                else:  # otherwise, do target value strategy
-                    f_target = fbounds[0] - 1e-2 * abs(
-                        fbounds[0]
-                    )  # target value
-                    # use GA method to minimize bumpiness measure
-                    LDLt = ldl(surrogateModel.get_RBFmatrix())
-                    problem = ProblemWithConstraint(
-                        lambda x: TargetValueAcquisition.bumpiness_measure(
-                            surrogateModel, x, f_target, LDLt
-                        ),
-                        lambda x: self.tol
-                        - tree.query((x - xlow) / (xup - xlow))[0],
+                if f_rbf is None:
+                    problem = ProblemNoConstraint(
+                        lambda x: surrogateModel(x)[0],
                         bounds,
                         surrogateModel.iindex,
                     )
-                    problem.elementwise = True
+                    res = pymoo_minimize(
+                        problem,
+                        self.optimizer,
+                        seed=surrogateModel.ntrain(),
+                        verbose=False,
+                    )
+                    assert res.X is not None
+                    assert res.F is not None
 
-                    # # initialize the thread pool and create the runner
-                    # pool = ThreadPool()
-                    # runner = StarmapParallelization(pool.starmap)
-                    # problem.elementwise_runner=runner
+                    x_rbf = np.asarray([res.X[i] for i in range(dim)])
+                    f_rbf = res.F[0]
+
+                xselected = x_rbf
+                if f_rbf > (
+                    fbounds[0]
+                    - 1e-6 * (abs(fbounds[0]) if fbounds[0] != 0 else 1)
+                ):
+                    f_target = fbounds[0] - 1e-2 * (
+                        abs(fbounds[0]) if fbounds[0] != 0 else 1
+                    )
+                    # use GA method to minimize bumpiness measure
+                    if LDLt is None:
+                        LDLt = ldl(surrogateModel.get_RBFmatrix())
+                    problem = ProblemNoConstraint(
+                        lambda x: TargetValueAcquisition.bumpiness_measure(
+                            surrogateModel, x, f_target, LDLt
+                        ),
+                        bounds,
+                        surrogateModel.iindex,
+                    )
 
                     res = pymoo_minimize(
                         problem,
@@ -849,9 +860,6 @@ class TargetValueAcquisition(AcquisitionFunction):
                         seed=surrogateModel.ntrain(),
                         verbose=False,
                     )
-
-                    # # close pool
-                    # pool.close()
 
                     assert res.X is not None
                     xselected = np.asarray([res.X[i] for i in range(dim)])
@@ -1222,11 +1230,15 @@ class ParetoFront(AcquisitionFunction):
         :param sequence bounds: List with the limits [x_min,x_max] of each
             direction x in the space.
         :param n: Number of points to be acquired.
-        :param paretoFront: Pareto front in the objective space.
+        :param paretoFront: Pareto front in the objective space. If not
+            provided, use the surrogate to compute it.
         :return: k-by-dim matrix with the selected points.
         """
         dim = len(bounds)
         objdim = len(surrogateModels)
+
+        if paretoFront == ():
+            paretoFront = find_pareto_front(surrogateModels[0].ytrain())
 
         # If the Pareto front has only one point or is empty, there is no
         # way to find a target value. Use random sampling instead.
@@ -1795,6 +1807,8 @@ class MaximizeEI(AcquisitionFunction):
             for the surrogate. Use it as a possible candidate.
         """
         assert len(surrogateModel.get_iindex()) == 0
+        if n == 0:
+            return np.empty((0, len(bounds)))
 
         xbest = None
         if ybest is None:
