@@ -28,9 +28,9 @@ import pytest
 from blackboxopt.optimize import (
     OptimizeResult,
     bayesian_optimization,
-    multistart_stochastic_response_surface,
-    stochastic_response_surface,
-    target_value_optimization,
+    multistart_msrs,
+    dycors,
+    response_surface,
     cptv,
     cptvl,
 )
@@ -41,9 +41,9 @@ from blackboxopt.acquisition import MaximizeEI
 @pytest.mark.parametrize(
     "minimize",
     [
-        stochastic_response_surface,
-        multistart_stochastic_response_surface,
-        target_value_optimization,
+        dycors,
+        multistart_msrs,
+        response_surface,
         cptv,
         cptvl,
         bayesian_optimization,
@@ -79,9 +79,9 @@ def test_callback(minimize):
 @pytest.mark.parametrize(
     "minimize",
     [
-        stochastic_response_surface,
-        multistart_stochastic_response_surface,
-        target_value_optimization,
+        dycors,
+        multistart_msrs,
+        response_surface,
         cptv,
         cptvl,
         bayesian_optimization,

@@ -55,7 +55,10 @@ class RbfFilter:
 class MedianLpfFilter(RbfFilter):
     """Filter values by replacing large function values by the median of all.
 
-    This strategy was proposed by [#]_ based on results from [#]_.
+    This strategy was proposed by [#]_ based on results from [#]_. Use this
+    strategy to reduce oscillations of the interpolator, especially if the range
+    target function is large. This filter may reduce the quality of the
+    approximation by the surrogate.
 
     References
     ----------

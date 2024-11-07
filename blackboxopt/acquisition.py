@@ -206,7 +206,7 @@ class WeightedAcquisition(AcquisitionFunction):
         self,
         sampler,
         weightpattern=None,
-        reltol: float = 1e-3,
+        reltol: float = 1e-6,
         maxeval: int = 0,
     ) -> None:
         super().__init__()
@@ -502,6 +502,10 @@ class TargetValueAcquisition(AcquisitionFunction):
       surrogate, do a global search with a target value slightly smaller than
       the current minimum.
 
+    After each sample point is chosen we verify how close it is from the current
+    sample. If it is too close, we replace it by a random point in the domain
+    drawn from an uniform distribution. This is strategy was proposed in [#]_.
+
     :param optimizer: Single-objective optimizer. If None, use MixedVariableGA
         from pymoo.
     :param tol: Tolerance value for excluding candidate points that are too
@@ -538,10 +542,12 @@ class TargetValueAcquisition(AcquisitionFunction):
     .. [#] Holmström, K. An adaptive radial basis algorithm (ARBF) for expensive
         black-box global optimization. J Glob Optim 41, 447–464 (2008).
         https://doi.org/10.1007/s10898-007-9256-8
+    .. [#] Müller, J. MISO: mixed-integer surrogate optimization framework.
+        Optim Eng 17, 177–203 (2016). https://doi.org/10.1007/s11081-015-9281-2
     """
 
     def __init__(
-        self, optimizer=None, tol: float = 1e-6, cycleLength: int = 10
+        self, optimizer=None, tol: float = 1e-6, cycleLength: int = 6
     ) -> None:
         self._cycle = 0
         self.cycleLength = cycleLength
@@ -724,6 +730,8 @@ class TargetValueAcquisition(AcquisitionFunction):
         # Create scaled sample and KDTree with that
         xlow = np.array([bounds[i][0] for i in range(dim)])
         xup = np.array([bounds[i][1] for i in range(dim)])
+        ssample = (surrogateModel.xtrain() - xlow) / (xup - xlow)
+        tree = KDTree(ssample)
 
         # Compute fbounds of the surrogate. Use the filter as suggested by
         # Björkman and Holmström (2000)
@@ -864,6 +872,16 @@ class TargetValueAcquisition(AcquisitionFunction):
                     assert res.X is not None
                     xselected = np.asarray([res.X[i] for i in range(dim)])
 
+            # Replace points that are too close to current sample
+            while np.any(
+                tree.query((xselected - xlow) / (xup - xlow))[0] < self.tol
+            ):
+                # the selected point is too close to already evaluated point
+                # randomly select point from variable domain
+                xselected = Sampler(1).get_uniform_sample(
+                    bounds, iindex=surrogateModel.iindex
+                )
+
             x[i, :] = xselected
 
         # Discard selected points that are too close to each other
@@ -918,7 +936,7 @@ class MinimizeSurrogate(AcquisitionFunction):
         (1987). https://doi.org/10.1007/BF02592071
     """
 
-    def __init__(self, nCand: int, tol: float = 1e-3) -> None:
+    def __init__(self, nCand: int, tol: float = 1e-6) -> None:
         self.sampler = Sampler(nCand)
         self.tol = tol
 
@@ -1311,7 +1329,7 @@ class EndPointsParetoFront(AcquisitionFunction):
         https://doi.org/10.1287/ijoc.2017.0749
     """
 
-    def __init__(self, optimizer=None, tol=1e-3) -> None:
+    def __init__(self, optimizer=None, tol=1e-6) -> None:
         self.optimizer = (
             MixedVariableGA(
                 eliminate_duplicates=BBOptDuplicateElimination(),
@@ -1432,7 +1450,7 @@ class MinimizeMOSurrogate(AcquisitionFunction):
 
     """
 
-    def __init__(self, mooptimizer=None, tol=1e-3) -> None:
+    def __init__(self, mooptimizer=None, tol=1e-6) -> None:
         self.mooptimizer = (
             MixedVariableGA(
                 eliminate_duplicates=BBOptDuplicateElimination(),
@@ -1659,7 +1677,7 @@ class GosacSample(AcquisitionFunction):
         https://doi.org/10.1007/s10898-017-0496-y
     """
 
-    def __init__(self, fun, optimizer=None, tol: float = 1e-3):
+    def __init__(self, fun, optimizer=None, tol: float = 1e-6):
         self.fun = fun
         self.optimizer = (
             MixedVariableGA(

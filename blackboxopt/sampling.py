@@ -244,9 +244,17 @@ class NormalSampler(Sampler):
 
         For the normal sampler, the diameter is relative to the std. This
         implementation considers the region of 95% of the values on each
-        coordinate, which has diameter `4*sigma`.
+        coordinate, which has diameter `4*sigma`. This value is also backed up
+        by [#]_, in their Local MSRS method.
 
         :param d: Number of dimensions in the space.
+
+        References
+        ----------
+        .. [#] Rommel G Regis and Christine A Shoemaker. A stochastic radial
+            basis
+            function method for the global optimization of expensive functions.
+            INFORMS Journal on Computing, 19(4):497–509, 2007.
         """
         return min(4 * self.sigma, 1.0) * np.sqrt(d)
 

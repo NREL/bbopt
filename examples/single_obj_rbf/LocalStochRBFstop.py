@@ -31,7 +31,7 @@ __deprecated__ = False
 
 from optprogram1 import read_check_data_file
 from blackboxopt.rbf import RbfKernel, RbfModel, MedianLpfFilter
-from blackboxopt.optimize import stochastic_response_surface
+from blackboxopt.optimize import response_surface
 from blackboxopt.sampling import NormalSampler, Sampler, SamplingStrategy
 from blackboxopt.acquisition import WeightedAcquisition
 import numpy as np
@@ -95,13 +95,13 @@ if __name__ == "__main__":
     print("LocalStochRBFstop Start")
 
     rbfModel = RbfModel(phifunction, filter=MedianLpfFilter())
+    rbfModel.update(sample, data.objfunction(sample))
 
-    optres = stochastic_response_surface(
+    optres = response_surface(
         data.objfunction,
         bounds=bounds,
         maxeval=maxeval - numevals,
         surrogateModel=rbfModel,
-        sample=sample,
         acquisitionFunc=WeightedAcquisition(
             NormalSampler(
                 nCand,
@@ -115,6 +115,7 @@ if __name__ == "__main__":
             maxeval=maxeval - numevals,
         ),
         batchSize=batchSize,
+        termination="nFailTol",
     )
 
     print("Results")

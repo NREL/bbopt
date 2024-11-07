@@ -27,12 +27,12 @@ __deprecated__ = False
 from copy import deepcopy
 import importlib
 from math import sqrt
+from typing import Optional
 import numpy as np
 import matplotlib.pyplot as plt
 from blackboxopt import rbf, optimize, sampling
 from blackboxopt.acquisition import (
     WeightedAcquisition,
-    TargetValueAcquisition,
     AcquisitionFunction,
     MinimizeSurrogate,
 )
@@ -41,13 +41,13 @@ from data import Data
 
 def read_and_run(
     data_file: str,
-    acquisitionFunc: AcquisitionFunction,
+    acquisitionFunc: Optional[AcquisitionFunction] = None,
     maxeval: int = 0,
     Ntrials: int = 0,
     batchSize: int = 0,
     rbf_type: rbf.RbfKernel = rbf.RbfKernel.CUBIC,
-    filter: rbf.RbfFilter = rbf.RbfFilter(),
-    optim_func=optimize.multistart_stochastic_response_surface,
+    filter: rbf.RbfFilter = rbf.MedianLpfFilter(),
+    optim_func=optimize.multistart_msrs,
 ) -> list[optimize.OptimizeResult]:
     """Perform the optimization, save the solution and plot.
 
@@ -109,8 +109,8 @@ def read_and_run(
 
         # Call the surrogate optimization function
         if (
-            optim_func == optimize.multistart_stochastic_response_surface
-            or optim_func == optimize.stochastic_response_surface
+            optim_func == optimize.response_surface
+            or optim_func == optimize.dycors
         ):
             opt = optim_func(
                 data.objfunction,
@@ -123,19 +123,12 @@ def read_and_run(
                 batchSize=batchSize,
                 disp=True,
             )
-        elif optim_func == optimize.target_value_optimization:
-            opt = optim_func(
-                data.objfunction,
-                bounds=tuple(
-                    (data.xlow[i], data.xup[i]) for i in range(data.dim)
-                ),
-                maxeval=maxeval,
-                acquisitionFunc=acquisitionFuncIter,
-                batchSize=batchSize,
-                surrogateModel=rbfModel,
-                disp=True,
-            )
-        elif optim_func == optimize.cptv or optim_func == optimize.cptvl:
+        elif (
+            optim_func == optimize.rbf_solve
+            or optim_func == optimize.multistart_msrs
+            or optim_func == optimize.cptv
+            or optim_func == optimize.cptvl
+        ):
             opt = optim_func(
                 data.objfunction,
                 bounds=tuple(
@@ -143,7 +136,6 @@ def read_and_run(
                 ),
                 maxeval=maxeval,
                 surrogateModel=rbfModel,
-                acquisitionFunc=acquisitionFuncIter,
                 disp=True,
             )
         else:
@@ -316,25 +308,16 @@ if __name__ == "__main__":
             batchSize=1,
         )
     if 3 in comparisonList:
-        strategyName.append("DYCORS with multistart")
+        strategyName.append("DYCORS")
         optresList[3] = read_and_run(
             data_file="datainput_BraninWithInteger",
-            acquisitionFunc=WeightedAcquisition(
-                sampling.NormalSampler(
-                    1000,
-                    sigma=0.2,
-                    sigma_min=0.2 * 0.5**6,
-                    sigma_max=0.2,
-                    strategy=sampling.SamplingStrategy.DDS,
-                ),
-                [0.3, 0.5, 0.8, 0.95],
-                maxeval=100,
-            ),
-            filter=rbf.RbfFilter(),
+            acquisitionFunc=None,
+            filter=rbf.MedianLpfFilter(),
             maxeval=100,
             Ntrials=3,
             batchSize=1,
             rbf_type=rbf.RbfKernel.THINPLATE,
+            optim_func=optimize.dycors,
         )
     if 4 in comparisonList:
         optresList[4] = read_and_run(
@@ -350,41 +333,29 @@ if __name__ == "__main__":
                 [0.3, 0.5, 0.8, 0.95],
                 maxeval=100,
             ),
-            filter=rbf.RbfFilter(),
+            filter=rbf.MedianLpfFilter(),
             maxeval=100,
             Ntrials=3,
             batchSize=1,
             rbf_type=rbf.RbfKernel.THINPLATE,
-            optim_func=optimize.stochastic_response_surface,
+            optim_func=optimize.response_surface,
         )
     if 5 in comparisonList:
         strategyName.append("TargetValue")
         optresList[5] = read_and_run(
             data_file="datainput_BraninWithInteger",
-            acquisitionFunc=TargetValueAcquisition(tol=0.001),
-            filter=rbf.RbfFilter(),
+            filter=rbf.MedianLpfFilter(),
             maxeval=100,
             Ntrials=3,
             batchSize=1,
             rbf_type=rbf.RbfKernel.THINPLATE,
-            optim_func=optimize.target_value_optimization,
+            optim_func=optimize.rbf_solve,
         )
     if 6 in comparisonList:
         strategyName.append("CPTV")
         optresList[6] = read_and_run(
             data_file="datainput_BraninWithInteger",
-            acquisitionFunc=WeightedAcquisition(
-                sampling.NormalSampler(
-                    1000,
-                    sigma=0.2,
-                    sigma_min=0.2 * 0.5**6,
-                    sigma_max=0.2,
-                    strategy=sampling.SamplingStrategy.DDS,
-                ),
-                [0.3, 0.5, 0.8, 0.95],
-                maxeval=100,
-            ),
-            filter=rbf.RbfFilter(),
+            filter=rbf.MedianLpfFilter(),
             maxeval=100,
             Ntrials=3,
             batchSize=1,
@@ -395,18 +366,7 @@ if __name__ == "__main__":
         strategyName.append("CPTVl")
         optresList[7] = read_and_run(
             data_file="datainput_BraninWithInteger",
-            acquisitionFunc=WeightedAcquisition(
-                sampling.NormalSampler(
-                    1000,
-                    sigma=0.2,
-                    sigma_min=0.2 * 0.5**6,
-                    sigma_max=0.2,
-                    strategy=sampling.SamplingStrategy.DDS,
-                ),
-                [0.3, 0.5, 0.8, 0.95],
-                maxeval=100,
-            ),
-            filter=rbf.RbfFilter(),
+            filter=rbf.MedianLpfFilter(),
             maxeval=100,
             Ntrials=3,
             batchSize=1,
@@ -418,12 +378,12 @@ if __name__ == "__main__":
         optresList[8] = read_and_run(
             data_file="datainput_BraninWithInteger",
             acquisitionFunc=MinimizeSurrogate(100, 0.005 * sqrt(2)),
-            filter=rbf.RbfFilter(),
+            filter=rbf.MedianLpfFilter(),
             maxeval=100,
             Ntrials=3,
             batchSize=10,
             rbf_type=rbf.RbfKernel.THINPLATE,
-            optim_func=optimize.target_value_optimization,
+            optim_func=optimize.response_surface,
         )
 
     ## Plot Results

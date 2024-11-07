@@ -85,63 +85,27 @@ myNargs["rastr"] = 4
 algorithms = {}
 algorithms["SRS"] = {
     "model": rbf.RbfModel(rbf.RbfKernel.CUBIC, filter=rbf.MedianLpfFilter()),
-    "optimizer": optimize.multistart_stochastic_response_surface,
-    "acquisition": acquisition.WeightedAcquisition(
-        sampling.NormalSampler(
-            1,
-            sigma=0.2,
-            sigma_min=0.2 * 0.5**5,
-            sigma_max=0.2,
-            strategy=sampling.SamplingStrategy.NORMAL,
-        ),
-        [0.3, 0.5, 0.8, 0.95],
-    ),
+    "optimizer": optimize.multistart_msrs,
+    "acquisition": None,
 }
 algorithms["DYCORS"] = {
     "model": rbf.RbfModel(rbf.RbfKernel.CUBIC, filter=rbf.MedianLpfFilter()),
-    "optimizer": optimize.multistart_stochastic_response_surface,
-    "acquisition": acquisition.WeightedAcquisition(
-        sampling.NormalSampler(
-            1,
-            sigma=0.2,
-            sigma_min=0.2 * 0.5**5,
-            sigma_max=0.2,
-            strategy=sampling.SamplingStrategy.DDS,
-        ),
-        [0.3, 0.5, 0.8, 0.95],
-    ),
+    "optimizer": optimize.dycors,
+    "acquisition": None,
 }
 algorithms["CPTV"] = {
     "model": rbf.RbfModel(rbf.RbfKernel.CUBIC, filter=rbf.MedianLpfFilter()),
     "optimizer": optimize.cptv,
-    "acquisition": acquisition.WeightedAcquisition(
-        sampling.NormalSampler(
-            1,
-            sigma=0.2,
-            sigma_min=0.2 * 0.5**5,
-            sigma_max=0.2,
-            strategy=sampling.SamplingStrategy.DDS,
-        ),
-        [0.3, 0.5, 0.8, 0.95],
-    ),
+    "acquisition": None,
 }
 algorithms["CPTVl"] = {
     "model": rbf.RbfModel(rbf.RbfKernel.CUBIC, filter=rbf.MedianLpfFilter()),
     "optimizer": optimize.cptvl,
-    "acquisition": acquisition.WeightedAcquisition(
-        sampling.NormalSampler(
-            1,
-            sigma=0.2,
-            sigma_min=0.2 * 0.5**5,
-            sigma_max=0.2,
-            strategy=sampling.SamplingStrategy.DDS,
-        ),
-        [0.3, 0.5, 0.8, 0.95],
-    ),
+    "acquisition": None,
 }
 algorithms["MLSL"] = {
     "model": rbf.RbfModel(rbf.RbfKernel.CUBIC, filter=rbf.MedianLpfFilter()),
-    "optimizer": optimize.target_value_optimization,
+    "optimizer": optimize.response_surface,
     "acquisition": acquisition.MinimizeSurrogate(1, 0.005 * np.sqrt(2.0)),
 }
 algorithms["GP"] = {
