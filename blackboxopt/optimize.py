@@ -31,7 +31,7 @@ __credits__ = [
     "Haoyu Jia",
     "Weslley S. Pereira",
 ]
-__version__ = "0.4.2"
+__version__ = "0.5.0"
 __deprecated__ = False
 
 from typing import Callable, Optional, Union

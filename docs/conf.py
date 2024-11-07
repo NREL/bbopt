@@ -17,15 +17,15 @@ sys.path.insert(0, os.path.abspath(".."))
 project = "Black-box Opt"
 copyright = "2024, Alliance for Sustainable Energy, LLC"
 author = "Weslley S. Pereira"
-release = "0.4.2"
+release = "0.5.0"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
 extensions = [
-    "sphinx.ext.autodoc", # This is for automatic gen of rst and other things
-    "sphinx_autodoc_typehints", # Including typehints automatically in the docs
-    "sphinx.ext.mathjax", # This is for LaTeX
+    "sphinx.ext.autodoc",  # This is for automatic gen of rst and other things
+    "sphinx_autodoc_typehints",  # Including typehints automatically in the docs
+    "sphinx.ext.mathjax",  # This is for LaTeX
 ]
 
 # General config
