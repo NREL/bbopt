@@ -28,7 +28,7 @@ import numpy as np
 import pickle
 import time
 from tests.test_vlse_bench import run_optimizer
-from blackboxopt import optimize, acquisition, sampling, rbf, gp
+from blackboxopt import optimize, acquisition, rbf, gp
 from pathlib import Path
 from sklearn.gaussian_process.kernels import RBF as GPkernelRBF
 

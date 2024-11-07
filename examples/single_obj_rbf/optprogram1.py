@@ -139,7 +139,7 @@ def read_and_run(
                 disp=True,
             )
         elif (
-            optim_func == optimize.rbf_solve
+            optim_func == optimize.surrogate_optimization
             or optim_func == optimize.multistart_msrs
             or optim_func == optimize.cptv
             or optim_func == optimize.cptvl
@@ -378,7 +378,7 @@ def main(args):
             batchSize=1,
             rbf_type=rbf.RbfKernel.THINPLATE,
             PlotResult=True,
-            optim_func=optimize.rbf_solve,
+            optim_func=optimize.surrogate_optimization,
         )
     elif args.config == 6:
         optres = read_and_run(

@@ -124,7 +124,7 @@ def read_and_run(
                 disp=True,
             )
         elif (
-            optim_func == optimize.rbf_solve
+            optim_func == optimize.surrogate_optimization
             or optim_func == optimize.multistart_msrs
             or optim_func == optimize.cptv
             or optim_func == optimize.cptvl
@@ -349,7 +349,7 @@ if __name__ == "__main__":
             Ntrials=3,
             batchSize=1,
             rbf_type=rbf.RbfKernel.THINPLATE,
-            optim_func=optimize.rbf_solve,
+            optim_func=optimize.surrogate_optimization,
         )
     if 6 in comparisonList:
         strategyName.append("CPTV")

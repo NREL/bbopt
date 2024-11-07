@@ -238,10 +238,10 @@ def test_bayesianopt(func: str) -> None:
 
 if __name__ == "__main__":
     nRuns = 1
-    func = "ackley"
-    nArgs = 15
-    # func = "egg"
-    # nArgs = 2
+    # func = "ackley"
+    # nArgs = 15
+    func = "egg"
+    nArgs = 2
     np.random.seed(1)
 
     res = run_optimizer(
@@ -259,7 +259,7 @@ if __name__ == "__main__":
         #     "model": rbf.RbfModel(
         #         rbf.RbfKernel.CUBIC, filter=rbf.MedianLpfFilter()
         #     ),
-        #     "optimizer": optimize.rbf_solve,
+        #     "optimizer": optimize.surrogate_optimization,
         #     "acquisition": acquisition.MinimizeSurrogate(
         #         1, 0.005 * np.sqrt(2.0)
         #     ),

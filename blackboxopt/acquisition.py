@@ -656,7 +656,7 @@ class TargetValueAcquisition(AcquisitionFunction):
 
     @staticmethod
     def bumpiness_measure(surrogate: RbfModel, x: np.ndarray, target, LDLt):
-        """Compute the bumpiness of the surrogate model.
+        r"""Compute the bumpiness of the surrogate model.
 
         The bumpiness measure :math:`g_y` was first defined by Gutmann (2001)
         with
@@ -1135,7 +1135,7 @@ class ParetoFront(AcquisitionFunction):
     1. Find a target value :math:`\\tau` that should fill a gap in the Pareto
        front. Make sure to use a target value that wasn't used before.
     2. Solve a multi-objective optimization problem that minimizes
-       :math:`\|s_i(x)-\\tau\|` for all :math:`x` in the search space, where
+       :math:`\\|s_i(x)-\\tau\\|` for all :math:`x` in the search space, where
        :math:`s_i(x)` is the i-th target value predicted by the surrogate for
        :math:`x`.
     3. If a Pareto-optimal solution was found for the problem above, chooses the
@@ -1255,7 +1255,7 @@ class ParetoFront(AcquisitionFunction):
         dim = len(bounds)
         objdim = len(surrogateModels)
 
-        if paretoFront == ():
+        if len(paretoFront) == 0:
             paretoFront = find_pareto_front(surrogateModels[0].ytrain())
 
         # If the Pareto front has only one point or is empty, there is no

@@ -193,6 +193,7 @@ def initialize_moo_surrogate(
 
     # Number of initial sample points
     m0 = surrogateModels[0].ntrain()
+    m = 0
 
     # Add new sample to the surrogate model
     if m0 == 0:
@@ -789,8 +790,6 @@ def cptv(
     :param useLocalSearch: If True, the algorithm will perform a continuous
         local search when a significant improvement is not found in a sequence
         of (CP,TV,CP) steps.
-        If False, the algorithm will perform a continuous local search inside
-        the CP step.
     :param disp: If True, print information about the optimization process.
     :param callback: If provided, the callback function will be called after
         each iteration with the current optimization result.
@@ -864,7 +863,7 @@ def cptv(
                 x0y0=(out.x, out.fx),
                 surrogateModel=surrogateModel,
                 acquisitionFunc=acquisitionFunc,
-                performContinuousSearch=(not useLocalSearch),
+                performContinuousSearch=True,
                 improvementTol=improvementTol,
                 nSuccTol=3,
                 nFailTol=nFailTol,
@@ -952,9 +951,9 @@ def cptv(
         ):  # Gives at least 1 iteration for L-BFGS-B
 
             def func_continuous_search(x):
-                x_ = out.x.copy()
-                x_[cindex] = x
-                return fun([x_])[0]
+                x_ = out.x.reshape(1, -1).copy()
+                x_[0, cindex] = x
+                return fun(x_)[0]
 
             out_local_ = minimize(
                 func_continuous_search,
@@ -967,7 +966,9 @@ def cptv(
                     "disp": False,
                 },
             )
-            assert out_local.nfev <= (maxeval - out.nfev)
+            assert (
+                out_local_.nfev <= (maxeval - out.nfev)
+            ), "Sanity check. We should adjust either `maxfun` or change the `method`"
 
             out_local = OptimizeResult(
                 x=out.x.copy(),
