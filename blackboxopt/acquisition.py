@@ -873,30 +873,30 @@ class TargetValueAcquisition(AcquisitionFunction):
                     xselected = np.asarray([res.X[i] for i in range(dim)])
 
             # Replace points that are too close to current sample
+            current_sample = np.concatenate(
+                (surrogateModel.xtrain(), x[0:i]), axis=0
+            )
             while np.any(
                 tree.query((xselected - xlow) / (xup - xlow))[0] < self.tol
+            ) or (
+                i > 0
+                and cdist(
+                    ((xselected - xlow) / (xup - xlow)).reshape(1, -1),
+                    (x[0:i] - xlow) / (xup - xlow),
+                ).min()
+                < self.tol
             ):
                 # the selected point is too close to already evaluated point
                 # randomly select point from variable domain
-                xselected = Sampler(1).get_uniform_sample(
-                    bounds, iindex=surrogateModel.iindex
+                xselected = Mitchel91Sampler(1).get_sample(
+                    bounds,
+                    iindex=surrogateModel.iindex,
+                    current_sample=current_sample,
                 )
 
             x[i, :] = xselected
 
-        # Discard selected points that are too close to each other
-        idxs = [0]
-        for i in range(1, n):
-            if (
-                cdist(
-                    (x[idxs, :] - xlow) / (xup - xlow),
-                    (x[i, :].reshape(1, -1) - xlow) / (xup - xlow),
-                ).min()
-                >= self.tol
-            ):
-                idxs.append(i)
-
-        return x[idxs, :]
+        return x
 
 
 class MinimizeSurrogate(AcquisitionFunction):
@@ -1116,13 +1116,17 @@ class MinimizeSurrogate(AcquisitionFunction):
             return selected[0:k, :]
         else:
             # No new points found by the differential evolution method
-            singleCandSampler = Sampler(1)
-            selected = singleCandSampler.get_uniform_sample(
-                bounds, iindex=surrogateModel.iindex
+            singleCandSampler = Mitchel91Sampler(1)
+            selected = singleCandSampler.get_sample(
+                bounds,
+                iindex=surrogateModel.iindex,
+                current_sample=surrogateModel.xtrain(),
             )
             while tree.query((selected - xlow) / (xup - xlow))[0] > self.tol:
-                selected = singleCandSampler.get_uniform_sample(
-                    bounds, iindex=surrogateModel.iindex
+                selected = singleCandSampler.get_sample(
+                    bounds,
+                    iindex=surrogateModel.iindex,
+                    current_sample=surrogateModel.xtrain(),
                 )
             return selected.reshape(1, -1)
 
