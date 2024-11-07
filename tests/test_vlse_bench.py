@@ -152,15 +152,27 @@ def run_optimizer(
     optres = []
     for i in range(nRuns):
         modelIter = deepcopy(model)
-        acquisitionFuncIter = deepcopy(acquisitionFunc)
-        res = optimizer(
-            objf,
-            bounds=bounds,
-            maxeval=maxEval,
-            surrogateModel=modelIter,
-            acquisitionFunc=acquisitionFuncIter,
-            disp=disp,
-        )
+        if (
+            optimizer == optimize.surrogate_optimization
+            or optimizer == optimize.dycors
+        ):
+            acquisitionFuncIter = deepcopy(acquisitionFunc)
+            res = optimizer(
+                objf,
+                bounds=bounds,
+                maxeval=maxEval,
+                surrogateModel=modelIter,
+                acquisitionFunc=acquisitionFuncIter,
+                disp=disp,
+            )
+        else:
+            res = optimizer(
+                objf,
+                bounds=bounds,
+                maxeval=maxEval,
+                surrogateModel=modelIter,
+                disp=disp,
+            )
         optres.append(res)
 
     return optres
@@ -185,17 +197,7 @@ def test_cptv(func: str) -> None:
                 rbf.RbfKernel.CUBIC, filter=rbf.MedianLpfFilter()
             ),
             "optimizer": optimize.cptvl,
-            "acquisition": acquisition.CoordinatePerturbation(
-                0,
-                sampling.NormalSampler(
-                    1,
-                    sigma=0.2,
-                    sigma_min=0.2 * 0.5**5,
-                    sigma_max=0.2,
-                    strategy=sampling.SamplingStrategy.DDS,
-                ),
-                [0.3, 0.5, 0.8, 0.95],
-            ),
+            "acquisition": None,
         },
         1,
         disp=False,
@@ -251,23 +253,13 @@ if __name__ == "__main__":
                 rbf.RbfKernel.CUBIC, filter=rbf.MedianLpfFilter()
             ),
             "optimizer": optimize.cptvl,
-            "acquisition": acquisition.CoordinatePerturbation(
-                0,
-                sampling.NormalSampler(
-                    1,
-                    sigma=0.2,
-                    sigma_min=0.2 * 0.5**5,
-                    sigma_max=0.2,
-                    strategy=sampling.SamplingStrategy.DDS,
-                ),
-                [0.3, 0.5, 0.8, 0.95],
-            ),
+            "acquisition": None,
         },
         # {
         #     "model": rbf.RbfModel(
         #         rbf.RbfKernel.CUBIC, filter=rbf.MedianLpfFilter()
         #     ),
-        #     "optimizer": optimize.target_value_optimization,
+        #     "optimizer": optimize.rbf_solve,
         #     "acquisition": acquisition.MinimizeSurrogate(
         #         1, 0.005 * np.sqrt(2.0)
         #     ),

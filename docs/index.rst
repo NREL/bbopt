@@ -10,7 +10,8 @@ Welcome to Black-box Opt's documentation!
    :maxdepth: 2
    :caption: Contents:
 
-   modules
+   blackboxopt
+   tests
 
 Indices and tables
 ==================

@@ -20,10 +20,26 @@ tests.gosac\_benchmark module
    :undoc-members:
    :show-inheritance:
 
+tests.test\_acquisition module
+-------------------------------
+
+.. automodule:: tests.test_acquisition
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 tests.test\_gosac\_bench module
 -------------------------------
 
 .. automodule:: tests.test_gosac_bench
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+tests.test\_gp module
+---------------------------
+
+.. automodule:: tests.test_gp
    :members:
    :undoc-members:
    :show-inheritance:

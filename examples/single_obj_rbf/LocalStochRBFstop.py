@@ -31,9 +31,9 @@ __deprecated__ = False
 
 from optprogram1 import read_check_data_file
 from blackboxopt.rbf import RbfKernel, RbfModel, MedianLpfFilter
-from blackboxopt.optimize import stochastic_response_surface
+from blackboxopt.optimize import surrogate_optimization
 from blackboxopt.sampling import NormalSampler, Sampler, SamplingStrategy
-from blackboxopt.acquisition import CoordinatePerturbation
+from blackboxopt.acquisition import WeightedAcquisition
 import numpy as np
 
 if __name__ == "__main__":
@@ -45,7 +45,7 @@ if __name__ == "__main__":
     maxeval = 200
     Ntrials = 3
     PlotResult = 1
-    NumberNewSamples = 2
+    batchSize = 2
     data = read_check_data_file(data_file)
     nCand = 500 * data.dim
     phifunction = RbfKernel.CUBIC
@@ -68,10 +68,10 @@ if __name__ == "__main__":
 
     rank_P = 0
     while rank_P != data.dim + 1:
-        samples = Sampler(m).get_slhd_sample(bounds)
-        P = np.concatenate((np.ones((m, 1)), samples), axis=1)
+        sample = Sampler(m).get_slhd_sample(bounds)
+        P = np.concatenate((np.ones((m, 1)), sample), axis=1)
         rank_P = np.linalg.matrix_rank(P)
-    samples = np.array(
+    sample = np.array(
         [
             [0.0625, 0.3125, 0.0625],
             [0.1875, 0.5625, 0.8125],
@@ -83,7 +83,7 @@ if __name__ == "__main__":
             [0.9375, 0.6875, 0.9375],
         ]
     )
-    samples = np.add(np.multiply(data.xup - data.xlow, samples), data.xlow)
+    sample = np.add(np.multiply(data.xup - data.xlow, sample), data.xlow)
 
     print(data.xlow)
     print(data.xup)
@@ -91,19 +91,18 @@ if __name__ == "__main__":
     print(data.dim)
     print(nCand)
     print(phifunction)
-    print(samples)
+    print(sample)
     print("LocalStochRBFstop Start")
 
     rbfModel = RbfModel(phifunction, filter=MedianLpfFilter())
+    rbfModel.update(sample, data.objfunction(sample))
 
-    optres = stochastic_response_surface(
+    optres = surrogate_optimization(
         data.objfunction,
         bounds=bounds,
         maxeval=maxeval - numevals,
         surrogateModel=rbfModel,
-        samples=samples,
-        acquisitionFunc=CoordinatePerturbation(
-            maxeval - numevals,
+        acquisitionFunc=WeightedAcquisition(
             NormalSampler(
                 nCand,
                 sigma=0.2,
@@ -113,18 +112,20 @@ if __name__ == "__main__":
             ),
             weightpattern=[0.3, 0.5],
             reltol=1e-3,
+            maxeval=maxeval - numevals,
         ),
-        newSamplesPerIteration=NumberNewSamples,
+        batchSize=batchSize,
+        termination="nFailTol",
     )
 
     print("Results")
     print("xlow", data.xlow)
     print("xup", data.xup)
-    print("S", optres.samples.shape)
-    print("m", optres.samples.shape[0])
-    print("Y", optres.fsamples.shape)
+    print("S", optres.sample.shape)
+    print("m", optres.sample.shape[0])
+    print("Y", optres.fsample.shape)
     print("xbest", optres.x)
     print("Fbest", optres.fx)
-    print("lambda", rbfModel.nsamples())
+    print("lambda", rbfModel.ntrain())
     print("ctail", rbfModel.pdim())
     print("NumberFevals", optres.nfev)

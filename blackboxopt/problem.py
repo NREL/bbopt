@@ -34,20 +34,11 @@ from pymoo.core.duplicate import DefaultDuplicateElimination
 
 
 def _get_vars(bounds, iindex=()) -> dict:
-    """Get the type of variables for the problem.
+    """Get the type of variables for a problem.
 
-    Parameters
-    ----------
-    bounds : tuple or list
-        Bounds for the variables.
-    iindex : sequence, optional
-        Index of the integer variables, by default ().
-        If empty, all variables are real.
-
-    Returns
-    -------
-    dict
-        Dictionary with the variable types in the format expected by pymoo.
+    :param bounds: Bounds for the variables.
+    :param iindex: Indices of the input space that are integer.
+    :return: Dictionary with the variable types in the format expected by pymoo.
     """
     dim = len(bounds)
     vars = {
@@ -62,15 +53,8 @@ def _dict_to_array(xdict: Union[dict, list[dict]]) -> np.ndarray:
 
     Also accepts a list of dictionaries, in which case it returns a 2D array.
 
-    Parameters
-    ----------
-    xdict : dict or list of dict
-        Dictionary with the variables or list of dictionaries.
-
-    Returns
-    -------
-    np.ndarray
-        Array with the values of the variables.
+    :param xdict: Dictionary with the variables or list of dictionaries.
+    :return: Array with the values of the variables.
     """
     if isinstance(xdict, dict):
         return np.array([xdict[i] for i in sorted(xdict)])
@@ -80,10 +64,30 @@ def _dict_to_array(xdict: Union[dict, list[dict]]) -> np.ndarray:
 
 
 class BBOptDuplicateElimination(DefaultDuplicateElimination):
+    """Specialization of DefaultDuplicateElimination for better performance
+    in the problems we have.
+
+    The particularity in this software is that the labels for the variables
+    always go from 0 to n-1, so we can rely on that information to using
+    ElementwiseDuplicateElimination.
+    """
+
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
 
     def calc_dist(self, pop, other=None):
+        """Compute the distances between the members of two populations.
+
+        If `other` is None, compute the distance between `pop` with itself.
+
+        This implementation uses the built-in Python :func:`sorted()`
+        function for sorting the keys of the dictionary. This is faster than
+        using the runtime :attr:`func()`.
+
+        :param pop: First population of size m.
+        :param other: Second population of size n.
+        :return: m-by-n matrix with the distances.
+        """
         X = np.array([[xi.X[i] for i in sorted(xi.X)] for xi in pop])
         if other is None:
             D = cdist(X, X)
@@ -97,12 +101,21 @@ class BBOptDuplicateElimination(DefaultDuplicateElimination):
 class ProblemWithConstraint(Problem):
     """Mixed-integer problem with constraints for pymoo.
 
-    Attributes
-    ----------
-    objfunc : callable
+    :param objfunc: Objective function. Stored in :attr:`objfunc`.
+    :param gfunc: Constraint function. Stored in :attr:`gfunc`.
+    :param bounds: List with the limits [x_min,x_max] of each direction x in
+        the search space.
+    :param iindex: Indices of the input space that are integer.
+    :param n_ieq_constr: Number of inequality constraints.
+
+    .. attribute:: objfunc
+
         Objective function.
-    gfunc : callable
+
+    .. attribute:: gfunc
+
         Constraint function.
+
     """
 
     def __init__(self, objfunc, gfunc, bounds, iindex, n_ieq_constr: int = 1):
@@ -111,7 +124,7 @@ class ProblemWithConstraint(Problem):
         self.gfunc = gfunc
         super().__init__(vars=vars, n_obj=1, n_ieq_constr=n_ieq_constr)
 
-    def _evaluate(self, X, out, *args, **kwargs):
+    def _evaluate(self, X, out):
         x = _dict_to_array(X)
         out["F"] = self.objfunc(x)
         out["G"] = self.gfunc(x)
@@ -120,10 +133,15 @@ class ProblemWithConstraint(Problem):
 class ProblemNoConstraint(Problem):
     """Mixed-integer problem with no constraints for pymoo.
 
-    Attributes
-    ----------
-    objfunc : callable
+    :param objfunc: Objective function. Stored in :attr:`objfunc`.
+    :param bounds: List with the limits [x_min,x_max] of each direction x in
+        the search space.
+    :param iindex: Indices of the input space that are integer.
+
+    .. attribute:: objfunc
+
         Objective function.
+
     """
 
     def __init__(self, objfunc, bounds, iindex):
@@ -131,7 +149,7 @@ class ProblemNoConstraint(Problem):
         self.objfunc = objfunc
         super().__init__(vars=vars, n_obj=1)
 
-    def _evaluate(self, X, out, *args, **kwargs):
+    def _evaluate(self, X, out):
         x = _dict_to_array(X)
         out["F"] = self.objfunc(x)
 
@@ -141,12 +159,20 @@ class MultiobjTVProblem(Problem):
     entry-wise absolute difference between the surrogate models and the target
     values.
 
-    Attributes
-    ----------
-    surrogateModels : list
+    :param surrogateModels: List of surrogate models. Stored in
+        :attr:`surrogateModels`.
+    :param tau: List of target values. Stored in :attr:`tau`.
+    :param bounds: List with the limits [x_min,x_max] of each direction x in
+        the search space.
+
+    .. attribute:: surrogateModels
+
         List of surrogate models.
-    tau : list
+
+    .. attribute:: tau
+
         List of target values.
+
     """
 
     def __init__(self, surrogateModels, tau, bounds):
@@ -169,10 +195,15 @@ class MultiobjSurrogateProblem(Problem):
     """Mixed-integer multi-objective problem whose objective functions is the
     evaluation function of the surrogate models.
 
-    Attributes
-    ----------
-    surrogateModels : list
+    :param surrogateModels: List of surrogate models. Stored in
+        :attr:`surrogateModels`.
+    :param bounds: List with the limits [x_min,x_max] of each direction x in
+        the search space.
+
+    .. attribute:: surrogateModels
+
         List of surrogate models.
+
     """
 
     def __init__(self, surrogateModels, bounds):

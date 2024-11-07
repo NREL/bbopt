@@ -38,12 +38,12 @@ __deprecated__ = False
 from copy import deepcopy
 import importlib
 from math import sqrt
+from typing import Optional
 import numpy as np
 import matplotlib.pyplot as plt
-import pickle as p
 from blackboxopt import rbf, optimize, sampling
 from blackboxopt.acquisition import (
-    CoordinatePerturbation,
+    WeightedAcquisition,
     TargetValueAcquisition,
     AcquisitionFunction,
     MinimizeSurrogate,
@@ -53,14 +53,14 @@ from data import Data
 
 def read_and_run(
     data_file: str,
-    acquisitionFunc: AcquisitionFunction,
+    acquisitionFunc: Optional[AcquisitionFunction] = None,
     maxeval: int = 0,
     Ntrials: int = 0,
-    NumberNewSamples: int = 0,
+    batchSize: int = 0,
     rbf_type: rbf.RbfKernel = rbf.RbfKernel.CUBIC,
-    filter: rbf.RbfFilter = rbf.RbfFilter(),
+    filter: rbf.RbfFilter = rbf.MedianLpfFilter(),
     PlotResult: bool = True,
-    optim_func=optimize.multistart_stochastic_response_surface,
+    optim_func=optimize.multistart_msrs,
 ) -> list[optimize.OptimizeResult]:
     """Perform the optimization, save the solution and plot.
 
@@ -80,8 +80,8 @@ def read_and_run(
         Maximum number of allowed function evaluations per trial.
     Ntrials : int, optional
         Number of trials.
-    NumberNewSamples : int, optional
-        Number of new samples per step of the optimization algorithm.
+    batchSize : int, optional
+        Number of new sample points per step of the optimization algorithm.
     rbf_type : rbf.RbfKernel, optional
         Type of RBF to be used.
     PlotResult : bool, optional
@@ -94,8 +94,8 @@ def read_and_run(
     """
     ## Start input check
     data = read_check_data_file(data_file)
-    maxeval, Ntrials, NumberNewSamples = check_set_parameters(
-        data, maxeval, Ntrials, NumberNewSamples
+    maxeval, Ntrials, batchSize = check_set_parameters(
+        data, maxeval, Ntrials, batchSize
     )
     ## End input check
 
@@ -107,7 +107,7 @@ def read_and_run(
         acquisitionFuncIter = deepcopy(acquisitionFunc)
 
         # # Uncomment to compare with Surrogates.jl
-        # rbfModel.update_samples(
+        # rbfModel.update_xtrain(
         #     np.array(
         #         [
         #             [0.3125, 0.8125, 0.8125],
@@ -124,8 +124,8 @@ def read_and_run(
 
         # Call the surrogate optimization function
         if (
-            optim_func == optimize.multistart_stochastic_response_surface
-            or optim_func == optimize.stochastic_response_surface
+            optim_func == optimize.surrogate_optimization
+            or optim_func == optimize.dycors
         ):
             opt = optim_func(
                 data.objfunction,
@@ -135,22 +135,15 @@ def read_and_run(
                 maxeval=maxeval,
                 surrogateModel=rbfModel,
                 acquisitionFunc=acquisitionFuncIter,
-                newSamplesPerIteration=NumberNewSamples,
+                batchSize=batchSize,
                 disp=True,
             )
-        elif optim_func == optimize.target_value_optimization:
-            opt = optim_func(
-                data.objfunction,
-                bounds=tuple(
-                    (data.xlow[i], data.xup[i]) for i in range(data.dim)
-                ),
-                maxeval=maxeval,
-                acquisitionFunc=acquisitionFuncIter,
-                newSamplesPerIteration=NumberNewSamples,
-                surrogateModel=rbfModel,
-                disp=True,
-            )
-        elif optim_func == optimize.cptv or optim_func == optimize.cptvl:
+        elif (
+            optim_func == optimize.rbf_solve
+            or optim_func == optimize.multistart_msrs
+            or optim_func == optimize.cptv
+            or optim_func == optimize.cptvl
+        ):
             opt = optim_func(
                 data.objfunction,
                 bounds=tuple(
@@ -158,19 +151,12 @@ def read_and_run(
                 ),
                 maxeval=maxeval,
                 surrogateModel=rbfModel,
-                acquisitionFunc=acquisitionFuncIter,
                 disp=True,
             )
         else:
             raise ValueError("Invalid optimization function.")
         optres.append(opt)
     ## End Optimization
-
-    # save solution to file
-    f = open("Results.data", mode="wb")
-    p.dump(optres, f)
-    f.close()
-    # TODO: Is it the best option?
 
     ## Plot Result
     if PlotResult:
@@ -191,10 +177,10 @@ def plot_results(optres: list[optimize.OptimizeResult], filename: str):
         Path for the plot file.
     """
     Ntrials = len(optres)
-    maxeval = min([len(optres[i].fsamples) for i in range(Ntrials)])
+    maxeval = min([len(optres[i].fsample) for i in range(Ntrials)])
     Y_cur_best = np.empty((maxeval, Ntrials))
     for ii in range(Ntrials):  # go through all trials
-        Y_cur = optres[ii].fsamples
+        Y_cur = optres[ii].fsample
         Y_cur_best[0, ii] = Y_cur[0]
         for j in range(1, maxeval):
             if Y_cur[j] < Y_cur_best[j - 1, ii]:
@@ -244,7 +230,7 @@ def check_set_parameters(
     data: Data,
     maxeval: int = 0,
     Ntrials: int = 0,
-    NumberNewSamples: int = 0,
+    batchSize: int = 0,
 ):
     """Check and set the parameters for the optimization.
 
@@ -256,8 +242,8 @@ def check_set_parameters(
         Maximum number of allowed function evaluations per trial.
     Ntrials : int, optional
         Number of trials.
-    NumberNewSamples : int, optional
-        Number of new samples per step of the optimization algorithm.
+    batchSize : int, optional
+        Number of new sample points per step of the optimization algorithm.
 
     Returns
     -------
@@ -265,8 +251,8 @@ def check_set_parameters(
         Maximum number of allowed function evaluations per trial.
     Ntrials : int
         Number of trials.
-    NumberNewSamples : int
-        Number of new samples per step of the optimization algorithm.
+    batchSize : int
+        Number of new sample points per step of the optimization algorithm.
     """
 
     if maxeval == 0:
@@ -291,26 +277,25 @@ def check_set_parameters(
             "Maximal number of trials must be positive integer.\n"
         )
 
-    if NumberNewSamples == 0:
+    if batchSize == 0:
         print(
             """No number of desired new sample sites given.\
-                \n\tI use default value NumberNewSamples=1."""
+                \n\tI use default value batchSize=1."""
         )
-        NumberNewSamples = 1
-    if not isinstance(NumberNewSamples, int) or NumberNewSamples < 0:
+        batchSize = 1
+    if not isinstance(batchSize, int) or batchSize < 0:
         raise ValueError(
             "Number of new sample sites must be positive integer.\n"
         )
 
-    return maxeval, Ntrials, NumberNewSamples
+    return maxeval, Ntrials, batchSize
 
 
 def main(args):
     if args.config == 1:
         optres = read_and_run(
             data_file="datainput_Branin",
-            acquisitionFunc=CoordinatePerturbation(
-                200,
+            acquisitionFunc=WeightedAcquisition(
                 sampling.NormalSampler(
                     1000,
                     sigma=0.2,
@@ -321,18 +306,18 @@ def main(args):
                 [
                     0.95,
                 ],
+                maxeval=200,
             ),
             filter=rbf.MedianLpfFilter(),
             maxeval=200,
             Ntrials=3,
-            NumberNewSamples=1,
+            batchSize=1,
             PlotResult=True,
         )
     elif args.config == 2:
         optres = read_and_run(
             data_file="datainput_hartman3",
-            acquisitionFunc=CoordinatePerturbation(
-                200,
+            acquisitionFunc=WeightedAcquisition(
                 sampling.NormalSampler(
                     300,
                     sigma=0.2,
@@ -341,39 +326,30 @@ def main(args):
                     strategy=sampling.SamplingStrategy.DDS,
                 ),
                 [0.3, 0.5, 0.8, 0.95],
+                maxeval=200,
             ),
             filter=rbf.MedianLpfFilter(),
             maxeval=200,
             Ntrials=1,
-            NumberNewSamples=1,
+            batchSize=1,
             PlotResult=True,
         )
     elif args.config == 3:
         optres = read_and_run(
             data_file="datainput_BraninWithInteger",
-            acquisitionFunc=CoordinatePerturbation(
-                100,
-                sampling.NormalSampler(
-                    200,
-                    sigma=0.2,
-                    sigma_min=0.2 * 0.5**5,
-                    sigma_max=0.2,
-                    strategy=sampling.SamplingStrategy.DDS,
-                ),
-                [0.3, 0.5, 0.8, 0.95],
-            ),
-            filter=rbf.RbfFilter(),
+            acquisitionFunc=None,
+            filter=rbf.MedianLpfFilter(),
             maxeval=100,
             Ntrials=3,
-            NumberNewSamples=1,
+            batchSize=1,
             rbf_type=rbf.RbfKernel.THINPLATE,
             PlotResult=True,
+            optim_func=optimize.dycors,
         )
     elif args.config == 4:
         optres = read_and_run(
             data_file="datainput_BraninWithInteger",
-            acquisitionFunc=CoordinatePerturbation(
-                100,
+            acquisitionFunc=WeightedAcquisition(
                 sampling.NormalSampler(
                     200,
                     sigma=0.2,
@@ -382,45 +358,35 @@ def main(args):
                     strategy=sampling.SamplingStrategy.DDS_UNIFORM,
                 ),
                 [0.3, 0.5, 0.8, 0.95],
+                maxeval=100,
             ),
-            filter=rbf.RbfFilter(),
+            filter=rbf.MedianLpfFilter(),
             maxeval=100,
             Ntrials=3,
-            NumberNewSamples=1,
+            batchSize=1,
             rbf_type=rbf.RbfKernel.THINPLATE,
             PlotResult=True,
-            optim_func=optimize.stochastic_response_surface,
+            optim_func=optimize.surrogate_optimization,
         )
     elif args.config == 5:
         optres = read_and_run(
             data_file="datainput_BraninWithInteger",
-            acquisitionFunc=TargetValueAcquisition(0.001),
-            filter=rbf.RbfFilter(),
+            acquisitionFunc=TargetValueAcquisition(),
+            filter=rbf.MedianLpfFilter(),
             maxeval=100,
             Ntrials=3,
-            NumberNewSamples=1,
+            batchSize=1,
             rbf_type=rbf.RbfKernel.THINPLATE,
             PlotResult=True,
-            optim_func=optimize.target_value_optimization,
+            optim_func=optimize.rbf_solve,
         )
     elif args.config == 6:
         optres = read_and_run(
             data_file="datainput_BraninWithInteger",
-            acquisitionFunc=CoordinatePerturbation(
-                100,
-                sampling.NormalSampler(
-                    1000,
-                    sigma=0.2,
-                    sigma_min=0.2 * 0.5**6,
-                    sigma_max=0.2,
-                    strategy=sampling.SamplingStrategy.DDS,
-                ),
-                [0.3, 0.5, 0.8, 0.95],
-            ),
-            filter=rbf.RbfFilter(),
+            filter=rbf.MedianLpfFilter(),
             maxeval=100,
             Ntrials=3,
-            NumberNewSamples=1,
+            batchSize=1,
             rbf_type=rbf.RbfKernel.THINPLATE,
             PlotResult=True,
             optim_func=optimize.cptv,
@@ -428,21 +394,10 @@ def main(args):
     elif args.config == 7:
         optres = read_and_run(
             data_file="datainput_BraninWithInteger",
-            acquisitionFunc=CoordinatePerturbation(
-                100,
-                sampling.NormalSampler(
-                    1000,
-                    sigma=0.2,
-                    sigma_min=0.2 * 0.5**6,
-                    sigma_max=0.2,
-                    strategy=sampling.SamplingStrategy.DDS,
-                ),
-                [0.3, 0.5, 0.8, 0.95],
-            ),
-            filter=rbf.RbfFilter(),
+            filter=rbf.MedianLpfFilter(),
             maxeval=100,
             Ntrials=3,
-            NumberNewSamples=1,
+            batchSize=1,
             rbf_type=rbf.RbfKernel.THINPLATE,
             PlotResult=True,
             optim_func=optimize.cptvl,
@@ -451,13 +406,13 @@ def main(args):
         optres = read_and_run(
             data_file="datainput_BraninWithInteger",
             acquisitionFunc=MinimizeSurrogate(100, 0.005 * sqrt(2)),
-            filter=rbf.RbfFilter(),
+            filter=rbf.MedianLpfFilter(),
             maxeval=100,
             Ntrials=3,
-            NumberNewSamples=10,
+            batchSize=10,
             rbf_type=rbf.RbfKernel.THINPLATE,
             PlotResult=True,
-            optim_func=optimize.target_value_optimization,
+            optim_func=optimize.surrogate_optimization,
         )
     else:
         raise ValueError("Invalid configuration number.")
