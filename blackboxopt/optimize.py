@@ -302,7 +302,7 @@ def initialize_surrogate_constraints(
     return out
 
 
-def response_surface(
+def surrogate_optimization(
     fun,
     bounds,
     maxeval: int,
@@ -319,8 +319,8 @@ def response_surface(
     disp: bool = False,
     callback: Optional[Callable[[OptimizeResult], None]] = None,
 ) -> OptimizeResult:
-    """Minimize a scalar function of one or more variables using a response
-    surface model approach.
+    """Minimize a scalar function of one or more variables using a surrogate
+    model and an acquisition strategy.
 
     This is a more generic implementation of the RBF algorithm described in
     [#]_, using multiple ideas from [#]_ especially in what concerns
@@ -567,9 +567,9 @@ def multistart_msrs(
     surface model approach with restarts.
 
     This implementation generalizes the algorithms Multistart LMSRS from [#]_.
-    The general algorithm calls :func:`response_surface()` successive
+    The general algorithm calls :func:`surrogate_optimization()` successive
     times until there are no more function evaluations available. The first
-    time :func:`response_surface()` is called with the given, if any, trained
+    time :func:`surrogate_optimization()` is called with the given, if any, trained
     surrogate model. Other function calls use an empty surrogate model. This is
     done to enable truly different starting samples each time.
 
@@ -607,7 +607,7 @@ def multistart_msrs(
     # do until max number of f-evals reached
     while out.nfev < maxeval:
         # Run local optimization
-        out_local = response_surface(
+        out_local = surrogate_optimization(
             fun,
             bounds,
             maxeval - out.nfev,
@@ -660,7 +660,7 @@ def dycors(
 
     Implementation of the DYCORS (DYnamic COordinate search using Response
     Surface models) algorithm proposed in [#]_. That is a wrapper to
-    :func:`response_surface()`.
+    :func:`surrogate_optimization()`.
 
     :param fun: The objective function to be minimized.
     :param bounds: List with the limits [x_min,x_max] of each direction x in the
@@ -710,7 +710,7 @@ def dycors(
             maxeval=maxeval - (m0 if m0 > 0 else m_for_surrogate),
         )
 
-    return response_surface(
+    return surrogate_optimization(
         fun,
         bounds,
         maxeval,
@@ -746,12 +746,12 @@ def cptv(
     This is an implementation of the algorithm desribed in [#]_. The algorithm
     uses a sequence of different acquisition functions as follows:
 
-        1. CP step: :func:`response_surface()` with `acquisitionFunc`. Ideally,
+        1. CP step: :func:`surrogate_optimization()` with `acquisitionFunc`. Ideally,
             this step would use a :class:`WeightedAcquisition` object with a
             :class:`NormalSampler` sampler. The implementation is configured to
             use the acquisition proposed by Müller (2016) by default.
 
-        2. TV step: :func:`response_surface()` with a
+        2. TV step: :func:`surrogate_optimization()` with a
             :class:`TargetValueAcquisition` object.
 
         3. Local step (only when `useLocalSearch` is True): Runs a local
@@ -857,7 +857,7 @@ def cptv(
         and consecutiveQuickFailures < consecutiveQuickFailuresTol
     ):
         if method == 0:
-            out_local = response_surface(
+            out_local = surrogate_optimization(
                 fun,
                 bounds,
                 maxeval - out.nfev,
@@ -906,7 +906,7 @@ def cptv(
             else:
                 method = 1
         elif method == 1:
-            out_local = response_surface(
+            out_local = surrogate_optimization(
                 fun,
                 bounds,
                 maxeval - out.nfev,
@@ -947,7 +947,9 @@ def cptv(
                     localSearchCounter = 0
                 else:
                     localSearchCounter += 1
-        else:
+        elif out.nfev <= maxeval - 2 * (
+            dim + 1
+        ):  # Gives at least 1 iteration for L-BFGS-B
 
             def func_continuous_search(x):
                 x_ = out.x.copy()
@@ -957,11 +959,15 @@ def cptv(
             out_local_ = minimize(
                 func_continuous_search,
                 out.x[cindex],
-                method="L-BFGS-B",
+                method="L-BFGS-B",  # Use d+1 fevals per iteration
                 bounds=cbounds,
-                options={"maxfun": maxeval - out.nfev, "disp": False},
+                options={
+                    "maxfun": (maxeval - out.nfev)
+                    % (dim + 1),  # Avoids going over maxeval
+                    "disp": False,
+                },
             )
-            assert out_local.nfev <= maxeval - out.nfev
+            assert out_local.nfev <= (maxeval - out.nfev)
 
             out_local = OptimizeResult(
                 x=out.x.copy(),
@@ -992,6 +998,10 @@ def cptv(
 
             # Switch method
             method = 0
+
+        else:
+            method = 0
+            continue  # Continue without updating anything
 
         # Update knew
         knew = out_local.sample.shape[0]

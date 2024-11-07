@@ -105,7 +105,7 @@ algorithms["CPTVl"] = {
 }
 algorithms["MLSL"] = {
     "model": rbf.RbfModel(rbf.RbfKernel.CUBIC, filter=rbf.MedianLpfFilter()),
-    "optimizer": optimize.response_surface,
+    "optimizer": optimize.surrogate_optimization,
     "acquisition": acquisition.MinimizeSurrogate(1, 0.005 * np.sqrt(2.0)),
 }
 algorithms["GP"] = {

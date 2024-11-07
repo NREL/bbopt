@@ -23,9 +23,9 @@ release = "0.4.2"
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
 
 extensions = [
-    "sphinx.ext.autodoc",
-    "sphinx_autodoc_typehints",
-    "sphinx.ext.mathjax",
+    "sphinx.ext.autodoc", # This is for automatic gen of rst and other things
+    "sphinx_autodoc_typehints", # Including typehints automatically in the docs
+    "sphinx.ext.mathjax", # This is for LaTeX
 ]
 
 # General config

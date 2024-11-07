@@ -153,7 +153,7 @@ def run_optimizer(
     for i in range(nRuns):
         modelIter = deepcopy(model)
         if (
-            optimizer == optimize.response_surface
+            optimizer == optimize.surrogate_optimization
             or optimizer == optimize.dycors
         ):
             acquisitionFuncIter = deepcopy(acquisitionFunc)

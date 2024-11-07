@@ -31,7 +31,7 @@ __deprecated__ = False
 
 from optprogram1 import read_check_data_file
 from blackboxopt.rbf import RbfKernel, RbfModel, MedianLpfFilter
-from blackboxopt.optimize import response_surface
+from blackboxopt.optimize import surrogate_optimization
 from blackboxopt.sampling import NormalSampler, Sampler, SamplingStrategy
 from blackboxopt.acquisition import WeightedAcquisition
 import numpy as np
@@ -97,7 +97,7 @@ if __name__ == "__main__":
     rbfModel = RbfModel(phifunction, filter=MedianLpfFilter())
     rbfModel.update(sample, data.objfunction(sample))
 
-    optres = response_surface(
+    optres = surrogate_optimization(
         data.objfunction,
         bounds=bounds,
         maxeval=maxeval - numevals,

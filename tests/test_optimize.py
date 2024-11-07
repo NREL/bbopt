@@ -30,7 +30,7 @@ from blackboxopt.optimize import (
     bayesian_optimization,
     multistart_msrs,
     dycors,
-    response_surface,
+    surrogate_optimization,
     cptv,
     cptvl,
 )
@@ -43,7 +43,7 @@ from blackboxopt.acquisition import MaximizeEI
     [
         dycors,
         multistart_msrs,
-        response_surface,
+        surrogate_optimization,
         cptv,
         cptvl,
         bayesian_optimization,
@@ -81,7 +81,7 @@ def test_callback(minimize):
     [
         dycors,
         multistart_msrs,
-        response_surface,
+        surrogate_optimization,
         cptv,
         cptvl,
         bayesian_optimization,

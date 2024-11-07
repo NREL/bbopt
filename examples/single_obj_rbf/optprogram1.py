@@ -124,7 +124,7 @@ def read_and_run(
 
         # Call the surrogate optimization function
         if (
-            optim_func == optimize.response_surface
+            optim_func == optimize.surrogate_optimization
             or optim_func == optimize.dycors
         ):
             opt = optim_func(
@@ -366,7 +366,7 @@ def main(args):
             batchSize=1,
             rbf_type=rbf.RbfKernel.THINPLATE,
             PlotResult=True,
-            optim_func=optimize.response_surface,
+            optim_func=optimize.surrogate_optimization,
         )
     elif args.config == 5:
         optres = read_and_run(
@@ -412,7 +412,7 @@ def main(args):
             batchSize=10,
             rbf_type=rbf.RbfKernel.THINPLATE,
             PlotResult=True,
-            optim_func=optimize.response_surface,
+            optim_func=optimize.surrogate_optimization,
         )
     else:
         raise ValueError("Invalid configuration number.")

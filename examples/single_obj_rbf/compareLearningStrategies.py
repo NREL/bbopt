@@ -109,7 +109,7 @@ def read_and_run(
 
         # Call the surrogate optimization function
         if (
-            optim_func == optimize.response_surface
+            optim_func == optimize.surrogate_optimization
             or optim_func == optimize.dycors
         ):
             opt = optim_func(
@@ -338,7 +338,7 @@ if __name__ == "__main__":
             Ntrials=3,
             batchSize=1,
             rbf_type=rbf.RbfKernel.THINPLATE,
-            optim_func=optimize.response_surface,
+            optim_func=optimize.surrogate_optimization,
         )
     if 5 in comparisonList:
         strategyName.append("TargetValue")
@@ -383,7 +383,7 @@ if __name__ == "__main__":
             Ntrials=3,
             batchSize=10,
             rbf_type=rbf.RbfKernel.THINPLATE,
-            optim_func=optimize.response_surface,
+            optim_func=optimize.surrogate_optimization,
         )
 
     ## Plot Results
