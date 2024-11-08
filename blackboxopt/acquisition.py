@@ -1887,7 +1887,7 @@ class MaximizeEI(AcquisitionFunction):
             eiCand = (eiCand - eiCand.min()) / (eiCand.max() - eiCand.min())
         else:
             eiCand = np.ones_like(eiCand)
-        Kss = (surrogateModel.get_kernel())(x, x)
+        Kss = surrogateModel.eval_kernel(x)
 
         # Score to be maximized and vector with the indexes of the candidates
         # chosen.

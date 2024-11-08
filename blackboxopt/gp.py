@@ -121,11 +121,23 @@ class GaussianProcess(GaussianProcessRegressor):
         else:
             return self.scaler.inverse_transform(self.X_train_)
 
-    def get_kernel(self):
-        """Get the kernel used for prediction. The structure of the kernel is
-        the same as the one passed as parameter but with optimized
-        hyperparameters."""
-        return self.kernel_
+    def eval_kernel(self, x, y=None):
+        """Evaluate the kernel function at a pair (x,y).
+        
+        The structure of the kernel is the same as the one passed as parameter
+        but with optimized hyperparameters.
+        
+        :param x: First entry in the tuple (x,y).
+        :param y: Second entry in the tuple (x,y). If None, use x.
+        """
+        if self.scaler is None:
+            return self.kernel_(x,x) if y is None else self.kernel_(x,y)
+        else:
+            xs = self.scaler.transform(x)
+            if y is None:
+                return self.kernel_(xs,xs)
+            else:
+                return self.kernel_(xs,self.scaler.transform(y))
 
     def min_design_space_size(self, dim: int) -> int:
         """Return the minimum design space size for a given space dimension."""
