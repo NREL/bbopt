@@ -9,10 +9,10 @@ license = {file = "LICENSE"}
 readme = "README.md"
 requires-python = ">=3.9"
 dependencies = [
-    "numpy>=1.22.4,<2.0.0",
-    "scipy>=1.11.4",
-    "pymoo>=0.6.1.1",
-    "scikit-learn>=1.5.2",
+    "numpy<2.0.0",
+    "scipy",
+    "pymoo",
+    "scikit-learn",
 ]
 
 [build-system]
@@ -24,21 +24,23 @@ distribution = true
 
 [tool.pdm.dev-dependencies]
 test = [
-    "pytest>=7.4.3",
+    "pytest",
     "rpy2==3.5.1",
 ]
 lint = [
-    "ruff>=0.3.5",
+    "ruff",
 ]
 doc = [
-    "sphinx>=7.2.6",
-    "sphinx-rtd-theme>=2.0.0",
-    "sphinx-autodoc-typehints>=2.3.0",
+    "sphinx",
+    "sphinx-rtd-theme",
+    "sphinx-autodoc-typehints",
 ]
 example = [
-    "jupyter>=1.0.0",
-    "matplotlib>=3.8.2",
-    "snakeviz>=2.2.0",
+    "jupyter",
+    "matplotlib",
+    "snakeviz",
+    "pandas",
+    "pyarrow"
 ]
 
 [tool.pdm.build]
