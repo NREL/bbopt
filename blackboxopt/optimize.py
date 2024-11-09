@@ -193,26 +193,35 @@ def initialize_moo_surrogate(
 
     # Number of initial sample points
     m0 = surrogateModels[0].ntrain()
+    m_for_surrogate = surrogateModels[0].min_design_space_size(
+        dim
+    )  # Smallest sample for a valid surrogate
     m = 0
 
     # Add new sample to the surrogate model
     if m0 == 0:
-        # Initialize surrogate model
-        # TODO: Improve me! The initial design must make sense for all
-        # surrogate models. This has to do with the type of the surrogate model.
-        surrogateModels[0].create_initial_design(dim, bounds, mineval, maxeval)
-        for i in range(1, objdim):
-            surrogateModels[i].update_xtrain(surrogateModels[0].xtrain())
-
-        # Update m
-        m = surrogateModels[0].ntrain()
-
-        # Add new sample to the output
-        out.sample[0:m, :] = surrogateModels[0].xtrain()[m0:, :]
+        # Create a new sample with SLHD
+        m = min(maxeval, max(mineval, 2 * m_for_surrogate))
+        out.sample[0:m] = Sampler(m).get_slhd_sample(
+            bounds, iindex=surrogateModels[0].iindex
+        )
+        if m >= 2 * m_for_surrogate:
+            count = 0
+            while not surrogateModels[0].check_initial_design(out.sample[0:m]):
+                out.sample[0:m] = Sampler(m).get_slhd_sample(
+                    bounds, iindex=surrogateModels[0].iindex
+                )
+                count += 1
+                if count > 100:
+                    raise RuntimeError("Cannot create valid initial design")
 
         # Compute f(sample)
-        out.fsample[0:m, :] = fun(out.sample[0:m, :])
+        out.fsample[0:m] = fun(out.sample[0:m])
         out.nfev = m
+
+        # Update surrogate
+        for i in range(objdim):
+            surrogateModels[i].update(out.sample[0:m], out.fsample[0:m, i])
 
     # Create the pareto front
     fallpoints = np.concatenate(
@@ -270,26 +279,35 @@ def initialize_surrogate_constraints(
 
     # Number of initial sample points
     m0 = surrogateModels[0].ntrain()
+    m_for_surrogate = surrogateModels[0].min_design_space_size(
+        dim
+    )  # Smallest sample for a valid surrogate
 
     # Add new sample to the surrogate model
     if m0 == 0:
-        # Initialize surrogate model
-        # TODO: Improve me! The initial design must make sense for all
-        # surrogate models. This has to do with the type of the surrogate model.
-        surrogateModels[0].create_initial_design(dim, bounds, mineval, maxeval)
-        for i in range(1, gdim):
-            surrogateModels[i].update_xtrain(surrogateModels[0].xtrain())
-
-        # Update m
-        m = surrogateModels[0].ntrain()
-
-        # Add new sample to the output
-        out.sample[0:m, :] = surrogateModels[0].xtrain()[m0:, :]
+        # Create a new sample with SLHD
+        m = min(maxeval, max(mineval, 2 * m_for_surrogate))
+        out.sample[0:m] = Sampler(m).get_slhd_sample(
+            bounds, iindex=surrogateModels[0].iindex
+        )
+        if m >= 2 * m_for_surrogate:
+            count = 0
+            while not surrogateModels[0].check_initial_design(out.sample[0:m]):
+                out.sample[0:m] = Sampler(m).get_slhd_sample(
+                    bounds, iindex=surrogateModels[0].iindex
+                )
+                count += 1
+                if count > 100:
+                    raise RuntimeError("Cannot create valid initial design")
 
         # Compute f(sample) and g(sample)
         out.fsample[0:m, 0] = bestfx
-        out.fsample[0:m, 1:] = gfun(out.sample[0:m, :])
+        out.fsample[0:m, 1:] = gfun(out.sample[0:m])
         out.nfev = m
+
+        # Update surrogate
+        for i in range(gdim):
+            surrogateModels[i].update(out.sample[0:m], out.fsample[0:m, i + 1])
 
         # Update best point found so far
         for i in range(m):
@@ -1518,7 +1536,7 @@ def bayesian_optimization(
     if acquisitionFunc is None:
         acquisitionFunc = MaximizeEI()
     if acquisitionFunc.sampler.n <= 1:
-        acquisitionFunc.sampler.n = min(500 * dim, 5000)
+        acquisitionFunc.sampler.n = min(100 * dim, 1000)
 
     # Initialize output
     out = OptimizeResult()

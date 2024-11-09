@@ -191,7 +191,7 @@ class GaussianProcess(GaussianProcessRegressor):
         if self.scaler is None:
             self.fit(X, y)
         else:
-            self.scaler = preprocessing.MinMaxScaler().fit(X)
+            self.scaler = self.scaler.fit(X)
             self.fit(self.scaler.transform(X), y)
 
         if self.optimizer == self._optimizer:
