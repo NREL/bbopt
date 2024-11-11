@@ -395,8 +395,8 @@ class RbfModel:
         )
 
         return y if self.yscaler is None else self.yscaler.inverse_transform(
-            y
-        ), D
+            y.reshape(-1,1)
+        ).flatten(), D
 
     def jac(self, x: np.ndarray) -> np.ndarray:
         r"""Evaluates the derivative of the model at one point.
@@ -479,10 +479,10 @@ class RbfModel:
             self._fx[self._m - len(fx) : self._m] = fx
             if self.yscaler is not None:
                 self._fx[0 : self._m - len(fx)] = self.ytrain()
-                self.yscaler = self.yscaler.fit(self._fx[0 : self._m])
+                self.yscaler = self.yscaler.fit(self._fx[0 : self._m].reshape(-1,1))
                 self._fx[0 : self._m] = self.yscaler.transform(
-                    self._fx[0 : self._m]
-                )
+                    self._fx[0 : self._m].reshape(-1,1)
+                ).flatten()
         else:
             raise ValueError("Invalid number of function values")
 
@@ -554,15 +554,76 @@ class RbfModel:
         # Update m
         self._m = m
 
-    def update(self, Xnew, ynew) -> None:
+    def update(self, xNew: np.ndarray, fx) -> None:
         """Updates the model with new pairs of data (x,y).
 
-        :param Xnew: m-by-d matrix with m point coordinates in a d-dimensional
+        :param xNew: m-by-d matrix with m point coordinates in a d-dimensional
             space.
-        :param ynew: Function values on the sampled points.
+        :param fx: Function values on the sampled points.
         """
-        self._update_xtrain(Xnew)
-        self._update_coefficients(ynew)
+        oldm = self._m
+        newm = xNew.shape[0]
+        dim = xNew.shape[1]
+        m = oldm + newm
+
+        if oldm > 0:
+            assert dim == self.dim()
+        if newm == 0:
+            return
+
+        # Reserve space for the new data
+        self.reserve(m, dim)
+
+        # Update x
+        self._x[oldm:m] = xNew
+        if self.xscaler is not None:
+            self._x[0:oldm] = self.xtrain()
+            self.xscaler = self.xscaler.fit(self._x[0:m])
+            self._x[0:m] = self.xscaler.transform(self._x[0:m])
+
+        # Compute distances between new points and sampled points
+        distNew = cdist(self._x[oldm:m], self._x[0:m])
+
+        # Update matrices _PHI and _P
+        self._PHI[oldm:m, 0:m] = self.phi(distNew)
+        self._PHI[0:oldm, oldm:m] = self._PHI[oldm:m, 0:oldm].T
+        self._P[oldm:m, :] = self.pbasis(self._x[oldm:m])
+
+        # Update fx
+        self._fx[oldm:m] = fx
+        if self.yscaler is not None:
+            self._fx[0:oldm] = self.ytrain()
+            self.yscaler = self.yscaler.fit(self._fx[0:m].reshape(-1,1))
+            self._fx[0:m] = self.yscaler.transform(
+                self._fx[0:m].reshape(-1,1)
+            ).flatten()
+
+        # Update m
+        self._m = m
+
+        # Get full matrix for the fitting
+        A = self.get_RBFmatrix()
+
+        # condA = cond(A)
+        # print(f"Condition number of A: {condA}")
+
+        # condPHIP = cond(np.block([[self._PHI[0:m, 0:m], self.get_matrixP()]]))
+        # print(f"Condition number of [PHI,P]: {condPHIP}")
+        # condP = cond(self.get_matrixP())
+        # print(f"Condition number of P: {condP}")
+        # condPHI = cond(self._PHI[0:m, 0:m])
+        # print(f"Condition number of PHI: {condPHI}")
+
+        # TODO: See if there is a solver specific for saddle-point systems
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            self._coef = solve(
+                A,
+                np.concatenate(
+                    (self.filter(self._fx[0 : m]), np.zeros(self.pdim()))
+                ),
+                assume_a="sym",
+            )
 
     def ntrain(self) -> int:
         """Get the number of sampled points."""
@@ -587,7 +648,7 @@ class RbfModel:
         if self._m == 0 or self.yscaler is None:
             return self._fx[0 : self._m]
         else:
-            return self.yscaler.inverse_transform(self._fx[0 : self._m])
+            return self.yscaler.inverse_transform(self._fx[0 : self._m].reshape(-1,1)).flatten()
 
     def get_matrixP(self) -> np.ndarray:
         """Get the m-by-pdim matrix with the polynomial tail."""
