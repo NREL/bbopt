@@ -387,7 +387,7 @@ class RbfModel:
         xs = xs if self.xscaler is None else self.xscaler.transform(xs)
 
         # compute pairwise distances between candidates and sampled points
-        D = cdist(xs, self._x[0 : self._m, :])
+        D = cdist(xs, self._x[0 : self._m])
 
         Px = self.pbasis(xs)
         y = np.matmul(self.phi(D), self._coef[0 : self._m]) + np.dot(
@@ -415,7 +415,7 @@ class RbfModel:
         xs = xs if self.xscaler is None else self.xscaler.transform(xs)
 
         # compute pairwise distances between candidates and sampled points
-        d = cdist(xs, self._x[0 : self._m, :]).flatten()
+        d = cdist(xs, self._x[0 : self._m]).flatten()
 
         A = np.array([self.dphiOverR(d[i]) * xs for i in range(d.size)])
         B = self.dpbasis(xs)
@@ -549,7 +549,7 @@ class RbfModel:
         # Update matrices _PHI and _P
         self._PHI[oldm:m, 0:m] = self.phi(distNew)
         self._PHI[0:oldm, oldm:m] = self._PHI[oldm:m, 0:oldm].T
-        self._P[oldm:m, :] = self.pbasis(self._x[oldm:m])
+        self._P[oldm:m] = self.pbasis(self._x[oldm:m])
 
         # Update m
         self._m = m
@@ -639,9 +639,9 @@ class RbfModel:
         :return: m-by-d matrix with m training points in a d-dimensional space.
         """
         if self._m == 0 or self.xscaler is None:
-            return self._x[0 : self._m, :]
+            return self._x[0 : self._m]
         else:
-            return self.xscaler.inverse_transform(self._x[0 : self._m, :])
+            return self.xscaler.inverse_transform(self._x[0 : self._m])
 
     def ytrain(self) -> np.ndarray:
         """Get f(x) for the sampled points."""
@@ -652,7 +652,7 @@ class RbfModel:
 
     def get_matrixP(self) -> np.ndarray:
         """Get the m-by-pdim matrix with the polynomial tail."""
-        return self._P[0 : self._m, :]
+        return self._P[0 : self._m]
 
     def get_RBFmatrix(self) -> np.ndarray:
         r"""Get the complete matrix used to compute the RBF weights.
@@ -676,7 +676,7 @@ class RbfModel:
 
         :param i: Index of the sampled point.
         """
-        return self.xtrain()[i, :]
+        return self.xtrain()[i]
 
     def min_design_space_size(self, dim: int) -> int:
         """Return the minimum design space size for a given space dimension."""

@@ -936,7 +936,7 @@ class MinimizeSurrogate(AcquisitionFunction):
         (1987). https://doi.org/10.1007/BF02592071
     """
 
-    def __init__(self, nCand: int, tol: float = 1e-6) -> None:
+    def __init__(self, nCand: int, tol: float = 1e-3) -> None:
         self.sampler = Sampler(nCand)
         self.tol = tol
 
@@ -1122,7 +1122,7 @@ class MinimizeSurrogate(AcquisitionFunction):
                 iindex=surrogateModel.iindex,
                 current_sample=surrogateModel.xtrain(),
             )
-            while tree.query((selected - xlow) / (xup - xlow))[0] > self.tol:
+            while tree.query((selected - xlow) / (xup - xlow))[0] < self.tol:
                 selected = singleCandSampler.get_sample(
                     bounds,
                     iindex=surrogateModel.iindex,
