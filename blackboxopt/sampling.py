@@ -40,6 +40,7 @@ from enum import Enum
 
 from scipy.spatial.distance import cdist
 from scipy.spatial import KDTree
+from scipy.stats import truncnorm
 
 
 class SamplingStrategy(Enum):
@@ -104,14 +105,15 @@ class Sampler:
         :return: Matrix with a sample point per line.
         """
         dim = len(bounds)
-        xlow = np.array([bounds[i][0] for i in range(dim)])
-        xup = np.array([bounds[i][1] for i in range(dim)])
 
         # Generate n sample points
-        xnew = xlow + np.random.rand(self.n, dim) * (xup - xlow)
-
-        # Round integer variables
-        xnew[:, iindex] = np.round(xnew[:, iindex])
+        xnew = np.empty((self.n, dim))
+        for i in range(dim):
+            b = bounds[i]
+            if i in iindex:
+                xnew[:, i] = np.random.randint(b[0], b[1] + 1, self.n)
+            else:
+                xnew[:, i] = b[0] + np.random.rand(self.n) * (b[1] - b[0])
 
         return xnew
 
@@ -136,20 +138,14 @@ class Sampler:
         # Create the initial design
         X = np.empty((m, d))
         for j in range(d):
-            delta = (bounds[j][1] - bounds[j][0]) / m
             if j not in iindex:
-                X[:, j] = [
-                    bounds[j][0] + ((2 * i + 1) / 2.0) * delta
-                    for i in range(m)
-                ]
+                delta = (bounds[j][1] - bounds[j][0]) / m
+                b0 = bounds[j][0] + 0.5 * delta
+                X[:, j] = [b0 + i * delta for i in range(m)]
             else:
-                if delta == 1:
-                    X[:, j] = np.arange(bounds[j][0], bounds[j][1])
-                else:
-                    X[:, j] = [
-                        bounds[j][0] + round(((2 * i + 1) / 2.0) * delta)
-                        for i in range(m)
-                    ]
+                delta = (bounds[j][1] - bounds[j][0] + 1) / m
+                b0 = bounds[j][0] + 0.5 * (delta - 1)
+                X[:, j] = [round(b0 + i * delta) for i in range(m)]
 
         if m > 1:
             # Generate permutation matrix P
@@ -197,10 +193,11 @@ class Sampler:
 
 
 class NormalSampler(Sampler):
-    """Sampler that generates sample points from a normal distribution.
+    """Sampler that generates sample points from a truncated normal
+    distribution.
 
-    :param sigma: Standard deviation of the normal distribution, relative to
-        a unitary interval. Stored in :attr:`sigma`.
+    :param sigma: Standard deviation of the truncated normal distribution,
+    relative to a unitary interval. Stored in :attr:`sigma`.
     :param sigma_min: Minimum limit for the standard deviation, relative to
         a unitary interval. Stored in :attr:`sigma_min`.
     :param sigma_max: Maximum limit for the standard deviation, relative to
@@ -208,19 +205,19 @@ class NormalSampler(Sampler):
 
     .. attribute:: sigma
 
-        Standard deviation of the normal distribution, relative to a unitary
-        interval. Used by :meth:`get_normal_sample()` and
+        Standard deviation of the truncated normal distribution, relative to a
+        unitary interval. Used by :meth:`get_normal_sample()` and
         :meth:`get_dds_sample()`.
 
     .. attribute:: sigma_min
 
-        Minimum standard deviation of the normal distribution, relative to a
-        unitary interval.
+        Minimum standard deviation of the truncated normal distribution,
+        relative to a unitary interval.
 
     .. attribute:: sigma_max
 
-        Maximum standard deviation of the normal distribution, relative to a
-        unitary interval.
+        Maximum standard deviation of the truncated normal distribution,
+        relative to a unitary interval.
 
     """
 
@@ -263,13 +260,16 @@ class NormalSampler(Sampler):
         bounds,
         mu,
         *,
+        iindex=(),
         coord=(),
     ) -> np.ndarray:
-        """Generate a sample from a normal distribution around a given point mu.
+        """Generate a sample from a truncated normal distribution around a given
+        point mu.
 
         :param sequence bounds: List with the limits [x_min,x_max] of each
             direction x in the space.
         :param mu: Point around which the sample will be generated.
+        :param iindex: Indices of the input space that are integer.
         :param sequence coord:
             Coordinates of the input space that will vary. If (), all
             coordinates will vary.
@@ -277,19 +277,35 @@ class NormalSampler(Sampler):
         :return: Matrix with a sample point per line.
         """
         dim = len(bounds)
-        xlow = np.array([bounds[i][0] for i in range(dim)])
-        xup = np.array([bounds[i][1] for i in range(dim)])
-        sigma = np.array([self.sigma * (xup[i] - xlow[i]) for i in range(dim)])
+        sigma = np.array([self.sigma * (b[1] - b[0]) for b in bounds])
 
         # Create xnew
         xnew = np.tile(mu, (self.n, 1))
         assert xnew.shape == (self.n, dim)
 
-        # Generate n sample points
+        # By default all coordinates are perturbed
         if len(coord) == 0:
             coord = tuple(range(dim))
-        xnew[:, coord] += sigma * np.random.randn(self.n, len(coord))
-        xnew[:, coord] = np.maximum(xlow, np.minimum(xnew[:, coord], xup))
+
+        # generate n sample points
+        for i in coord:
+            loc = mu[i]
+            scale = sigma[i]
+            if i in iindex:
+                a = (bounds[i][0] - 0.5 - loc) / scale
+                b = (bounds[i][1] + 0.5 - loc) / scale
+                xnew[:, i] = np.round(
+                    truncnorm.rvs(a, b, loc=loc, scale=scale, size=self.n)
+                )
+                xnew[:, i] = np.maximum(
+                    bounds[i][0], np.minimum(xnew[:, i], bounds[i][1])
+                )
+            else:
+                a = (bounds[i][0] - loc) / scale
+                b = (bounds[i][1] - loc) / scale
+                xnew[:, i] = truncnorm.rvs(
+                    a, b, loc=loc, scale=scale, size=self.n
+                )
 
         return xnew
 
@@ -329,50 +345,66 @@ class NormalSampler(Sampler):
             model calibration, Water Resour. Res., 43, W01413,
             https://doi.org/10.1029/2005WR004723.
         """
+        # Check if probability is valid
+        if not (0 <= probability <= 1):
+            raise ValueError("Probability must be between 0 and 1")
+
+        # Redirect if probability is 1
+        if probability == 1:
+            return self.get_normal_sample(
+                bounds, mu, coord=coord, iindex=iindex
+            )
+
         dim = len(bounds)
-        xlow = np.array([bounds[i][0] for i in range(dim)])
-        xup = np.array([bounds[i][1] for i in range(dim)])
-        sigma = np.array([self.sigma * (xup[i] - xlow[i]) for i in range(dim)])
+        sigma = np.array([self.sigma * (b[1] - b[0]) for b in bounds])
 
         # Create xnew
         xnew = np.tile(mu, (self.n, 1))
         assert xnew.shape == (self.n, dim)
 
-        # Check if probability is valid
-        if not (0 <= probability <= 1):
-            raise ValueError("Probability must be between 0 and 1")
-
-        # generate n sample points
+        # By default all coordinates are perturbed
         if len(coord) == 0:
             coord = tuple(range(dim))
-        cdim = len(coord)
-        for ii in range(self.n):
-            r = np.random.rand(cdim)
-            ar = r < probability
-            if not (any(ar)):
-                r = np.random.permutation(cdim)
-                ar[r[0]] = True
-            for jj in range(cdim):
-                if ar[jj]:
-                    j = coord[jj]
-                    s_std = sigma[j] * np.random.randn(1).item()
-                    if j in iindex:
-                        # integer perturbation has to be at least 1 unit
-                        if abs(s_std) < 1:
-                            s_std = np.sign(s_std)
-                        else:
-                            s_std = np.round(s_std)
-                    xnew[ii, j] = xnew[ii, j] + s_std
 
-                    # Make sure all points are within the bounds
-                    if xnew[ii, j] < xlow[j]:
-                        xnew[ii, j] = xlow[j] + (xlow[j] - xnew[ii, j])
-                        if xnew[ii, j] > xup[j]:
-                            xnew[ii, j] = xlow[j]
-                    elif xnew[ii, j] > xup[j]:
-                        xnew[ii, j] = xup[j] - (xnew[ii, j] - xup[j])
-                        if xnew[ii, j] < xlow[j]:
-                            xnew[ii, j] = xup[j]
+        # Generate perturbation matrix
+        cdim = len(coord)
+        ar = np.zeros((self.n, dim), dtype=bool)
+        ar[:, coord] = np.random.rand(self.n, cdim) < probability
+        for i in range(self.n):
+            if not (any(ar[i, coord])):
+                ar[i, np.random.randint(cdim)] = True
+
+        # generate n sample points
+        for i in coord:
+            loc = mu[i]
+            scale = sigma[i]
+            perturbIdx = np.argwhere(ar[:, i]).flatten()
+            nperturb = len(perturbIdx)
+            if i in iindex:
+                a = (bounds[i][0] - 0.5 - loc) / scale
+                b = (bounds[i][1] + 0.5 - loc) / scale
+                xnew[perturbIdx, i] = truncnorm.rvs(
+                    a, b, loc=loc, scale=scale, size=nperturb
+                )
+                for j in perturbIdx:
+                    xj = xnew[j, i]
+                    if xj <= bounds[i][0]:
+                        xnew[j, i] = bounds[i][0]
+                    elif xj > bounds[i][0] and xj < loc:
+                        xnew[j, i] = min(round(xj), loc - 1)
+                    elif xj == loc:
+                        sgn = +1 if np.random.randint(2) == 1 else -1
+                        xnew[j, i] = loc + sgn
+                    elif xj < bounds[i][1] and xj > loc:
+                        xnew[j, i] = max(round(xj), loc + 1)
+                    else:
+                        xnew[j, i] = bounds[i][1]
+            else:
+                a = (bounds[i][0] - loc) / scale
+                b = (bounds[i][1] - loc) / scale
+                xnew[perturbIdx, i] = truncnorm.rvs(
+                    a, b, loc=loc, scale=scale, size=nperturb
+                )
         return xnew
 
     def get_sample(
@@ -405,12 +437,11 @@ class NormalSampler(Sampler):
         :return: Matrix with a sample point per line.
         """
         if self.strategy == SamplingStrategy.NORMAL:
-            assert (
-                iindex == ()
-            )  # This strategy does not support integer variables
             mu = kwargs["mu"]
             coord = kwargs["coord"] if "coord" in kwargs else ()
-            return self.get_normal_sample(bounds, mu, coord=coord)
+            return self.get_normal_sample(
+                bounds, mu, iindex=iindex, coord=coord
+            )
         elif self.strategy == SamplingStrategy.DDS:
             mu = kwargs["mu"]
             probability = (
