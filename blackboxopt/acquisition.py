@@ -272,7 +272,12 @@ class WeightedAcquisition(AcquisitionFunction):
         return int(iBest)
 
     def minimize_weightedavg_fx_distx(
-        self, x: np.ndarray, distx: np.ndarray, fx: np.ndarray, n: int
+        self,
+        x: np.ndarray,
+        distx: np.ndarray,
+        fx: np.ndarray,
+        n: int,
+        tol: float,
     ) -> tuple[np.ndarray, np.ndarray]:
         """Select n points from a pool of candidates using :meth:`argminscore()`
         iteratively.
@@ -287,6 +292,8 @@ class WeightedAcquisition(AcquisitionFunction):
             on the candidate points.
         :param n: Number of points to be selected for the next costly
             evaluation.
+        :param tol: Tolerance value for excluding candidates that are too close to
+            current sample points.
         :return:
 
             * n-by-dim matrix with the selected points.
@@ -322,7 +329,6 @@ class WeightedAcquisition(AcquisitionFunction):
                 axis=1,
             )
 
-        tol = self.tol(dim)
         selindex = self.argminscore(
             scaledvalue, dist, self.weightpattern[0], tol
         )
@@ -353,16 +359,27 @@ class WeightedAcquisition(AcquisitionFunction):
 
         return xselected, distselected
 
-    def tol(self, dim: int) -> float:
+    def tol(self, bounds) -> float:
         """Compute tolerance used to eliminate points that are too close to
         previously selected ones.
 
-        The tolerance value is based on :attr:`reltol` and the sampling region
-        diameter for a reference domain.
+        The tolerance value is based on :attr:`reltol` and the diameter of the
+        largest d-dimensional cube that can be inscribed whithin the bounds.
 
-        :param dim: Dimension of the space of features.
+        :param sequence bounds: List with the limits [x_min,x_max] of each
+            direction x in the space.
         """
-        return self.reltol * self.sampler.get_diameter(dim)
+        tol0 = (
+            self.reltol
+            * np.sqrt(len(bounds))
+            * np.min([abs(b[1] - b[0]) for b in bounds])
+        )
+        if isinstance(self.sampler, NormalSampler):
+            # Consider the region with 95% of the values on each
+            # coordinate, which has diameter `4*sigma`
+            return tol0 * min(4 * self.sampler.sigma, 1.0)
+        else:
+            return tol0
 
     def acquire(
         self,
@@ -453,20 +470,11 @@ class WeightedAcquisition(AcquisitionFunction):
             for i in range(objdim):
                 fx[:, i], _ = surrogateModel[i](x)
 
-        # Create scaled x and scaled distx
-        xlow = np.array([bounds[i][0] for i in range(dim)])
-        xup = np.array([bounds[i][1] for i in range(dim)])
-        sx = (x - xlow) / (xup - xlow)
-        ssample = (sample - xlow) / (xup - xlow)
-        sdistx = cdist(sx, ssample)
-
         # Select best candidates
-        xselected, _ = self.minimize_weightedavg_fx_distx(sx, sdistx, fx, n)
+        xselected, _ = self.minimize_weightedavg_fx_distx(
+            x, cdist(x, sample), fx, n, self.tol(bounds)
+        )
         assert n == xselected.shape[0]
-
-        # Rescale selected points
-        xselected = xselected * (xup - xlow) + xlow
-        xselected[:, iindex] = np.round(xselected[:, iindex])
 
         # Rotate weight pattern
         self.weightpattern[:] = (
@@ -727,11 +735,9 @@ class TargetValueAcquisition(AcquisitionFunction):
         dim = len(bounds)  # Dimension of the problem
         assert n <= self.cycleLength + 2
 
-        # Create scaled sample and KDTree with that
-        xlow = np.array([bounds[i][0] for i in range(dim)])
-        xup = np.array([bounds[i][1] for i in range(dim)])
-        ssample = (surrogateModel.xtrain() - xlow) / (xup - xlow)
-        tree = KDTree(ssample)
+        # Create a KDTree with the current training points
+        tree = KDTree(surrogateModel.xtrain())
+        tol = self.tol * np.min([abs(b[1] - b[0]) for b in bounds])
 
         # Compute fbounds of the surrogate. Use the filter as suggested by
         # Björkman and Holmström (2000)
@@ -876,15 +882,8 @@ class TargetValueAcquisition(AcquisitionFunction):
             current_sample = np.concatenate(
                 (surrogateModel.xtrain(), x[0:i]), axis=0
             )
-            while np.any(
-                tree.query((xselected - xlow) / (xup - xlow))[0] < self.tol
-            ) or (
-                i > 0
-                and cdist(
-                    ((xselected - xlow) / (xup - xlow)).reshape(1, -1),
-                    (x[0:i] - xlow) / (xup - xlow),
-                ).min()
-                < self.tol
+            while np.any(tree.query(xselected)[0] < tol) or (
+                i > 0 and cdist(xselected.reshape(1, -1), x[0:i]).min() < tol
             ):
                 # the selected point is too close to already evaluated point
                 # randomly select point from variable domain
@@ -982,11 +981,9 @@ class MinimizeSurrogate(AcquisitionFunction):
         startpID = np.full((self.sampler.n * maxiter,), False)
         selected = np.empty((n, dim))
 
-        # Create scaled sample and KDTree with that
-        xlow = np.array([bounds[i][0] for i in range(dim)])
-        xup = np.array([bounds[i][1] for i in range(dim)])
-        ssample = (surrogateModel.xtrain() - xlow) / (xup - xlow)
-        tree = KDTree(ssample)
+        # Create a KDTree with the training data points
+        tree = KDTree(surrogateModel.xtrain())
+        tol = self.tol * np.min([abs(b[1] - b[0]) for b in bounds])
 
         iter = 0
         k = 0
@@ -1077,10 +1074,7 @@ class MinimizeSurrogate(AcquisitionFunction):
                 remevals -= res.nfev
                 xi[cindex] = res.x
 
-                if (
-                    tree.n == 0
-                    or tree.query((xi - xlow) / (xup - xlow))[0] > self.tol
-                ):
+                if tree.n == 0 or tree.query(xi)[0] >= tol:
                     selected[k, :] = xi
                     k += 1
                     if k == n:
@@ -1088,10 +1082,7 @@ class MinimizeSurrogate(AcquisitionFunction):
                     else:
                         tree = KDTree(
                             np.concatenate(
-                                (
-                                    ssample,
-                                    (selected[0:k, :] - xlow) / (xup - xlow),
-                                ),
+                                (surrogateModel.xtrain(), selected[0:k, :]),
                                 axis=0,
                             )
                         )
@@ -1122,7 +1113,7 @@ class MinimizeSurrogate(AcquisitionFunction):
                 iindex=surrogateModel.iindex,
                 current_sample=surrogateModel.xtrain(),
             )
-            while tree.query((selected - xlow) / (xup - xlow))[0] < self.tol:
+            while tree.query(selected)[0] < tol:
                 selected = singleCandSampler.get_sample(
                     bounds,
                     iindex=surrogateModel.iindex,
@@ -1382,32 +1373,27 @@ class EndPointsParetoFront(AcquisitionFunction):
             for j in range(dim):
                 endpoints[i, j] = res.X[j]
 
-        # Create scaled sample and KDTree with that
-        xlow = np.array([bounds[i][0] for i in range(dim)])
-        xup = np.array([bounds[i][1] for i in range(dim)])
-        ssample = (surrogateModels[0].xtrain() - xlow) / (xup - xlow)
-        tree = KDTree(ssample)
+        # Create KDTree with the already evaluated points
+        tree = KDTree(surrogateModels[0].xtrain())
+        tol = self.tol * np.min([abs(b[1] - b[0]) for b in bounds])
 
-        # Discard points that are too close to eachother and to current sample
-        selectedIdx = []
-        for i in range(objdim):
-            distNeighbor = tree.query((endpoints[i, :] - xlow) / (xup - xlow))[
-                0
-            ]
-            if selectedIdx:
-                distNeighbor = min(
-                    distNeighbor,
-                    np.min(
-                        cdist(
-                            (endpoints[i, :].reshape(1, -1) - xlow)
-                            / (xup - xlow),
-                            (endpoints[selectedIdx, :] - xlow) / (xup - xlow),
-                        )
-                    ).item(),
-                )
-            if distNeighbor >= self.tol:
-                selectedIdx.append(i)
-        endpoints = endpoints[selectedIdx, :]
+        # Discard points that are too close to previously sampled points.
+        distNeighbor = tree.query(endpoints)[0]
+        endpoints = endpoints[distNeighbor >= tol, :]
+
+        # Discard points that are too close to eachother
+        if len(endpoints) > 0:
+            selectedIdx = [0]
+            for i in range(1, objdim):
+                if (
+                    cdist(
+                        endpoints[i, :].reshape(1, -1),
+                        endpoints[selectedIdx, :],
+                    ).min()
+                    >= tol
+                ):
+                    selectedIdx.append(i)
+            endpoints = endpoints[selectedIdx, :]
 
         # Should all points be discarded, which may happen if the minima of
         # the surrogate surfaces do not change between iterations, we
@@ -1415,9 +1401,7 @@ class EndPointsParetoFront(AcquisitionFunction):
         # maximizes the minimum distance of sample points
         if endpoints.size == 0:
             minimumPointProblem = ProblemNoConstraint(
-                lambda x: -tree.query((x - xlow) / (xup - xlow))[0],
-                bounds,
-                iindex,
+                lambda x: -tree.query(x)[0], bounds, iindex
             )
             res = pymoo_minimize(
                 minimumPointProblem,
@@ -1501,44 +1485,44 @@ class MinimizeMOSurrogate(AcquisitionFunction):
         # If the Pareto-optimal solution set exists, randomly select n
         # points from the Pareto front
         if res.X is not None:
-            nMax = len(res.X)
+            bestCandidates = np.array(
+                [[x[i] for i in range(dim)] for x in res.X]
+            )
+
+            # Create tolerance based on smallest variable length
+            tol = self.tol * np.min([abs(b[1] - b[0]) for b in bounds])
+
+            # Discard points that are too close to previously sampled points.
+            distNeighbor = cdist(
+                bestCandidates, surrogateModels[0].xtrain()
+            ).min(axis=1)
+            bestCandidates = bestCandidates[distNeighbor >= tol, :]
+
+            # Return if no point was left
+            nMax = len(bestCandidates)
+            if nMax == 0:
+                return np.empty((0, dim))
+
+            # Randomly select points in the Pareto front
             idxs = (
                 np.random.choice(nMax, size=min(n, nMax))
                 if n > 0
                 else np.arange(nMax)
             )
-            bestCandidates = np.array(
-                [[res.X[idx][i] for i in range(dim)] for idx in idxs]
-            )
+            bestCandidates = bestCandidates[idxs]
 
-            # Create scaled sample and KDTree with that
-            xlow = np.array([bounds[i][0] for i in range(dim)])
-            xup = np.array([bounds[i][1] for i in range(dim)])
-            ssample = (surrogateModels[0].xtrain() - xlow) / (xup - xlow)
-            tree = KDTree(ssample)
-
-            # Discard points that are too close to eachother and previously
-            # sampled points.
-            selectedIdx = []
-            for i in range(len(bestCandidates)):
-                distNeighbor = tree.query(
-                    (bestCandidates[i, :] - xlow) / (xup - xlow)
-                )[0]
-                if selectedIdx:
-                    distNeighbor = min(
-                        distNeighbor,
-                        np.min(
-                            cdist(
-                                (bestCandidates[i, :].reshape(1, -1) - xlow)
-                                / (xup - xlow),
-                                (bestCandidates[selectedIdx, :] - xlow)
-                                / (xup - xlow),
-                            )
-                        ).item(),
-                    )
-                if distNeighbor >= self.tol:
+            # Discard points that are too close to eachother
+            selectedIdx = [0]
+            for i in range(1, len(bestCandidates)):
+                if (
+                    cdist(
+                        bestCandidates[i].reshape(1, -1),
+                        bestCandidates[selectedIdx],
+                    ).min()
+                    >= tol
+                ):
                     selectedIdx.append(i)
-            bestCandidates = bestCandidates[selectedIdx, :]
+            bestCandidates = bestCandidates[selectedIdx]
 
             return bestCandidates
         else:
@@ -1591,12 +1575,8 @@ class CoordinatePerturbationOverNondominated(AcquisitionFunction):
         :param paretoFront: Pareto front in the objective space.
         """
         dim = len(bounds)
-        tol = self.acquisitionFunc.tol(dim)
+        tol = self.acquisitionFunc.tol(bounds)
         assert isinstance(self.acquisitionFunc.sampler, NormalSampler)
-
-        # Create vectors xlow and xup
-        xlow = np.array([bounds[i][0] for i in range(dim)])
-        xup = np.array([bounds[i][1] for i in range(dim)])
 
         # Find a collection of points that are close to the Pareto front
         bestCandidates = np.empty((0, dim))
@@ -1611,12 +1591,7 @@ class CoordinatePerturbationOverNondominated(AcquisitionFunction):
             if bestCandidates.size == 0:
                 bestCandidates = x.reshape(1, -1)
             else:
-                distNeighborOfx = np.min(
-                    cdist(
-                        (x - xlow) / (xup - xlow),
-                        (bestCandidates - xlow) / (xup - xlow),
-                    )
-                ).item()
+                distNeighborOfx = cdist(x, bestCandidates).min()
                 if distNeighborOfx >= tol:
                     bestCandidates = np.concatenate(
                         (bestCandidates, x), axis=0
@@ -1716,11 +1691,9 @@ class GosacSample(AcquisitionFunction):
         iindex = surrogateModels[0].iindex
         assert n == 1
 
-        # Create scaled sample and KDTree with that
-        xlow = np.array([bounds[i][0] for i in range(dim)])
-        xup = np.array([bounds[i][1] for i in range(dim)])
-        ssample = (surrogateModels[0].xtrain() - xlow) / (xup - xlow)
-        tree = KDTree(ssample)
+        # Create KDTree with previously evaluated points
+        tree = KDTree(surrogateModels[0].xtrain())
+        tol = self.tol * np.min([abs(b[1] - b[0]) for b in bounds])
 
         cheapProblem = ProblemWithConstraint(
             self.fun,
@@ -1747,14 +1720,12 @@ class GosacSample(AcquisitionFunction):
             isGoodCandidate = False
         else:
             xnew = np.asarray([[res.X[i] for i in range(dim)]])
-            if tree.query((xnew - xlow) / (xup - xlow))[0] < self.tol:
+            if tree.query(xnew)[0] < tol:
                 isGoodCandidate = False
 
         if not isGoodCandidate:
             minimumPointProblem = ProblemNoConstraint(
-                lambda x: -tree.query((x - xlow) / (xup - xlow))[0],
-                bounds,
-                iindex,
+                lambda x: -tree.query(x)[0], bounds, iindex
             )
             res = pymoo_minimize(
                 minimumPointProblem,

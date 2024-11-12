@@ -821,10 +821,6 @@ def cptv(
     dim = len(bounds)  # Dimension of the problem
     assert dim > 0
 
-    # Tolerance parameters
-    nFailTol = max(5, dim)  # Fail tolerance for the CP step
-    tol = 1e-6  # Tolerance for excluding points that are too close
-
     # Initialize optional variables
     if surrogateModel is None:
         surrogateModel = RbfModel(filter=MedianLpfFilter())
@@ -842,13 +838,13 @@ def cptv(
                 strategy=SamplingStrategy.DDS,
             ),
             weightpattern=(0.3, 0.5, 0.8, 0.95),
-            reltol=tol,
+            reltol=1e-6,
             maxeval=maxeval - (m0 if m0 > 0 else m_for_surrogate),
         )
 
-    # xup and xlow
-    xup = np.array([b[1] for b in bounds])
-    xlow = np.array([b[0] for b in bounds])
+    # Tolerance parameters
+    nFailTol = max(5, dim)  # Fail tolerance for the CP step
+    tol = acquisitionFunc.tol(bounds)  # Tolerance for excluding points
 
     # Get index and bounds of the continuous variables
     cindex = [i for i in range(dim) if i not in surrogateModel.iindex]
@@ -1004,7 +1000,12 @@ def cptv(
             if callback is not None:
                 callback(out_local)
 
-            if np.linalg.norm((out.x - out_local.x) / (xup - xlow)) >= tol:
+            if (
+                cdist(
+                    out_local.x.reshape(1, -1), surrogateModel.xtrain()
+                ).min()
+                >= tol
+            ):
                 surrogateModel.update(
                     out_local.x.reshape(1, -1), [out_local.fx]
                 )
@@ -1103,10 +1104,6 @@ def socemo(
     if acquisitionFuncGlobal is None:
         acquisitionFuncGlobal = WeightedAcquisition(Sampler(0), 0.95)
 
-    # xup and xlow
-    xup = np.array([b[1] for b in bounds])
-    xlow = np.array([b[0] for b in bounds])
-
     # Use a number of candidates that is greater than 1
     if acquisitionFunc.sampler.n <= 1:
         acquisitionFunc.sampler.n = min(500 * dim, 5000)
@@ -1128,7 +1125,7 @@ def socemo(
     assert isinstance(out.fx, np.ndarray)
 
     # Define acquisition functions
-    tol = acquisitionFunc.tol(dim)
+    tol = acquisitionFunc.tol(bounds)
     step1acquisition = ParetoFront()
     step2acquisition = CoordinatePerturbationOverNondominated(acquisitionFunc)
     step3acquisition = EndPointsParetoFront(tol=tol)
@@ -1237,13 +1234,7 @@ def socemo(
             idxs = [0]
             for i in range(1, xselected.shape[0]):
                 x = xselected[i, :].reshape(1, -1)
-                if (
-                    cdist(
-                        (x - xlow) / (xup - xlow),
-                        (xselected[idxs, :] - xlow) / (xup - xlow),
-                    ).min()
-                    >= tol
-                ):
+                if cdist(x, xselected[idxs, :]).min() >= tol:
                     idxs.append(i)
             xselected = xselected[idxs, :]
 
@@ -1528,7 +1519,7 @@ def bayesian_optimization(
     """
     dim = len(bounds)  # Dimension of the problem
     assert dim > 0
-    tol = 1e-6
+    tol = 1e-6 * np.min([abs(b[1] - b[0]) for b in bounds])
 
     # Initialize optional variables
     if surrogateModel is None:
@@ -1550,10 +1541,6 @@ def bayesian_optimization(
     # Call the callback function
     if callback is not None:
         callback(out)
-
-    # xup and xlow
-    xup = np.array([b[1] for b in bounds])
-    xlow = np.array([b[0] for b in bounds])
 
     # do until max number of f-evals reached or local min found
     xselected = np.copy(out.sample[0 : out.nfev, :])
@@ -1583,13 +1570,7 @@ def bayesian_optimization(
                 lambda x: surrogateModel([x])[0], bounds
             )
             if res.x is not None:
-                if (
-                    cdist(
-                        ([res.x] - xlow) / (xup - xlow),
-                        (surrogateModel.xtrain() - xlow) / (xup - xlow),
-                    ).min()
-                    >= tol
-                ):
+                if cdist([res.x], surrogateModel.xtrain()).min() >= tol:
                     xselected = np.concatenate((xselected, [res.x]), axis=0)
             tf = time.time()
             if disp:
@@ -1603,10 +1584,7 @@ def bayesian_optimization(
             surrogateModel, bounds, batchSize - len(xselected), ybest=out.fx
         )
         if len(xselected) > 0:
-            aux = cdist(
-                (xselected - xlow) / (xup - xlow),
-                (xMinEI - xlow) / (xup - xlow),
-            )[0]
+            aux = cdist(xselected, xMinEI)[0]
             xselected = np.concatenate((xselected, xMinEI[aux >= tol]), axis=0)
         else:
             xselected = xMinEI
