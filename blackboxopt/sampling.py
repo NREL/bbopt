@@ -467,8 +467,9 @@ class Mitchel91Sampler(Sampler):
 
     .. attribute:: scale
 
-        A scaling factor proportional to the number of candidates used
-        to select each sample point. Used by :meth:`get_mitchel91_sample()`.
+        Scaling factor that controls the number of candidates in the pool used
+        to select a sample point. The pool has size
+        `scale * [# current points]`. Used by :meth:`get_mitchel91_sample()`.
 
     References
     ----------
@@ -481,11 +482,11 @@ class Mitchel91Sampler(Sampler):
         n: int,
         strategy: SamplingStrategy = SamplingStrategy.MITCHEL91,
         *,
-        maxCand: Optional[int] = None,
-        scale: float = 2.0,
+        maxCand: int = 10000,
+        scale: float = 10,
     ) -> None:
         super().__init__(n, strategy)
-        self.maxCand = 10 * n if maxCand is None else maxCand
+        self.maxCand = maxCand
         self.scale = scale
 
     def get_mitchel91_sample(

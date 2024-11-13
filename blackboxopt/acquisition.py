@@ -887,7 +887,7 @@ class TargetValueAcquisition(AcquisitionFunction):
             ):
                 # the selected point is too close to already evaluated point
                 # randomly select point from variable domain
-                xselected = Mitchel91Sampler(1).get_sample(
+                xselected = Mitchel91Sampler(1).get_mitchel91_sample(
                     bounds,
                     iindex=surrogateModel.iindex,
                     current_sample=current_sample,
@@ -1108,13 +1108,13 @@ class MinimizeSurrogate(AcquisitionFunction):
         else:
             # No new points found by the differential evolution method
             singleCandSampler = Mitchel91Sampler(1)
-            selected = singleCandSampler.get_sample(
+            selected = singleCandSampler.get_mitchel91_sample(
                 bounds,
                 iindex=surrogateModel.iindex,
                 current_sample=surrogateModel.xtrain(),
             )
             while tree.query(selected)[0] < tol:
-                selected = singleCandSampler.get_sample(
+                selected = singleCandSampler.get_mitchel91_sample(
                     bounds,
                     iindex=surrogateModel.iindex,
                     current_sample=surrogateModel.xtrain(),
@@ -1833,7 +1833,7 @@ class MaximizeEI(AcquisitionFunction):
                 current_sample = np.concatenate(
                     (current_sample, [xbest]), axis=0
                 )
-            x = self.sampler.get_sample(bounds, current_sample=current_sample)
+            x = self.sampler.get_mitchel91_sample(bounds, current_sample=current_sample)
         else:
             x = self.sampler.get_sample(bounds)
 
