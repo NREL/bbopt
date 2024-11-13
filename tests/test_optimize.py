@@ -140,6 +140,6 @@ def test_batched_sampling():
         bounds=bounds,
         maxeval=100,
         batchSize=10,
-        acquisitionFunc=MaximizeEI(Sampler(1000), avoid_clusters=True),
+        acquisitionFunc=MaximizeEI(Sampler(200), avoid_clusters=True),
     )
     assert out.nfev == 100

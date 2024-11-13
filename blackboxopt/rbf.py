@@ -32,9 +32,6 @@ from enum import Enum
 from scipy.spatial.distance import cdist
 from scipy.linalg import solve
 
-# Scikit-Learn imports
-from sklearn.preprocessing import MinMaxScaler
-
 
 class RbfKernel(Enum):
     """RBF kernel tags."""

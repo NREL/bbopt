@@ -123,10 +123,10 @@ class GaussianProcess(GaussianProcessRegressor):
 
     def eval_kernel(self, x, y=None):
         """Evaluate the kernel function at a pair (x,y).
-        
+
         The structure of the kernel is the same as the one passed as parameter
         but with optimized hyperparameters.
-        
+
         :param x: First entry in the tuple (x,y).
         :param y: Second entry in the tuple (x,y). If None, use x.
         """
