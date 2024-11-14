@@ -838,7 +838,7 @@ def cptv(
                 strategy=SamplingStrategy.DDS,
             ),
             weightpattern=(0.3, 0.5, 0.8, 0.95),
-            reltol=1e-6,
+            rtol=1e-6,
             maxeval=maxeval - (m0 if m0 > 0 else m_for_surrogate),
         )
 
@@ -926,7 +926,7 @@ def cptv(
                 x0y0=(out.x, out.fx),
                 surrogateModel=surrogateModel,
                 acquisitionFunc=TargetValueAcquisition(
-                    cycleLength=10, tol=tol
+                    cycleLength=10, rtol=acquisitionFunc.rtol
                 ),
                 improvementTol=improvementTol,
                 nFailTol=12,
@@ -1128,8 +1128,8 @@ def socemo(
     tol = acquisitionFunc.tol(bounds)
     step1acquisition = ParetoFront()
     step2acquisition = CoordinatePerturbationOverNondominated(acquisitionFunc)
-    step3acquisition = EndPointsParetoFront(tol=tol)
-    step5acquisition = MinimizeMOSurrogate(tol=tol)
+    step3acquisition = EndPointsParetoFront(rtol=acquisitionFunc.rtol)
+    step5acquisition = MinimizeMOSurrogate(rtol=acquisitionFunc.rtol)
 
     # do until max number of f-evals reached or local min found
     xselected = np.empty((0, dim))
@@ -1334,9 +1334,9 @@ def gosac(
     assert isinstance(out.fx, np.ndarray)
 
     # Acquisition functions
-    tol = 1e-3
-    acquisition1 = MinimizeMOSurrogate(tol=tol)
-    acquisition2 = GosacSample(fun, tol=tol)
+    rtol = 1e-3
+    acquisition1 = MinimizeMOSurrogate(rtol=rtol)
+    acquisition2 = GosacSample(fun, rtol=rtol)
 
     xselected = np.empty((0, dim))
     ySelected = np.copy(out.fsample[0 : out.nfev, 1:])

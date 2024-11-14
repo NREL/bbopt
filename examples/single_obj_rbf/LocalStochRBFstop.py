@@ -111,7 +111,7 @@ if __name__ == "__main__":
                 strategy=SamplingStrategy.NORMAL,
             ),
             weightpattern=[0.3, 0.5],
-            reltol=1e-3,
+            rtol=1e-3,
             maxeval=maxeval - numevals,
         ),
         batchSize=batchSize,

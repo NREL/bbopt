@@ -161,8 +161,8 @@ class WeightedAcquisition(AcquisitionFunction):
     :param float|sequence weightpattern: Weight(s) `w` to be used in the score.
         Stored in :attr:`weightpattern`.
         The default value is [0.2, 0.4, 0.6, 0.9, 0.95, 1].
-    :param reltol: Description
-        Stored in :attr:`reltol`.
+    :param rtol: Description
+        Stored in :attr:`rtol`.
     :param maxeval: Description
         Stored in :attr:`maxeval`.
 
@@ -180,10 +180,11 @@ class WeightedAcquisition(AcquisitionFunction):
         Weight(s) `w` to be used in the score. This is a circular list that is
         rotated every time :meth:`acquire()` is called.
 
-    .. attribute:: reltol
+    .. attribute:: rtol
 
-        Relative tolerance value for excluding candidates that are too close to
-        current sample points.
+        Tolerance value for excluding candidates that are too close to
+        current sample points. This value is used to compute the final
+        tolerance in :meth:`tol()`.
 
     .. attribute:: maxeval
 
@@ -206,7 +207,7 @@ class WeightedAcquisition(AcquisitionFunction):
         self,
         sampler,
         weightpattern=None,
-        reltol: float = 1e-6,
+        rtol: float = 1e-6,
         maxeval: int = 0,
     ) -> None:
         super().__init__()
@@ -217,7 +218,7 @@ class WeightedAcquisition(AcquisitionFunction):
             self.weightpattern = list(weightpattern)
         else:
             self.weightpattern = [weightpattern]
-        self.reltol = reltol
+        self.rtol = rtol
         self.maxeval = maxeval
         self._neval = 0
 
@@ -363,14 +364,14 @@ class WeightedAcquisition(AcquisitionFunction):
         """Compute tolerance used to eliminate points that are too close to
         previously selected ones.
 
-        The tolerance value is based on :attr:`reltol` and the diameter of the
+        The tolerance value is based on :attr:`rtol` and the diameter of the
         largest d-dimensional cube that can be inscribed whithin the bounds.
 
         :param sequence bounds: List with the limits [x_min,x_max] of each
             direction x in the space.
         """
         tol0 = (
-            self.reltol
+            self.rtol
             * np.sqrt(len(bounds))
             * np.min([abs(b[1] - b[0]) for b in bounds])
         )
@@ -516,7 +517,7 @@ class TargetValueAcquisition(AcquisitionFunction):
 
     :param optimizer: Single-objective optimizer. If None, use MixedVariableGA
         from pymoo.
-    :param tol: Tolerance value for excluding candidate points that are too
+    :param rtol: Tolerance value for excluding candidate points that are too
         close to already sampled points. Stored in :attr:`tol`.
     :param cycleLength: Length of the global search cycle. Stored in
         :attr:`cycleLength`.
@@ -525,7 +526,7 @@ class TargetValueAcquisition(AcquisitionFunction):
 
         Single-objective optimizer.
 
-    .. attribute:: tol
+    .. attribute:: rtol
 
         Tolerance value for excluding candidate points that are too close to
         already sampled points.
@@ -555,11 +556,11 @@ class TargetValueAcquisition(AcquisitionFunction):
     """
 
     def __init__(
-        self, optimizer=None, tol: float = 1e-6, cycleLength: int = 6
+        self, optimizer=None, rtol: float = 1e-6, cycleLength: int = 6
     ) -> None:
         self._cycle = 0
         self.cycleLength = cycleLength
-        self.tol = tol
+        self.rtol = rtol
         self.optimizer = (
             MixedVariableGA(
                 eliminate_duplicates=BBOptDuplicateElimination(),
@@ -737,7 +738,7 @@ class TargetValueAcquisition(AcquisitionFunction):
 
         # Create a KDTree with the current training points
         tree = KDTree(surrogateModel.xtrain())
-        tol = self.tol * np.min([abs(b[1] - b[0]) for b in bounds])
+        tol = self.rtol * np.min([abs(b[1] - b[0]) for b in bounds])
 
         # Compute fbounds of the surrogate. Use the filter as suggested by
         # Björkman and Holmström (2000)
@@ -914,14 +915,14 @@ class MinimizeSurrogate(AcquisitionFunction):
     collected for the new sample.
 
     :param nCand: Number of candidates used on each iteration.
-    :param tol: Tolerance for excluding points that are too close to each other
+    :param rtol: Tolerance for excluding points that are too close to each other
         from the new sample.
 
     .. attribute:: sampler
 
         Sampler to generate candidate points.
 
-    .. attribute:: tol
+    .. attribute:: rtol
 
         Tolerance value for excluding candidate points that are too close to
         already sampled points.
@@ -935,9 +936,9 @@ class MinimizeSurrogate(AcquisitionFunction):
         (1987). https://doi.org/10.1007/BF02592071
     """
 
-    def __init__(self, nCand: int, tol: float = 1e-3) -> None:
+    def __init__(self, nCand: int, rtol: float = 1e-3) -> None:
         self.sampler = Sampler(nCand)
-        self.tol = tol
+        self.rtol = rtol
 
     def acquire(
         self,
@@ -983,7 +984,7 @@ class MinimizeSurrogate(AcquisitionFunction):
 
         # Create a KDTree with the training data points
         tree = KDTree(surrogateModel.xtrain())
-        tol = self.tol * np.min([abs(b[1] - b[0]) for b in bounds])
+        tol = self.rtol * np.min([abs(b[1] - b[0]) for b in bounds])
 
         iter = 0
         k = 0
@@ -1304,14 +1305,14 @@ class EndPointsParetoFront(AcquisitionFunction):
 
     :param optimizer: Single-objective optimizer. If None, use MixedVariableGA
         from pymoo.
-    :param tol: Tolerance value for excluding candidate points that are too
+    :param rtol: Tolerance value for excluding candidate points that are too
         close to already sampled points. Stored in :attr:`tol`.
 
     .. attribute:: optimizer
 
         Single-objective optimizer.
 
-    .. attribute:: tol
+    .. attribute:: rtol
 
         Tolerance value for excluding candidate points that are too close to
         already sampled points.
@@ -1324,7 +1325,7 @@ class EndPointsParetoFront(AcquisitionFunction):
         https://doi.org/10.1287/ijoc.2017.0749
     """
 
-    def __init__(self, optimizer=None, tol=1e-6) -> None:
+    def __init__(self, optimizer=None, rtol=1e-6) -> None:
         self.optimizer = (
             MixedVariableGA(
                 eliminate_duplicates=BBOptDuplicateElimination(),
@@ -1336,7 +1337,7 @@ class EndPointsParetoFront(AcquisitionFunction):
             if optimizer is None
             else optimizer
         )
-        self.tol = tol
+        self.rtol = rtol
 
     def acquire(
         self,
@@ -1375,7 +1376,7 @@ class EndPointsParetoFront(AcquisitionFunction):
 
         # Create KDTree with the already evaluated points
         tree = KDTree(surrogateModels[0].xtrain())
-        tol = self.tol * np.min([abs(b[1] - b[0]) for b in bounds])
+        tol = self.rtol * np.min([abs(b[1] - b[0]) for b in bounds])
 
         # Discard points that are too close to previously sampled points.
         distNeighbor = tree.query(endpoints)[0]
@@ -1424,21 +1425,21 @@ class MinimizeMOSurrogate(AcquisitionFunction):
 
     :param mooptimizer: Multi-objective optimizer. If None, use MixedVariableGA
         from pymoo with RankAndCrowding survival strategy.
-    :param tol: Tolerance value for excluding candidate points that are too
+    :param rtol: Tolerance value for excluding candidate points that are too
         close to already sampled points. Stored in :attr:`tol`.
 
     .. attribute:: mooptimizer
 
         Multi-objective optimizer for the surrogate optimization problem.
 
-    .. attribute:: tol
+    .. attribute:: rtol
 
         Tolerance value for excluding candidate points that are too close to
         already sampled points.
 
     """
 
-    def __init__(self, mooptimizer=None, tol=1e-6) -> None:
+    def __init__(self, mooptimizer=None, rtol=1e-6) -> None:
         self.mooptimizer = (
             MixedVariableGA(
                 eliminate_duplicates=BBOptDuplicateElimination(),
@@ -1451,7 +1452,7 @@ class MinimizeMOSurrogate(AcquisitionFunction):
             if mooptimizer is None
             else mooptimizer
         )
-        self.tol = tol
+        self.rtol = rtol
 
     def acquire(
         self,
@@ -1490,7 +1491,7 @@ class MinimizeMOSurrogate(AcquisitionFunction):
             )
 
             # Create tolerance based on smallest variable length
-            tol = self.tol * np.min([abs(b[1] - b[0]) for b in bounds])
+            tol = self.rtol * np.min([abs(b[1] - b[0]) for b in bounds])
 
             # Discard points that are too close to previously sampled points.
             distNeighbor = cdist(
@@ -1632,7 +1633,7 @@ class GosacSample(AcquisitionFunction):
     :param fun: Objective function. Stored in :attr:`fun`.
     :param optimizer: Single-objective optimizer. If None, use MixedVariableGA
         from pymoo.
-    :param tol: Tolerance value for excluding candidate points that are too
+    :param rtol: Tolerance value for excluding candidate points that are too
         close to already sampled points. Stored in :attr:`tol`.
 
     .. attribute:: fun
@@ -1643,7 +1644,7 @@ class GosacSample(AcquisitionFunction):
 
         Single-objective optimizer.
 
-    .. attribute:: tol
+    .. attribute:: rtol
 
         Tolerance value for excluding candidate points that are too close to
         already sampled points.
@@ -1656,7 +1657,7 @@ class GosacSample(AcquisitionFunction):
         https://doi.org/10.1007/s10898-017-0496-y
     """
 
-    def __init__(self, fun, optimizer=None, tol: float = 1e-6):
+    def __init__(self, fun, optimizer=None, rtol: float = 1e-6):
         self.fun = fun
         self.optimizer = (
             MixedVariableGA(
@@ -1669,7 +1670,7 @@ class GosacSample(AcquisitionFunction):
             if optimizer is None
             else optimizer
         )
-        self.tol = tol
+        self.rtol = rtol
 
     def acquire(
         self,
@@ -1693,7 +1694,7 @@ class GosacSample(AcquisitionFunction):
 
         # Create KDTree with previously evaluated points
         tree = KDTree(surrogateModels[0].xtrain())
-        tol = self.tol * np.min([abs(b[1] - b[0]) for b in bounds])
+        tol = self.rtol * np.min([abs(b[1] - b[0]) for b in bounds])
 
         cheapProblem = ProblemWithConstraint(
             self.fun,
@@ -1833,7 +1834,9 @@ class MaximizeEI(AcquisitionFunction):
                 current_sample = np.concatenate(
                     (current_sample, [xbest]), axis=0
                 )
-            x = self.sampler.get_mitchel91_sample(bounds, current_sample=current_sample)
+            x = self.sampler.get_mitchel91_sample(
+                bounds, current_sample=current_sample
+            )
         else:
             x = self.sampler.get_sample(bounds)
 

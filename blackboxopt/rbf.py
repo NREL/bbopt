@@ -96,8 +96,6 @@ class RbfModel:
     :param kernel: Kernel function :math:`\phi` used in the RBF model.
     :param iindex: Indices of integer variables in the feature space.
     :param filter: Filter to be used in the target (image) space.
-    :param scale_x: Scale input x in the RBF.
-    :param scale_y: Scale output y in the RBF.
 
     .. attribute:: kernel
 
@@ -369,7 +367,7 @@ class RbfModel:
         X = x.reshape(-1, dim)
 
         # compute pairwise distances between candidates and sampled points
-        D = cdist(X, self._x[0 : self._m])
+        D = cdist(X, self.xtrain())
 
         Px = self.pbasis(X)
         y = np.matmul(self.phi(D), self._coef[0 : self._m]) + np.dot(
@@ -389,13 +387,12 @@ class RbfModel:
         :param x: Point in a d-dimensional space.
         """
         dim = self.dim()
-        X = x.reshape(-1, dim)
 
         # compute pairwise distances between candidates and sampled points
-        d = cdist(X, self._x[0 : self._m]).flatten()
+        d = cdist(x.reshape(-1, dim), self.xtrain()).flatten()
 
-        A = np.array([self.dphiOverR(d[i]) * X for i in range(d.size)])
-        B = self.dpbasis(X)
+        A = np.array([self.dphiOverR(d[i]) * x for i in range(d.size)])
+        B = self.dpbasis(x)
 
         y = np.matmul(A.T, self._coef[0 : self._m]) + np.matmul(
             B.T, self._coef[self._m : self._m + B.shape[0]]
@@ -403,41 +400,41 @@ class RbfModel:
 
         return y.flatten()
 
-    # def hessp(self, x: np.ndarray, p: np.ndarray) -> np.ndarray:
-    #     r"""Evaluates the Hessian of the model at x in the direction of p.
+    def hessp(self, x: np.ndarray, p: np.ndarray) -> np.ndarray:
+        r"""Evaluates the Hessian of the model at x in the direction of p.
 
-    #     .. math::
+        .. math::
 
-    #         H(f)(x) v   = \sum_{i=1}^{m} \beta_i \left(
-    #                         \phi''(\|x - x_i\|)\frac{(x^Tv)x}{\|x - x_i\|^2} +
-    #                         \frac{\phi'(\|x - x_i\|)}{\|x - x_i\|}
-    #                         \left(v - \frac{(x^Tv)x}{\|x - x_i\|^2}\right)
-    #                     \right)
-    #                     + \sum_{i=1}^{n} \beta_{m+i} H(p_i)(x) v.
+            H(f)(x) v   = \sum_{i=1}^{m} \beta_i \left(
+                            \phi''(\|x - x_i\|)\frac{(x^Tv)x}{\|x - x_i\|^2} +
+                            \frac{\phi'(\|x - x_i\|)}{\|x - x_i\|}
+                            \left(v - \frac{(x^Tv)x}{\|x - x_i\|^2}\right)
+                        \right)
+                        + \sum_{i=1}^{n} \beta_{m+i} H(p_i)(x) v.
 
-    #     :param x: Point in a d-dimensional space.
-    #     :param p: Direction in which the Hessian is evaluated.
-    #     """
-    #     dim = self.dim()
+        :param x: Point in a d-dimensional space.
+        :param p: Direction in which the Hessian is evaluated.
+        """
+        dim = self.dim()
 
-    #     # compute pairwise distances between candidates and sampled points
-    #     d = cdist(x.reshape(-1, dim), self.xtrain()).flatten()
+        # compute pairwise distances between candidates and sampled points
+        d = cdist(x.reshape(-1, dim), self.xtrain()).flatten()
 
-    #     xxTp = np.dot(p, x) * x
-    #     A = np.array(
-    #         [
-    #             self.ddphi(d[i]) * (xxTp / (d[i] * d[i]))
-    #             + self.dphiOverR(d[i]) * (p - (xxTp / (d[i] * d[i])))
-    #             for i in range(d.size)
-    #         ]
-    #     )
-    #     B = self.ddpbasis(x, p)
+        xxTp = np.dot(p, x) * x
+        A = np.array(
+            [
+                self.ddphi(d[i]) * (xxTp / (d[i] * d[i]))
+                + self.dphiOverR(d[i]) * (p - (xxTp / (d[i] * d[i])))
+                for i in range(d.size)
+            ]
+        )
+        B = self.ddpbasis(x, p)
 
-    #     y = np.matmul(A.T, self._coef[0 : self._m]) + np.matmul(
-    #         B.T, self._coef[self._m : self._m + B.shape[0]]
-    #     )
+        y = np.matmul(A.T, self._coef[0 : self._m]) + np.matmul(
+            B.T, self._coef[self._m : self._m + B.shape[0]]
+        )
 
-    #     return y.flatten()
+        return y.flatten()
 
     def update(self, xNew: np.ndarray, fx) -> None:
         """Updates the model with new pairs of data (x,y).

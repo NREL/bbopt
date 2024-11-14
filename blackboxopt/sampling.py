@@ -34,7 +34,6 @@ __credits__ = [
 __version__ = "0.5.0"
 __deprecated__ = False
 
-from typing import Optional
 import numpy as np
 from enum import Enum
 
