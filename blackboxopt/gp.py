@@ -24,7 +24,7 @@ __email__ = "weslley.dasilvapereira@nrel.gov"
 __credits__ = [
     "Weslley S. Pereira",
 ]
-__version__ = "0.5.0"
+__version__ = "0.5.1"
 __deprecated__ = False
 
 import copy
@@ -131,13 +131,13 @@ class GaussianProcess(GaussianProcessRegressor):
         :param y: Second entry in the tuple (x,y). If None, use x.
         """
         if self.scaler is None:
-            return self.kernel_(x,x) if y is None else self.kernel_(x,y)
+            return self.kernel_(x, x) if y is None else self.kernel_(x, y)
         else:
             xs = self.scaler.transform(x)
             if y is None:
-                return self.kernel_(xs,xs)
+                return self.kernel_(xs, xs)
             else:
-                return self.kernel_(xs,self.scaler.transform(y))
+                return self.kernel_(xs, self.scaler.transform(y))
 
     def min_design_space_size(self, dim: int) -> int:
         """Return the minimum design space size for a given space dimension."""
