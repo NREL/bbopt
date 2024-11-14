@@ -123,10 +123,10 @@ class GaussianProcess(GaussianProcessRegressor):
 
     def eval_kernel(self, x, y=None):
         """Evaluate the kernel function at a pair (x,y).
-        
+
         The structure of the kernel is the same as the one passed as parameter
         but with optimized hyperparameters.
-        
+
         :param x: First entry in the tuple (x,y).
         :param y: Second entry in the tuple (x,y). If None, use x.
         """
@@ -191,7 +191,7 @@ class GaussianProcess(GaussianProcessRegressor):
         if self.scaler is None:
             self.fit(X, y)
         else:
-            self.scaler = preprocessing.MinMaxScaler().fit(X)
+            self.scaler = self.scaler.fit(X)
             self.fit(self.scaler.transform(X), y)
 
         if self.optimizer == self._optimizer:

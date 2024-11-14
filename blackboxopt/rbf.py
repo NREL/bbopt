@@ -32,9 +32,6 @@ from enum import Enum
 from scipy.spatial.distance import cdist
 from scipy.linalg import solve
 
-# Local imports
-from .sampling import Sampler
-
 
 class RbfKernel(Enum):
     """RBF kernel tags."""
@@ -124,7 +121,6 @@ class RbfModel:
         self.iindex = iindex
         self.filter = RbfFilter() if filter is None else filter
 
-        self._valid_coefficients = True
         self._m = 0
         self._x = np.array([])
         self._fx = np.array([])
@@ -364,20 +360,16 @@ class RbfModel:
 
             * Value for the RBF model on each of the input points.
 
-            * Matrix D where D[i, j] is the distance between the i-th input
-              point and the j-th sampled point.
+            * Matrix D where D[i, j] is the distance between the i-th
+                input point and the j-th training point.
         """
-        if self._valid_coefficients is False:
-            raise RuntimeError(
-                "Invalid coefficients. Run update_coefficients() before evaluating the model."
-            )
-
         dim = self.dim()
+        X = x.reshape(-1, dim)
 
         # compute pairwise distances between candidates and sampled points
-        D = cdist(x.reshape(-1, dim), self.xtrain())
+        D = cdist(X, self.xtrain())
 
-        Px = self.pbasis(x.reshape(-1, dim))
+        Px = self.pbasis(X)
         y = np.matmul(self.phi(D), self._coef[0 : self._m]) + np.dot(
             Px, self._coef[self._m : self._m + Px.shape[1]]
         )
@@ -394,11 +386,6 @@ class RbfModel:
 
         :param x: Point in a d-dimensional space.
         """
-        if self._valid_coefficients is False:
-            raise RuntimeError(
-                "Invalid coefficients. Run update_coefficients() before evaluating the model."
-            )
-
         dim = self.dim()
 
         # compute pairwise distances between candidates and sampled points
@@ -428,11 +415,6 @@ class RbfModel:
         :param x: Point in a d-dimensional space.
         :param p: Direction in which the Hessian is evaluated.
         """
-        if self._valid_coefficients is False:
-            raise RuntimeError(
-                "Invalid coefficients. Run update_coefficients() before evaluating the model."
-            )
-
         dim = self.dim()
 
         # compute pairwise distances between candidates and sampled points
@@ -454,25 +436,42 @@ class RbfModel:
 
         return y.flatten()
 
-    def update_coefficients(
-        self, fx, filter: Optional[RbfFilter] = None
-    ) -> None:
-        """Updates the coefficients of the RBF model.
+    def update(self, xNew: np.ndarray, fx) -> None:
+        """Updates the model with new pairs of data (x,y).
 
+        :param xNew: m-by-d matrix with m point coordinates in a d-dimensional
+            space.
         :param fx: Function values on the sampled points.
-        :param filter: Filter used with the function values. The default is
-            None, which means the filter used in the initialization of the RBF
-            model is used.
         """
-        if len(fx) <= self._m:
-            self._fx[self._m - len(fx) : self._m] = fx
-        else:
-            raise ValueError("Invalid number of function values")
-        if filter is None:
-            filter = self.filter
+        oldm = self._m
+        newm = xNew.shape[0]
+        dim = xNew.shape[1]
+        m = oldm + newm
 
-        pdim = self.pdim()
+        if oldm > 0:
+            assert dim == self.dim()
+        if newm == 0:
+            return
 
+        # Reserve space for the new data
+        self.reserve(m, dim)
+
+        # Update x and fx
+        self._x[oldm:m] = xNew
+        self._fx[oldm:m] = fx
+
+        # Compute distances between new points and sampled points
+        distNew = cdist(self._x[oldm:m], self._x[0:m])
+
+        # Update matrices _PHI and _P
+        self._PHI[oldm:m, 0:m] = self.phi(distNew)
+        self._PHI[0:oldm, oldm:m] = self._PHI[oldm:m, 0:oldm].T
+        self._P[oldm:m, :] = self.pbasis(self._x[oldm:m])
+
+        # Update m
+        self._m = m
+
+        # Get full matrix for the fitting
         A = self.get_RBFmatrix()
 
         # condA = cond(A)
@@ -490,115 +489,11 @@ class RbfModel:
             warnings.simplefilter("ignore")
             self._coef = solve(
                 A,
-                np.concatenate((filter(self.ytrain()), np.zeros(pdim))),
+                np.concatenate(
+                    (self.filter(self.ytrain()), np.zeros(self.pdim()))
+                ),
                 assume_a="sym",
             )
-        self._valid_coefficients = True
-
-    def update_xtrain(self, xNew: np.ndarray, distNew=None) -> None:
-        """Updates the RBF model with new points, without retraining.
-
-        For training the model one still needs to call
-        :meth:`update_coefficients()`.
-
-        :param xNew: m-by-d matrix with m point coordinates in a d-dimensional
-            space.
-        :param distNew: m-by-(self.ntrain() + m) matrix with distances between
-            points in
-            xNew and points in (self.xtrain(), xNew). If not provided, the
-            distances are computed.
-        """
-        oldm = self._m
-        newm = xNew.shape[0]
-        dim = xNew.shape[1]
-        m = oldm + newm
-
-        if oldm > 0:
-            assert dim == self.dim()
-        if newm == 0:
-            return
-
-        # Compute distances between new points and sampled points
-        if distNew is None:
-            if oldm == 0:
-                distNew = cdist(xNew, xNew)
-            else:
-                distNew = cdist(
-                    xNew, np.concatenate((self.xtrain(), xNew), axis=0)
-                )
-
-        self.reserve(m, dim)
-
-        # Update matrices _PHI and _P
-        self._PHI[oldm:m, 0:m] = self.phi(distNew)
-        self._PHI[0:oldm, oldm:m] = self._PHI[oldm:m, 0:oldm].T
-        self._P[oldm:m, :] = self.pbasis(xNew)
-
-        # Update x
-        self._x[oldm:m, :] = xNew
-
-        # Update m
-        self._m = m
-
-        # Coefficients are not valid anymore
-        self._valid_coefficients = False
-
-    def update(self, Xnew, ynew) -> None:
-        """Updates the model with new pairs of data (x,y).
-
-        :param Xnew: m-by-d matrix with m point coordinates in a d-dimensional
-            space.
-        :param ynew: Function values on the sampled points.
-        """
-        self.update_xtrain(Xnew)
-        self.update_coefficients(ynew)
-
-    def create_initial_design(
-        self, dim: int, bounds, minm: int = 0, maxm: int = 0
-    ) -> None:
-        """Creates an initial sample for the RBF model.
-
-        The points are generated using a symmetric Latin hypercube design.
-
-        :param dim: Dimension of the domain space.
-        :param bounds: List with the limits [x_min,x_max] of each direction x in the domain
-            space.
-        :param minm: Minimum number of points to generate. If not provided, the initial
-            design will have min(2 * pdim(),maxm) points.
-        :param maxm: Maximum number of points to generate. If not provided, the initial
-            design will have max(2 * pdim(),minm) points.
-        """
-        self.reserve(0, dim)
-        pdim = self.pdim()
-        m = min(maxm, max(minm, 2 * pdim))
-        self.reserve(m, dim)
-
-        if m == 0 or dim <= 0:
-            return
-
-        # Generate initial design and set matrix _P
-        self._m = m
-        count = 0
-        while True:
-            self._x[0:m, :] = Sampler(m).get_slhd_sample(
-                bounds=bounds, iindex=self.iindex
-            )
-            self._P[0:m, :] = self.pbasis(self._x[0:m, :])
-            if np.linalg.matrix_rank(self._P[0:m, :]) == pdim or m < 2 * pdim:
-                break
-            count += 1
-            if count > 100:
-                raise RuntimeError("Cannot create valid initial design")
-
-        # Compute distances between new points and sampled points
-        distNew = cdist(self.xtrain(), self.xtrain())
-
-        # Set matrix _PHI
-        self._PHI[0:m, 0:m] = self.phi(distNew)
-        self._PHI[0:0, 0:m] = self._PHI[0:m, 0:0].T
-
-        # Coefficients are not valid
-        self._valid_coefficients = False
 
     def ntrain(self) -> int:
         """Get the number of sampled points."""
@@ -613,7 +508,7 @@ class RbfModel:
 
         :return: m-by-d matrix with m training points in a d-dimensional space.
         """
-        return self._x[0 : self._m, :]
+        return self._x[0 : self._m]
 
     def ytrain(self) -> np.ndarray:
         """Get f(x) for the sampled points."""
@@ -621,7 +516,7 @@ class RbfModel:
 
     def get_matrixP(self) -> np.ndarray:
         """Get the m-by-pdim matrix with the polynomial tail."""
-        return self._P[0 : self._m, :]
+        return self._P[0 : self._m]
 
     def get_RBFmatrix(self) -> np.ndarray:
         r"""Get the complete matrix used to compute the RBF weights.
@@ -645,7 +540,7 @@ class RbfModel:
 
         :param i: Index of the sampled point.
         """
-        return self.xtrain()[i, :]
+        return self.xtrain()[i]
 
     def min_design_space_size(self, dim: int) -> int:
         """Return the minimum design space size for a given space dimension."""

@@ -48,6 +48,7 @@ def read_and_run(
     rbf_type: rbf.RbfKernel = rbf.RbfKernel.CUBIC,
     filter: rbf.RbfFilter = rbf.MedianLpfFilter(),
     optim_func=optimize.multistart_msrs,
+    seeds=None,
 ) -> list[optimize.OptimizeResult]:
     """Perform the optimization, save the solution and plot.
 
@@ -77,6 +78,11 @@ def read_and_run(
     optres : list[optimize.OptimizeResult]
         List of optimize.OptimizeResult objects with the optimization results.
     """
+    # Define seeds
+    if seeds is None:
+        np.random.seed(3)
+        seeds = [np.random.randint(9999) for _ in range(Ntrials)]
+
     ## Start input check
     data = read_check_data_file(data_file)
     maxeval, Ntrials, batchSize = check_set_parameters(
@@ -87,6 +93,8 @@ def read_and_run(
     ## Optimization
     optres = []
     for j in range(Ntrials):
+        np.random.seed(seeds[j])
+
         # Create empty RBF model
         rbfModel = rbf.RbfModel(rbf_type, data.iindex, filter=filter)
         acquisitionFuncIter = deepcopy(acquisitionFunc)
@@ -261,8 +269,6 @@ def check_set_parameters(
 
 
 if __name__ == "__main__":
-    np.random.seed(3)
-
     comparisonList = [3, 5, 6, 7, 8]
     optresList = {}
     strategyName = []

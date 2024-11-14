@@ -193,26 +193,35 @@ def initialize_moo_surrogate(
 
     # Number of initial sample points
     m0 = surrogateModels[0].ntrain()
+    m_for_surrogate = surrogateModels[0].min_design_space_size(
+        dim
+    )  # Smallest sample for a valid surrogate
     m = 0
 
     # Add new sample to the surrogate model
     if m0 == 0:
-        # Initialize surrogate model
-        # TODO: Improve me! The initial design must make sense for all
-        # surrogate models. This has to do with the type of the surrogate model.
-        surrogateModels[0].create_initial_design(dim, bounds, mineval, maxeval)
-        for i in range(1, objdim):
-            surrogateModels[i].update_xtrain(surrogateModels[0].xtrain())
-
-        # Update m
-        m = surrogateModels[0].ntrain()
-
-        # Add new sample to the output
-        out.sample[0:m, :] = surrogateModels[0].xtrain()[m0:, :]
+        # Create a new sample with SLHD
+        m = min(maxeval, max(mineval, 2 * m_for_surrogate))
+        out.sample[0:m] = Sampler(m).get_slhd_sample(
+            bounds, iindex=surrogateModels[0].iindex
+        )
+        if m >= 2 * m_for_surrogate:
+            count = 0
+            while not surrogateModels[0].check_initial_design(out.sample[0:m]):
+                out.sample[0:m] = Sampler(m).get_slhd_sample(
+                    bounds, iindex=surrogateModels[0].iindex
+                )
+                count += 1
+                if count > 100:
+                    raise RuntimeError("Cannot create valid initial design")
 
         # Compute f(sample)
-        out.fsample[0:m, :] = fun(out.sample[0:m, :])
+        out.fsample[0:m] = fun(out.sample[0:m])
         out.nfev = m
+
+        # Update surrogate
+        for i in range(objdim):
+            surrogateModels[i].update(out.sample[0:m], out.fsample[0:m, i])
 
     # Create the pareto front
     fallpoints = np.concatenate(
@@ -270,26 +279,35 @@ def initialize_surrogate_constraints(
 
     # Number of initial sample points
     m0 = surrogateModels[0].ntrain()
+    m_for_surrogate = surrogateModels[0].min_design_space_size(
+        dim
+    )  # Smallest sample for a valid surrogate
 
     # Add new sample to the surrogate model
     if m0 == 0:
-        # Initialize surrogate model
-        # TODO: Improve me! The initial design must make sense for all
-        # surrogate models. This has to do with the type of the surrogate model.
-        surrogateModels[0].create_initial_design(dim, bounds, mineval, maxeval)
-        for i in range(1, gdim):
-            surrogateModels[i].update_xtrain(surrogateModels[0].xtrain())
-
-        # Update m
-        m = surrogateModels[0].ntrain()
-
-        # Add new sample to the output
-        out.sample[0:m, :] = surrogateModels[0].xtrain()[m0:, :]
+        # Create a new sample with SLHD
+        m = min(maxeval, max(mineval, 2 * m_for_surrogate))
+        out.sample[0:m] = Sampler(m).get_slhd_sample(
+            bounds, iindex=surrogateModels[0].iindex
+        )
+        if m >= 2 * m_for_surrogate:
+            count = 0
+            while not surrogateModels[0].check_initial_design(out.sample[0:m]):
+                out.sample[0:m] = Sampler(m).get_slhd_sample(
+                    bounds, iindex=surrogateModels[0].iindex
+                )
+                count += 1
+                if count > 100:
+                    raise RuntimeError("Cannot create valid initial design")
 
         # Compute f(sample) and g(sample)
         out.fsample[0:m, 0] = bestfx
-        out.fsample[0:m, 1:] = gfun(out.sample[0:m, :])
+        out.fsample[0:m, 1:] = gfun(out.sample[0:m])
         out.nfev = m
+
+        # Update surrogate
+        for i in range(gdim):
+            surrogateModels[i].update(out.sample[0:m], out.fsample[0:m, i + 1])
 
         # Update best point found so far
         for i in range(m):
@@ -803,10 +821,6 @@ def cptv(
     dim = len(bounds)  # Dimension of the problem
     assert dim > 0
 
-    # Tolerance parameters
-    nFailTol = max(5, dim)  # Fail tolerance for the CP step
-    tol = 1e-6  # Tolerance for excluding points that are too close
-
     # Initialize optional variables
     if surrogateModel is None:
         surrogateModel = RbfModel(filter=MedianLpfFilter())
@@ -824,13 +838,13 @@ def cptv(
                 strategy=SamplingStrategy.DDS,
             ),
             weightpattern=(0.3, 0.5, 0.8, 0.95),
-            reltol=tol,
+            rtol=1e-6,
             maxeval=maxeval - (m0 if m0 > 0 else m_for_surrogate),
         )
 
-    # xup and xlow
-    xup = np.array([b[1] for b in bounds])
-    xlow = np.array([b[0] for b in bounds])
+    # Tolerance parameters
+    nFailTol = max(5, dim)  # Fail tolerance for the CP step
+    tol = acquisitionFunc.tol(bounds)  # Tolerance for excluding points
 
     # Get index and bounds of the continuous variables
     cindex = [i for i in range(dim) if i not in surrogateModel.iindex]
@@ -912,7 +926,7 @@ def cptv(
                 x0y0=(out.x, out.fx),
                 surrogateModel=surrogateModel,
                 acquisitionFunc=TargetValueAcquisition(
-                    cycleLength=10, tol=tol
+                    cycleLength=10, rtol=acquisitionFunc.rtol
                 ),
                 improvementTol=improvementTol,
                 nFailTol=12,
@@ -986,7 +1000,12 @@ def cptv(
             if callback is not None:
                 callback(out_local)
 
-            if np.linalg.norm((out.x - out_local.x) / (xup - xlow)) >= tol:
+            if (
+                cdist(
+                    out_local.x.reshape(1, -1), surrogateModel.xtrain()
+                ).min()
+                >= tol
+            ):
                 surrogateModel.update(
                     out_local.x.reshape(1, -1), [out_local.fx]
                 )
@@ -1044,7 +1063,7 @@ def socemo(
     bounds,
     maxeval: int,
     *,
-    surrogateModels=(RbfModel(filter=MedianLpfFilter()),),
+    surrogateModels=(RbfModel(),),
     acquisitionFunc: Optional[WeightedAcquisition] = None,
     acquisitionFuncGlobal: Optional[WeightedAcquisition] = None,
     disp: bool = False,
@@ -1085,10 +1104,6 @@ def socemo(
     if acquisitionFuncGlobal is None:
         acquisitionFuncGlobal = WeightedAcquisition(Sampler(0), 0.95)
 
-    # xup and xlow
-    xup = np.array([b[1] for b in bounds])
-    xlow = np.array([b[0] for b in bounds])
-
     # Use a number of candidates that is greater than 1
     if acquisitionFunc.sampler.n <= 1:
         acquisitionFunc.sampler.n = min(500 * dim, 5000)
@@ -1110,11 +1125,11 @@ def socemo(
     assert isinstance(out.fx, np.ndarray)
 
     # Define acquisition functions
-    tol = acquisitionFunc.tol(dim)
+    tol = acquisitionFunc.tol(bounds)
     step1acquisition = ParetoFront()
     step2acquisition = CoordinatePerturbationOverNondominated(acquisitionFunc)
-    step3acquisition = EndPointsParetoFront(tol=tol)
-    step5acquisition = MinimizeMOSurrogate(tol=tol)
+    step3acquisition = EndPointsParetoFront(rtol=acquisitionFunc.rtol)
+    step5acquisition = MinimizeMOSurrogate(rtol=acquisitionFunc.rtol)
 
     # do until max number of f-evals reached or local min found
     xselected = np.empty((0, dim))
@@ -1219,13 +1234,7 @@ def socemo(
             idxs = [0]
             for i in range(1, xselected.shape[0]):
                 x = xselected[i, :].reshape(1, -1)
-                if (
-                    cdist(
-                        (x - xlow) / (xup - xlow),
-                        (xselected[idxs, :] - xlow) / (xup - xlow),
-                    ).min()
-                    >= tol
-                ):
+                if cdist(x, xselected[idxs, :]).min() >= tol:
                     idxs.append(i)
             xselected = xselected[idxs, :]
 
@@ -1272,7 +1281,7 @@ def gosac(
     bounds,
     maxeval: int,
     *,
-    surrogateModels=(RbfModel(filter=MedianLpfFilter()),),
+    surrogateModels=(RbfModel(),),
     disp: bool = False,
     callback: Optional[Callable[[OptimizeResult], None]] = None,
 ):
@@ -1325,9 +1334,9 @@ def gosac(
     assert isinstance(out.fx, np.ndarray)
 
     # Acquisition functions
-    tol = 1e-3
-    acquisition1 = MinimizeMOSurrogate(tol=tol)
-    acquisition2 = GosacSample(fun, tol=tol)
+    rtol = 1e-3
+    acquisition1 = MinimizeMOSurrogate(rtol=rtol)
+    acquisition2 = GosacSample(fun, rtol=rtol)
 
     xselected = np.empty((0, dim))
     ySelected = np.copy(out.fsample[0 : out.nfev, 1:])
@@ -1510,7 +1519,7 @@ def bayesian_optimization(
     """
     dim = len(bounds)  # Dimension of the problem
     assert dim > 0
-    tol = 1e-6
+    tol = 1e-6 * np.min([abs(b[1] - b[0]) for b in bounds])
 
     # Initialize optional variables
     if surrogateModel is None:
@@ -1518,7 +1527,7 @@ def bayesian_optimization(
     if acquisitionFunc is None:
         acquisitionFunc = MaximizeEI()
     if acquisitionFunc.sampler.n <= 1:
-        acquisitionFunc.sampler.n = min(500 * dim, 5000)
+        acquisitionFunc.sampler.n = min(100 * dim, 1000)
 
     # Initialize output
     out = OptimizeResult()
@@ -1532,10 +1541,6 @@ def bayesian_optimization(
     # Call the callback function
     if callback is not None:
         callback(out)
-
-    # xup and xlow
-    xup = np.array([b[1] for b in bounds])
-    xlow = np.array([b[0] for b in bounds])
 
     # do until max number of f-evals reached or local min found
     xselected = np.copy(out.sample[0 : out.nfev, :])
@@ -1565,13 +1570,7 @@ def bayesian_optimization(
                 lambda x: surrogateModel([x])[0], bounds
             )
             if res.x is not None:
-                if (
-                    cdist(
-                        ([res.x] - xlow) / (xup - xlow),
-                        (surrogateModel.xtrain() - xlow) / (xup - xlow),
-                    ).min()
-                    >= tol
-                ):
+                if cdist([res.x], surrogateModel.xtrain()).min() >= tol:
                     xselected = np.concatenate((xselected, [res.x]), axis=0)
             tf = time.time()
             if disp:
@@ -1585,10 +1584,7 @@ def bayesian_optimization(
             surrogateModel, bounds, batchSize - len(xselected), ybest=out.fx
         )
         if len(xselected) > 0:
-            aux = cdist(
-                (xselected - xlow) / (xup - xlow),
-                (xMinEI - xlow) / (xup - xlow),
-            )[0]
+            aux = cdist(xselected, xMinEI)[0]
             xselected = np.concatenate((xselected, xMinEI[aux >= tol]), axis=0)
         else:
             xselected = xMinEI

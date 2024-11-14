@@ -34,7 +34,6 @@ __credits__ = [
 __version__ = "0.5.0"
 __deprecated__ = False
 
-from typing import Optional
 import numpy as np
 from enum import Enum
 
@@ -85,13 +84,6 @@ class Sampler:
     ) -> None:
         self.strategy = strategy
         self.n = n
-
-    def get_diameter(self, d: int) -> float:
-        """Diameter of the sampling region relative to a d-dimensional cube.
-
-        :param d: Number of dimensions in the space.
-        """
-        return np.sqrt(d)
 
     def get_uniform_sample(
         self, bounds, *, iindex: tuple[int, ...] = ()
@@ -235,25 +227,6 @@ class NormalSampler(Sampler):
         self.sigma_min = sigma_min
         self.sigma_max = sigma_max
         assert 0 <= self.sigma_min <= self.sigma <= self.sigma_max
-
-    def get_diameter(self, d: int) -> float:
-        """Diameter of the sampling region relative to a d-dimensional cube.
-
-        For the normal sampler, the diameter is relative to the std. This
-        implementation considers the region of 95% of the values on each
-        coordinate, which has diameter `4*sigma`. This value is also backed up
-        by [#]_, in their Local MSRS method.
-
-        :param d: Number of dimensions in the space.
-
-        References
-        ----------
-        .. [#] Rommel G Regis and Christine A Shoemaker. A stochastic radial
-            basis
-            function method for the global optimization of expensive functions.
-            INFORMS Journal on Computing, 19(4):497–509, 2007.
-        """
-        return min(4 * self.sigma, 1.0) * np.sqrt(d)
 
     def get_normal_sample(
         self,
@@ -493,8 +466,9 @@ class Mitchel91Sampler(Sampler):
 
     .. attribute:: scale
 
-        A scaling factor proportional to the number of candidates used
-        to select each sample point. Used by :meth:`get_mitchel91_sample()`.
+        Scaling factor that controls the number of candidates in the pool used
+        to select a sample point. The pool has size
+        `scale * [# current points]`. Used by :meth:`get_mitchel91_sample()`.
 
     References
     ----------
@@ -507,11 +481,11 @@ class Mitchel91Sampler(Sampler):
         n: int,
         strategy: SamplingStrategy = SamplingStrategy.MITCHEL91,
         *,
-        maxCand: Optional[int] = None,
-        scale: float = 2.0,
+        maxCand: int = 10000,
+        scale: float = 10,
     ) -> None:
         super().__init__(n, strategy)
-        self.maxCand = 10 * n if maxCand is None else maxCand
+        self.maxCand = maxCand
         self.scale = scale
 
     def get_mitchel91_sample(
