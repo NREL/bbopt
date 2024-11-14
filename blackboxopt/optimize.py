@@ -1063,7 +1063,7 @@ def socemo(
     bounds,
     maxeval: int,
     *,
-    surrogateModels=(RbfModel(filter=MedianLpfFilter()),),
+    surrogateModels=(RbfModel(),),
     acquisitionFunc: Optional[WeightedAcquisition] = None,
     acquisitionFuncGlobal: Optional[WeightedAcquisition] = None,
     disp: bool = False,
@@ -1281,7 +1281,7 @@ def gosac(
     bounds,
     maxeval: int,
     *,
-    surrogateModels=(RbfModel(filter=MedianLpfFilter()),),
+    surrogateModels=(RbfModel(),),
     disp: bool = False,
     callback: Optional[Callable[[OptimizeResult], None]] = None,
 ):

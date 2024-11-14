@@ -1385,7 +1385,7 @@ class EndPointsParetoFront(AcquisitionFunction):
         # Discard points that are too close to eachother
         if len(endpoints) > 0:
             selectedIdx = [0]
-            for i in range(1, objdim):
+            for i in range(1, len(endpoints)):
                 if (
                     cdist(
                         endpoints[i, :].reshape(1, -1),
