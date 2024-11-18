@@ -664,7 +664,9 @@ class TargetValueAcquisition(AcquisitionFunction):
         return mu
 
     @staticmethod
-    def bumpiness_measure(surrogate: RbfModel, x: np.ndarray, target, LDLt):
+    def bumpiness_measure(
+        surrogate: RbfModel, x: np.ndarray, target, LDLt, target_range=1.0
+    ):
         r"""Compute the bumpiness of the surrogate model.
 
         The bumpiness measure :math:`g_y` was first defined by Gutmann (2001)
@@ -678,16 +680,16 @@ class TargetValueAcquisition(AcquisitionFunction):
         slow down convergence rates for :math:`g_y(x)` in `[0,1]` since it
         increases distances in that range.
 
-        The present implementation uses genetic algorithms, so we see no point
-        in trying to make :math:`g_y` smoother. Since :math:`g_y` involves
-        squaring numbers, we choose to minimize :math:`\sqrt{g_y}` instead which
-        avoids numerical issues.
+        The present implementation uses genetic algorithms by default, so there
+        is no point in trying to make :math:`g_y` smoother.
 
         :param surrogate: RBF surrogate model.
         :param x: Possible point to be added to the surrogate model.
         :param target: Target value.
-        :param LDLt: LDLt factorization of the matrix A as returned by the function
-            scipy.linalg.ldl.
+        :param LDLt: LDLt factorization of the matrix A as returned by the
+            function scipy.linalg.ldl.
+        :param target_range: Known range in the target space. Used to scale
+            the function values to avoid overflow.
         """
         absmu = TargetValueAcquisition.mu_measure(surrogate, x, LDLt)
         assert all(
@@ -698,7 +700,7 @@ class TargetValueAcquisition(AcquisitionFunction):
         yhat, _ = surrogate(x)
 
         # Compute the distance between the predicted value and the target
-        dist = np.absolute(yhat - target)
+        dist = np.absolute(yhat - target) / target_range
 
         # Use sqrt(gy) as the bumpiness measure to avoid overflow due to
         # squaring big values. We do not make the function continuSee
@@ -712,7 +714,7 @@ class TargetValueAcquisition(AcquisitionFunction):
         # return np.log((absmu * dist) * dist)
         #
         # Here:
-        return np.sqrt(absmu) * dist
+        return np.where(absmu < np.inf, (absmu * dist) * dist, np.inf)
 
     def acquire(
         self,
@@ -746,6 +748,9 @@ class TargetValueAcquisition(AcquisitionFunction):
             surrogateModel.ytrain().min(),
             surrogateModel.filter(surrogateModel.ytrain()).max(),
         ]
+        target_range = fbounds[1] - fbounds[0]
+        if target_range == 0:
+            target_range = 1
 
         # Allocate variables a priori targeting batched sampling
         x = np.empty((n, dim))
@@ -807,7 +812,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                     1 - (sample_stage - 1) / self.cycleLength
                 ) ** 2  # select weight for computing target value
                 f_target = f_rbf - wk * (
-                    fbounds[1] - f_rbf
+                    (fbounds[1] - f_rbf) if fbounds[1] != f_rbf else 1
                 )  # target for objective function value
 
                 # use GA method to minimize bumpiness measure
@@ -815,7 +820,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                     LDLt = ldl(surrogateModel.get_RBFmatrix())
                 problem = ProblemNoConstraint(
                     lambda x: TargetValueAcquisition.bumpiness_measure(
-                        surrogateModel, x, f_target, LDLt
+                        surrogateModel, x, f_target, LDLt, target_range
                     ),
                     bounds,
                     surrogateModel.iindex,
@@ -863,7 +868,7 @@ class TargetValueAcquisition(AcquisitionFunction):
                         LDLt = ldl(surrogateModel.get_RBFmatrix())
                     problem = ProblemNoConstraint(
                         lambda x: TargetValueAcquisition.bumpiness_measure(
-                            surrogateModel, x, f_target, LDLt
+                            surrogateModel, x, f_target, LDLt, target_range
                         ),
                         bounds,
                         surrogateModel.iindex,

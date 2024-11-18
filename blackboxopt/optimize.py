@@ -493,7 +493,9 @@ def surrogate_optimization(
         # determine if significant improvement
         iSelectedBest = np.argmin(ySelected).item()
         fxSelectedBest = ySelected[iSelectedBest]
-        if (out.fx - fxSelectedBest) >= improvementTol * abs(out.fx):
+        if (out.fx - fxSelectedBest) >= improvementTol * (
+            out.fsample.max() - out.fx
+        ):
             # "significant" improvement
             failctr = 0
             if remainingCountinuousSearch == 0:
@@ -883,7 +885,6 @@ def cptv(
                 nFailTol=nFailTol,
                 termination="nFailTol",
                 disp=disp,
-                callback=callback,
             )
 
             # Reset perturbation range
@@ -906,7 +907,7 @@ def cptv(
             if useLocalSearch:
                 if out.nfev == 0 or (
                     out.fx - out_local.fx
-                ) > improvementTol * abs(out.fx):
+                ) > improvementTol * (out.fsample.max() - out.fx):
                     localSearchCounter = 0
                 else:
                     localSearchCounter += 1
@@ -932,7 +933,6 @@ def cptv(
                 nFailTol=12,
                 termination="nFailTol",
                 disp=disp,
-                callback=callback,
             )
 
             surrogateModel.update(
@@ -956,7 +956,7 @@ def cptv(
             if useLocalSearch:
                 if out.nfev == 0 or (
                     out.fx - out_local.fx
-                ) > improvementTol * abs(out.fx):
+                ) > improvementTol * (out.fsample.max() - out.fx):
                     localSearchCounter = 0
                 else:
                     localSearchCounter += 1
@@ -996,10 +996,6 @@ def cptv(
             out_local.sample[-1, cindex] = out_local_.x
             out_local.fsample[-1] = out_local_.fun
 
-            # Call the callback function
-            if callback is not None:
-                callback(out_local)
-
             if (
                 cdist(
                     out_local.x.reshape(1, -1), surrogateModel.xtrain()
@@ -1033,6 +1029,10 @@ def cptv(
         out.sample[k : k + knew, :] = out_local.sample
         out.fsample[k : k + knew] = out_local.fsample
         out.nfev = out.nfev + out_local.nfev
+
+        # Call the callback function
+        if callback is not None:
+            callback(out)
 
         # Update k
         k = k + knew
