@@ -960,9 +960,7 @@ def cptv(
                     localSearchCounter = 0
                 else:
                     localSearchCounter += 1
-        elif out.nfev <= maxeval - 2 * (
-            dim + 1
-        ):  # Gives at least 1 iteration for L-BFGS-B
+        else:
 
             def func_continuous_search(x):
                 x_ = out.x.reshape(1, -1).copy()
@@ -972,17 +970,13 @@ def cptv(
             out_local_ = minimize(
                 func_continuous_search,
                 out.x[cindex],
-                method="L-BFGS-B",  # Use d+1 fevals per iteration
+                method="Powell",  # Use d+1 fevals per iteration
                 bounds=cbounds,
-                options={
-                    "maxfun": (maxeval - out.nfev)
-                    % (dim + 1),  # Avoids going over maxeval
-                    "disp": False,
-                },
+                options={"maxfev": maxeval - out.nfev},
             )
             assert (
                 out_local_.nfev <= (maxeval - out.nfev)
-            ), "Sanity check. We should adjust either `maxfun` or change the `method`"
+            ), f"Sanity check, {out_local_.nfev} <= ({maxeval} - {out.nfev}). We should adjust either `maxfun` or change the `method`"
 
             out_local = OptimizeResult(
                 x=out.x.copy(),
@@ -1014,10 +1008,6 @@ def cptv(
 
             # Switch method
             method = 0
-
-        else:
-            method = 0
-            continue  # Continue without updating anything
 
         # Update knew
         knew = out_local.sample.shape[0]
