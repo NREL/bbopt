@@ -12,14 +12,14 @@ using pip (https://pip.pypa.io/en/stable/cli/pip_install/):
 
 ```sh
 python -m pip install
-https://github.com/NREL/bbopt/archive/refs/tags/v0.5.1.tar.gz
+https://github.com/NREL/bbopt/archive/refs/tags/v0.5.2.tar.gz
 ```
 
 using conda (https://docs.anaconda.com/working-with-conda/packages/install-packages/):
 
 ```sh
 conda install
-https://github.com/NREL/bbopt/archive/refs/tags/v0.5.1.tar.gz
+https://github.com/NREL/bbopt/archive/refs/tags/v0.5.2.tar.gz
 ```
 
 ### From source
