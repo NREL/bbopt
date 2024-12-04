@@ -1813,7 +1813,7 @@ class MaximizeEI(AcquisitionFunction):
         if ybest is None:
             # Compute an estimate for ybest using the surrogate.
             res = differential_evolution(
-                lambda x: surrogateModel([x])[0], bounds
+                lambda x: surrogateModel(np.asarray([x]))[0], bounds
             )
             ybest = res.fun
             if res.success:
@@ -1821,7 +1821,7 @@ class MaximizeEI(AcquisitionFunction):
 
         # Use the point that maximizes the EI
         res = differential_evolution(
-            lambda x: -expected_improvement(*surrogateModel([x]), ybest),
+            lambda x: -expected_improvement(*surrogateModel(np.asarray([x])), ybest),
             bounds,
         )
         xs = res.x if res.success else None

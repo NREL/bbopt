@@ -155,7 +155,7 @@ class OptimizeResult:
             self.x = self.sample[iBest].copy()
             self.fx = self.fsample[iBest].item()
         else:
-            self.x = surrogateModel.sample(iBest - m).copy()
+            self.x = surrogateModel.xtrain()[iBest - m].copy()
             self.fx = surrogateModel.ytrain()[iBest - m].item()
 
 
@@ -1557,7 +1557,7 @@ def bayesian_optimization(
         if out.nfev + batchSize == maxeval:
             t0 = time.time()
             res = differential_evolution(
-                lambda x: surrogateModel([x])[0], bounds
+                lambda x: surrogateModel(np.asarray([x]))[0], bounds
             )
             if res.x is not None:
                 if cdist([res.x], surrogateModel.xtrain()).min() >= tol:
