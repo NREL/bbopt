@@ -443,6 +443,7 @@ class WeightedAcquisition(AcquisitionFunction):
 
             # Compute probability in case DDS is used
             if self.maxeval > 1:
+                assert self._neval < self.maxeval
                 prob = min(20 / dim, 1) * (
                     1 - (log(self._neval + 1) / log(self.maxeval))
                 )

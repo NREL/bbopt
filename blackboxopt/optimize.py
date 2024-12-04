@@ -728,7 +728,7 @@ def dycors(
                 strategy=SamplingStrategy.DDS,
             ),
             weightpattern=(0.3, 0.5, 0.8, 0.95),
-            maxeval=maxeval - (m0 if m0 > 0 else m_for_surrogate),
+            maxeval=maxeval,
         )
 
     return surrogate_optimization(
@@ -841,7 +841,7 @@ def cptv(
             ),
             weightpattern=(0.3, 0.5, 0.8, 0.95),
             rtol=1e-6,
-            maxeval=maxeval - (m0 if m0 > 0 else m_for_surrogate),
+            maxeval=maxeval,
         )
 
     # Tolerance parameters

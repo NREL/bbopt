@@ -27,13 +27,88 @@ import os
 import numpy as np
 import pickle
 import time
-from tests.test_vlse_bench import run_optimizer
-from blackboxopt import optimize, acquisition, rbf, gp
+from benchmark import *
+
+from blackboxopt import optimize, acquisition, rbf, gp, sampling
 from pathlib import Path
 from sklearn.gaussian_process.kernels import RBF as GPkernelRBF
+from copy import deepcopy
+
+def run_optimizer(
+    objf,
+    maxEval: int,
+    algo,
+    nRuns: int,
+    *,
+    bounds=None,
+    disp: bool = False,
+) -> list[optimize.OptimizeResult]:
+    minval = objf.min()
+    bounds = objf.domain() if bounds is None else bounds
+    nArgs = len(bounds)
+
+    assert minval < float('inf')
+    assert len(bounds) == len(objf.domain())
+
+    # integrality constraints
+    model = deepcopy(algo["model"])
+    if isinstance(model, rbf.RbfModel):
+        model.iindex = tuple(
+            i
+            for i in range(nArgs)
+            if isinstance(bounds[i][0], int) and isinstance(bounds[i][1], int)
+        )
+
+    # Update acquisition strategy, using maxEval and nArgs for the problem
+    acquisitionFunc = deepcopy(algo["acquisition"])
+    if hasattr(acquisitionFunc, "maxeval"):
+        acquisitionFunc.maxeval = maxEval
+    if hasattr(acquisitionFunc, "sampler"):
+        acquisitionFunc.sampler.n = min(100 * nArgs, 5000)
+
+    # Find the minimum
+    optimizer = algo["optimizer"]
+    optres = []
+    for i in range(nRuns):
+        # Create initial sample
+        np.random.seed(i)
+        sample0 = sampling.Sampler(2*(nArgs+1)).get_slhd_sample(bounds)
+        fsample0 = objf(sample0)
+
+        # Create initial surrogate
+        modelIter = deepcopy(model)
+        modelIter.update(sample0, fsample0)
+
+        if (
+            optimizer == optimize.surrogate_optimization
+            or optimizer == optimize.dycors
+        ):
+            acquisitionFuncIter = deepcopy(acquisitionFunc)
+            res = optimizer(
+                objf,
+                bounds=bounds,
+                maxeval=maxEval-2*(nArgs+1),
+                surrogateModel=modelIter,
+                acquisitionFunc=acquisitionFuncIter,
+                disp=disp,
+            )
+        else:
+            res = optimizer(
+                objf,
+                bounds=bounds,
+                maxeval=maxEval-2*(nArgs+1),
+                surrogateModel=modelIter,
+                disp=disp,
+            )
+        optres.append(res)
+
+        print(res.x)
+        print(res.fx)
+
+    return optres
 
 # Functions to be tested
-myRfuncs = (
+myFuncStr = (
     "branin",
     "hart3",
     "hart6",
@@ -52,34 +127,29 @@ myRfuncs = (
     "egg",
     "griewank",
     "holder",
-    "levy",
     "levy13",
-    "rastr",
 )
-
-# Number of arguments for each function
-myNargs = {}
-myNargs["branin"] = 2
-myNargs["hart3"] = 3
-myNargs["hart6"] = 6
-myNargs["shekel"] = 4
-myNargs["ackley"] = 15
-myNargs["levy"] = 20
-myNargs["powell"] = 24
-myNargs["michal"] = 25
-myNargs["spheref"] = 27
-myNargs["rastr"] = 30
-myNargs["mccorm"] = 2
-myNargs["bukin6"] = 2
-myNargs["camel6"] = 2
-myNargs["crossit"] = 2
-myNargs["drop"] = 2
-myNargs["egg"] = 2
-myNargs["griewank"] = 2
-myNargs["holder"] = 2
-myNargs["levy"] = 4
-myNargs["levy13"] = 2
-myNargs["rastr"] = 4
+myFuncs = {
+    "branin": Branin(),
+    "hart3": Hart3(),
+    "hart6": Hart6(),
+    "shekel": Shekel(),
+    "ackley": Ackley(15),
+    "levy": Levy(20),
+    "powell": Powell(24),
+    "michal": Michal(25),
+    "spheref": Spheref(27),
+    "rastr": Rastr(30),
+    "mccorm": Mccorm(),
+    "bukin6": Bukin6(),
+    "camel6": Camel6(),
+    "crossit": Crossit(),
+    "drop": Drop(),
+    "egg": Egg(),
+    "griewank": Griewank(2),
+    "holder": Holder(),
+    "levy13": Levy13(),
+}
 
 # Algorithms to be tested
 algorithms = {}
@@ -110,7 +180,7 @@ algorithms["MLSL"] = {
 }
 algorithms["GP"] = {
     "model": gp.GaussianProcess(
-        kernel=GPkernelRBF(), n_restarts_optimizer=20, normalize_y=True
+        kernel=GPkernelRBF(), normalize_y=True
     ),
     "optimizer": optimize.bayesian_optimization,
     "acquisition": acquisition.MaximizeEI(),
@@ -118,14 +188,11 @@ algorithms["GP"] = {
 
 # Maximum number of evaluations
 maxEvals = {}  # [20*n for n in myNargs]
-for rfunc in myRfuncs:
-    maxEvals[rfunc] = 100 * (myNargs[rfunc] + 1)
+for fStr in myFuncStr:
+    maxEvals[fStr] = 100 * (len(myFuncs[fStr].domain()) + 1)
 
 if __name__ == "__main__":
     import argparse
-
-    # Set seeds for reproducibility
-    np.random.seed(3)
 
     parser = argparse.ArgumentParser(
         description="Run given algorithm and problem from the vlse benchmark"
@@ -133,7 +200,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "-a", "--algorithm", choices=algorithms.keys(), default="CPTVl"
     )
-    parser.add_argument("-p", "--problem", choices=myRfuncs, default="branin")
+    parser.add_argument("-p", "--problem", choices=myFuncStr, default="branin")
     parser.add_argument("-n", "--ntrials", type=int, default=3)
     parser.add_argument(
         "-b",
@@ -162,12 +229,12 @@ if __name__ == "__main__":
 
     t0 = time.time()
     optres = run_optimizer(
-        args.problem,
-        myNargs[args.problem],
+        myFuncs[args.problem],
         maxEvals[args.problem],
         algorithms[args.algorithm],
         args.ntrials,
         bounds=bounds,
+        disp=True
     )
     tf = time.time()
 
@@ -187,7 +254,7 @@ if __name__ == "__main__":
     with open(filepath, "wb") as f:
         pickle.dump(
             [
-                myNargs[args.problem],
+                len(myFuncs[args.problem].domain()),
                 maxEvals[args.problem],
                 args.ntrials,
                 optres,
