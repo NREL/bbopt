@@ -1,6 +1,9 @@
 #!/bin/bash
 #SBATCH --account=aiuserapps
-#SBATCH --time=0:20:00
+#SBATCH --time=0:30:00
+#SBATCH --nodes=1
+#SBATCH --cpus-per-task=104
+#SBATCH --mem=32G
 #SBATCH --job-name=vlse-bench-run
 #SBATCH --mail-user=weslley.daSilvaPereira@nrel.gov
 #SBATCH --mail-type=BEGIN,END,FAIL
@@ -8,7 +11,7 @@
 
 if command -v module &> /dev/null; then
     module load conda
-    conda activate /scratch/wdasilv/.conda-envs/py311-intel-bbopt-dev
+    conda activate /scratch/wdasilv/.conda-envs/py311-bbopt
 fi
 
 if [ $# -eq 0 ]; then

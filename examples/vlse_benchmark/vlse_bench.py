@@ -137,7 +137,7 @@ myFuncs = {
     "ackley": Ackley(15),
     "levy": Levy(20),
     "powell": Powell(24),
-    "michal": Michal(25),
+    "michal": Michal(20),
     "spheref": Spheref(27),
     "rastr": Rastr(30),
     "mccorm": Mccorm(),
