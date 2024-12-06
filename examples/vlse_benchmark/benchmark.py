@@ -253,38 +253,31 @@ class Michal:
         return -np.sum(np.sin(x) * (np.sin(iVec*np.square(x)/np.pi))**(2*m), axis=-1)
     
     def min(self):
+        """https://arxiv.org/pdf/2003.09867"""
         if self._n == 2:
-            return -1.8013
-        if self._n == 5:
-            return -4.687658
-        if self._n == 10:
-            return -9.6601517
-        if self._n == 15:
-            return -14.6464002
+            return -1.8013034 # (2.202906, 1.570796)
+        if self._n == 3:
+            return -2.7603947 # (2.202906, 1.570796, 1.284992)
+        if self._n == 4: 
+            return -3.6988571 # (2.202906, 1.570796, 1.284992, 1.923058)
+        if self._n == 5: 
+            return -4.6876582 # (2.202906, 1.570796, 1.284992, 1.923058, 1.720470)
+        if self._n == 6: 
+            return -5.6876582 # (2.202906, 1.570796, 1.284992, 1.923058, 1.720470, 1.570796)
+        if self._n == 7: 
+            return -6.6808853 # (2.202906, 1.570796, 1.284992, 1.923058, 1.720470, 1.570796, 1.454414)
+        if self._n == 8: 
+            return -7.6637574 # (2.202906, 1.570796, 1.284992, 1.923058, 1.720470, 1.570796, 1.454414, 1.756087)
+        if self._n == 9: 
+            return -8.6601517 # (2.202906, 1.570796, 1.284992, 1.923058, 1.720470, 1.570796, 1.454414, 1.756087, 1.655717)
+        if self._n == 10: 
+            return -9.6601517 # (2.202906, 1.570796, 1.284992, 1.923058, 1.720470, 1.570796, 1.454414, 1.756087, 1.655717, 1.570796)
         if self._n == 20:
             return -19.6370136
-        if self._n == 25:
-            return -24.6331947
         if self._n == 30:
             return -29.6308839
-        if self._n == 35:
-            return -34.6288550
-        if self._n == 40:
-            return -39.6267489
-        if self._n == 45:
-            return -44.6256251
         if self._n == 50:
-            return -49.6248323
-        if self._n == 55:
-            return -54.6240533
-        if self._n == 60:
-            return -59.6231462
-        if self._n == 65:
-            return -64.6226167
-        if self._n == 70:
-            return -69.6222202
-        if self._n == 75:
-            return -74.6218112
+            return -24.6331947
         return float('inf')
 
 class Spheref:
@@ -342,7 +335,7 @@ class Mccorm:
         x2 = xt[1]
 
         term1 = np.sin(x1+x2)
-        term2 = np.sin(x1-x2)**2
+        term2 = (x1-x2)**2
         term3 = -1.5 * x1
         term4 = 2.5 * x2
 
@@ -370,7 +363,7 @@ class Bukin6:
         x2 = xt[1]
 
         term1 = 100 * np.sqrt(np.abs(x2 - 0.01*x1**2))
-        term2 = 0.01 * np.abs(x2 + 10)
+        term2 = 0.01 * np.abs(x1 + 10)
 
         return term1 + term2
     
