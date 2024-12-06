@@ -11,24 +11,16 @@ The binaries for the latest version are available at https://github.com/NREL/bbo
 using pip (https://pip.pypa.io/en/stable/cli/pip_install/):
 
 ```sh
-python -m pip install
-https://github.com/NREL/bbopt/archive/refs/tags/v0.5.2.tar.gz
-```
-
-using conda (https://docs.anaconda.com/working-with-conda/packages/install-packages/):
-
-```sh
-conda install
-https://github.com/NREL/bbopt/archive/refs/tags/v0.5.2.tar.gz
+pip install git+https://github.com/NREL/bbopt.git#egg=blackboxopt
 ```
 
 ### From source
 
-This package contains a [pyproject.toml](pyproject.toml) with the list of requirements and dependencies (More about `pyproject.toml` at https://packaging.python.org/en/latest/specifications/pyproject-toml/). This project is configured to use the package manager [pdm](https://pdm-project.org/en/stable/). With pdm installed, run `pdm install` at the root of this repository to install the dependencies. The file [pyproject.toml](pyproject.toml) has the list of dependencies and configurations for the project. Use `pdm build` to build the packages binaries in the `dist` directory. Then follow the steps in the [Binaries section](#binaries) to install.
+This package contains a [pyproject.toml](pyproject.toml) with the list of requirements and dependencies (More about `pyproject.toml` at https://packaging.python.org/en/latest/specifications/pyproject-toml/). With the source downloaded to your local machine, use `pip install [bbopt/source/directory]`.
 
 ### For developers
 
-Install the package manager [pdm](https://pdm-project.org/en/stable/). To install all the dependencies listted in the [pyproject.toml](pyproject.toml), run `pdm install`.
+This project is configured to use the package manager [pdm](https://pdm-project.org/en/stable/). With pdm installed, run `pdm install` at the root of this repository to install the dependencies. The file [pyproject.toml](pyproject.toml) has the list of dependencies and configurations for the project.
 
 ## Documentation
 
