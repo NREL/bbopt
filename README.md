@@ -1,6 +1,43 @@
 # Black-box Opt
 
-Surrogate models and active learning for scientific applications.
+Solve black-box optimization problems using surrogate-based algorithms.
+
+## Current functionality
+
+The Black-box optimization package currently supports the following algorithms:
+
+<!--- Table below --->
+| Optimization algorithm | Description | Tags |
+| --- | --- | --- |
+| `surrogate_optimization()` | Minimize a scalar function using a surrogate and an acquisition function based on [(Björkman & Holmström; 2000)][BjoHol2000] and [(Müller; 2016)][Muller2016]. | `mixed-integer` |
+| `multistart_msrs()` | Multistart Local Metric Stochastic Response Surface (LMSRS) [(Regis & Shoemaker; 2007)][RegSho2007]. Applies a derivative-free local search algorithm to obtain new samples. Restarts the surrogate model with new design points whenever the local search has converged. | `multi-start`, `RBF` |
+| `dycors()` | Dynamic Coordinate Search (DYCORS) [(Regis & Shoemaker; 2012)][RegSho2012]. Acquisition cycles between global and local search. Uses the DDS search from [(Tolson & Shoemaker; 2007)][TolSho2007] to generate pools of candidates. | `mixed-integer`, `RBF` |
+| `cptv()` | Minimize a scalar function using rounds of coordinate perturbation (CP) and target value (TV) acquisition functions [(Müller; 2016)][Muller2016]. Derivative-free local search is used to improve a prospective global minimum | `mixed-integer`, `RBF` |
+| `socemo()` | Surrogate-based optimization of computationally expensive multiobjective problems (SOCEMO) [(Müller; 2017a)][Muller2017a]. | `multi-objective`, `mixed-integer`, `RBF` |
+| `gosac()` | Global optimization with surrogate approximation of constraints (GOSAC) [(Müller; 2017b)][Muller2017b]. | `mixed-integer`, `black-box-constraint`, `RBF` |
+| `bayesian_optimization()` | Bayesian optimization with dispersion-enhanced expected improvement acquisition [(Müller; 2024)][Muller2024]. | `GP`, `batch` |
+
+<!--- Table below --->
+| Acquisition function | Description |
+| --- | --- |
+| `WeightedAcquisition` | Weighted acquisition function based on the predicted value and distance to the nearest sample [(Regis & Shoemaker; 2012)][RegSho2012]. Used in `multistart_msrs()`, `dycors()`, and in the CP step from `cptv()`. It uses average values for the multi-objective scenario [(Müller; 2017a)][Muller2017a]. |
+| `TargetValueAcquisition` | Target value acquisition based from [(Gutmann; 2001)][Gut2001]. Used in the TV step from `cptv()`. Cycles through target values as in [(Björkman & Holmström; 2000)][BjoHol2000]. For batched acquisition, uses the strategy from [(Müller; 2016)][Muller2016] to avoid duplicates. |
+| `MinimizeSurrogate` | Sample at the local minimum of the surrogate model [(Müller; 2016)][Muller2016]. The original method, Multi-Level Single-Linkage (MLSL), is described in [(Rinnooy Kan & Timmer; 1987)][RinTim1987]. |
+| `MaximizeEI` | Maximize the expected improvement acquisition function for Gaussian processes. Use the dispersion-enhanced strategy from [(Müller; 2024)][Muller2024] for batch sampling. |
+| `ParetoFront` | Sample at the Pareto front of the multi-objective surrogate model to fill gaps in the surface [(Müller; 2017a)][Muller2017a]. |
+| `MinimizeMOSurrogate` | Obtain pareto-optimal sample points for the multi-objective surrogate model [(Müller; 2017a)][Muller2017a]. |
+| `GosacSample` | Minimize a function with surrogate constraints to obtain a single new sample point [(Müller; 2017b)][Muller2017b].
+
+[BjoHol2000]: https://doi.org/10.1023/A:1011584207202
+[Muller2016]: https://doi.org/10.1007/s11081-015-9281-2
+[RegSho2007]: https://doi.org/10.1287/ijoc.1060.0182
+[RegSho2012]: https://doi.org/10.1080/0305215X.2012.687731
+[Muller2017a]: https://doi.org/10.1287/ijoc.2017.0749
+[Muller2017b]: https://doi.org/10.1007/s10898-017-0496-y
+[Muller2024]: https://doi.org/10.1002/qre.3245
+[TolSho2007]: https://doi.org/10.1029/2005WR004723
+[Gut2001]: https://doi.org/10.1023/A:1011255519438
+[RinTim1987]: https://doi.org/10.1007/BF02592071
 
 ## Installation
 

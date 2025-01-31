@@ -1302,7 +1302,7 @@ class ParetoFront(AcquisitionFunction):
 class EndPointsParetoFront(AcquisitionFunction):
     """Obtain endpoints of the Pareto front as described in [#]_.
 
-    For each component i in the targhet space, this algorithm solves a cheap
+    For each component i in the target space, this algorithm solves a cheap
     auxiliary optimization problem to minimize the i-th component of the
     trained surrogate model. Points that are too close to each other and to
     training sample points are eliminated. If all points were to be eliminated,
@@ -1822,7 +1822,9 @@ class MaximizeEI(AcquisitionFunction):
 
         # Use the point that maximizes the EI
         res = differential_evolution(
-            lambda x: -expected_improvement(*surrogateModel(np.asarray([x])), ybest),
+            lambda x: -expected_improvement(
+                *surrogateModel(np.asarray([x])), ybest
+            ),
             bounds,
         )
         xs = res.x if res.success else None
