@@ -1,12 +1,18 @@
 [project]
 name = "blackboxopt"
 version = "0.5.2"
-description = "Surrogate models and active learning for scientific applications"
+description = "Solve black-box optimization problems using surrogate-based algorithms"
 authors = [
     {name = "Weslley da Silva Pereira", email = "weslley.dasilvapereira@nrel.gov"},
 ]
 license = {file = "LICENSE"}
 readme = "README.md"
+classifiers = [
+    "License :: OSI Approved :: GNU General Public License (GPL)",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+]
+keywords = ["optimization", "surrogate", "black-box", "RBF", "GP"]
 requires-python = ">=3.9"
 dependencies = [
     "numpy<2.0.0",
@@ -14,6 +20,10 @@ dependencies = [
     "pymoo",
     "scikit-learn",
 ]
+
+[project.urls]
+Homepage = "https://github.com/NREL/bbopt"
+Docs = "https://nrel.github.io/bbopt"
 
 [build-system]
 requires = ["pdm-backend"]

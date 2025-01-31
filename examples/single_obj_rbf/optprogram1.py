@@ -1,6 +1,6 @@
 """Example with optimization and plot."""
 
-# Copyright (c) 2024 Alliance for Sustainable Energy, LLC
+# Copyright (c) 2025 Alliance for Sustainable Energy, LLC
 # Copyright (C) 2014 Cornell University
 
 # This program is free software: you can redistribute it and/or modify
@@ -64,7 +64,6 @@ def read_and_run(
 ) -> list[optimize.OptimizeResult]:
     """Perform the optimization, save the solution and plot.
 
-    This function also saves the solution to a file named "Results.data".
     If PlotResult is True, it also plots the results and saves the plot to
     "RBFPlot.png".
 
