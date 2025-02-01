@@ -17,7 +17,7 @@ sys.path.insert(0, os.path.abspath(".."))
 project = "Black-box Opt"
 copyright = "2025, Alliance for Sustainable Energy, LLC"
 author = "Weslley S. Pereira"
-release = "0.5.2"
+release = "0.5.3"
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration

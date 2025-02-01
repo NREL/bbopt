@@ -20,7 +20,7 @@ __contact__ = "weslley.dasilvapereira@nrel.gov"
 __maintainer__ = "Weslley S. Pereira"
 __email__ = "weslley.dasilvapereira@nrel.gov"
 __credits__ = ["Weslley S. Pereira"]
-__version__ = "0.5.2"
+__version__ = "0.5.3"
 __deprecated__ = False
 
 import os
@@ -33,6 +33,7 @@ from blackboxopt import optimize, acquisition, rbf, gp, sampling
 from pathlib import Path
 from sklearn.gaussian_process.kernels import RBF as GPkernelRBF
 from copy import deepcopy
+
 
 def run_optimizer(
     objf,
@@ -47,7 +48,7 @@ def run_optimizer(
     bounds = objf.domain() if bounds is None else bounds
     nArgs = len(bounds)
 
-    assert minval < float('inf')
+    assert minval < float("inf")
     assert len(bounds) == len(objf.domain())
 
     # integrality constraints
@@ -72,7 +73,7 @@ def run_optimizer(
     for i in range(nRuns):
         # Create initial sample
         np.random.seed(i)
-        sample0 = sampling.Sampler(2*(nArgs+1)).get_slhd_sample(bounds)
+        sample0 = sampling.Sampler(2 * (nArgs + 1)).get_slhd_sample(bounds)
         fsample0 = objf(sample0)
 
         # Create initial surrogate
@@ -87,7 +88,7 @@ def run_optimizer(
             res = optimizer(
                 objf,
                 bounds=bounds,
-                maxeval=maxEval-2*(nArgs+1),
+                maxeval=maxEval - 2 * (nArgs + 1),
                 surrogateModel=modelIter,
                 acquisitionFunc=acquisitionFuncIter,
                 disp=disp,
@@ -96,7 +97,7 @@ def run_optimizer(
             res = optimizer(
                 objf,
                 bounds=bounds,
-                maxeval=maxEval-2*(nArgs+1),
+                maxeval=maxEval - 2 * (nArgs + 1),
                 surrogateModel=modelIter,
                 disp=disp,
             )
@@ -106,6 +107,7 @@ def run_optimizer(
         print(res.fx)
 
     return optres
+
 
 # Functions to be tested
 myFuncStr = (
@@ -179,9 +181,7 @@ algorithms["MLSL"] = {
     "acquisition": acquisition.MinimizeSurrogate(1, 0.005 * np.sqrt(2.0)),
 }
 algorithms["GP"] = {
-    "model": gp.GaussianProcess(
-        kernel=GPkernelRBF(), normalize_y=True
-    ),
+    "model": gp.GaussianProcess(kernel=GPkernelRBF(), normalize_y=True),
     "optimizer": optimize.bayesian_optimization,
     "acquisition": acquisition.MaximizeEI(),
 }
@@ -234,7 +234,7 @@ if __name__ == "__main__":
         algorithms[args.algorithm],
         args.ntrials,
         bounds=bounds,
-        disp=True
+        disp=True,
     )
     tf = time.time()
 

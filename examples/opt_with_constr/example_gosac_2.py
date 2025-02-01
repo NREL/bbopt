@@ -20,7 +20,7 @@ __contact__ = "weslley.dasilvapereira@nrel.gov"
 __maintainer__ = "Weslley S. Pereira"
 __email__ = "weslley.dasilvapereira@nrel.gov"
 __credits__ = ["Juliane Mueller", "Weslley S. Pereira"]
-__version__ = "0.5.2"
+__version__ = "0.5.3"
 __deprecated__ = False
 
 from blackboxopt.optimize import gosac
