@@ -30,10 +30,10 @@ __version__ = "0.5.3"
 __deprecated__ = False
 
 from optprogram1 import read_check_data_file
-from blackboxopt.rbf import RbfKernel, RbfModel, MedianLpfFilter
-from blackboxopt.optimize import surrogate_optimization
-from blackboxopt.sampling import NormalSampler, Sampler, SamplingStrategy
-from blackboxopt.acquisition import WeightedAcquisition
+from blackboxoptim.rbf import RbfKernel, RbfModel, MedianLpfFilter
+from blackboxoptim.optimize import surrogate_optimization
+from blackboxoptim.sampling import NormalSampler, Sampler, SamplingStrategy
+from blackboxoptim.acquisition import WeightedAcquisition
 import numpy as np
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
-blackboxopt.optimize module
+blackboxoptim.optimize module
 ---------------------------
 
-.. automodule:: blackboxopt.optimize
+.. automodule:: blackboxoptim.optimize
    :members:
    :undoc-members:
    :show-inheritance:

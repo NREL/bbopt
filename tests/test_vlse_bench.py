@@ -28,7 +28,7 @@ import numpy as np
 import pytest
 from rpy2 import robjects
 import tests.vlse_benchmark as vlsebmk
-from blackboxopt import rbf, optimize, sampling, acquisition, gp
+from blackboxoptim import rbf, optimize, sampling, acquisition, gp
 from scipy.optimize import differential_evolution
 from sklearn.gaussian_process.kernels import RBF as GPkernelRBF
 

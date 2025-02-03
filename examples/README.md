@@ -2,7 +2,7 @@
 
 ## Sampling notebook
 
-Shows the [sampling](../blackboxopt/sampling.py) strategies available in the library.
+Shows the [sampling](../blackboxoptim/sampling.py) strategies available in the library.
 
 ## Multiobj
 
@@ -14,7 +14,7 @@ Shows how to solve optimization problems with constraints using the GOSAC algori
 
 ## Single obj rbf
 
-Adds a data layer on top of `blackboxopt` to solve optimization problems using a variety of available strategies. The main programs are `LocalStochRBFstop.py`, `optprogram1.py` and `compareLearningStrategies.py`.
+Adds a data layer on top of `blackboxoptim` to solve optimization problems using a variety of available strategies. The main programs are `LocalStochRBFstop.py`, `optprogram1.py` and `compareLearningStrategies.py`.
 
 ## VLSE benchmark
 

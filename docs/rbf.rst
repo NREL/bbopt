@@ -1,7 +1,7 @@
-blackboxopt.rbf module
+blackboxoptim.rbf module
 ---------------------------
 
-.. automodule:: blackboxopt.rbf
+.. automodule:: blackboxoptim.rbf
    :members:
    :undoc-members:
    :show-inheritance:

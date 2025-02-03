@@ -1,4 +1,4 @@
-"""Optimization algorithms for blackboxopt."""
+"""Optimization algorithms for blackboxoptim."""
 
 # Copyright (c) 2025 Alliance for Sustainable Energy, LLC
 # Copyright (C) 2014 Cornell University

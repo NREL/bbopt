@@ -1,4 +1,4 @@
-blackboxopt package
+blackboxoptim package
 ===================
 
 Submodules
@@ -17,7 +17,7 @@ Submodules
 Module contents
 ---------------
 
-.. automodule:: blackboxopt
+.. automodule:: blackboxoptim
    :members:
    :undoc-members:
    :show-inheritance:

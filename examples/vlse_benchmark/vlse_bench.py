@@ -29,7 +29,7 @@ import pickle
 import time
 from benchmark import *
 
-from blackboxopt import optimize, acquisition, rbf, gp, sampling
+from blackboxoptim import optimize, acquisition, rbf, gp, sampling
 from pathlib import Path
 from sklearn.gaussian_process.kernels import RBF as GPkernelRBF
 from copy import deepcopy

@@ -1,7 +1,7 @@
-blackboxopt.problem module
+blackboxoptim.problem module
 ---------------------------
 
-.. automodule:: blackboxopt.problem
+.. automodule:: blackboxoptim.problem
    :members:
    :undoc-members:
    :show-inheritance:

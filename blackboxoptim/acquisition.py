@@ -393,8 +393,8 @@ class WeightedAcquisition(AcquisitionFunction):
         select n points that maximize the score.
 
         When `sampler.strategy` is
-        :attr:`blackboxopt.sampling.SamplingStrategy.DDS` or
-        :attr:`blackboxopt.sampling.SamplingStrategy.DDS_UNIFORM`, the
+        :attr:`blackboxoptim.sampling.SamplingStrategy.DDS` or
+        :attr:`blackboxoptim.sampling.SamplingStrategy.DDS_UNIFORM`, the
         probability is computed based on the DYCORS method as proposed by Regis
         and Shoemaker (2012).
 
@@ -403,12 +403,12 @@ class WeightedAcquisition(AcquisitionFunction):
             direction x in the space.
         :param n: Number of points to be acquired.
         :param xbest: Best point so far. Used if :attr:`sampler` is an instance
-            of :class:`blackboxopt.sampling.NormalSampler`. If not provided,
+            of :class:`blackboxoptim.sampling.NormalSampler`. If not provided,
             compute it based on the training data for the surrogate.
         :param bool countinuousSearch:
             If True,
             optimize over the continuous variables only. Used if :attr:`sampler`
-            is an instance of :class:`blackboxopt.sampling.NormalSampler`.
+            is an instance of :class:`blackboxoptim.sampling.NormalSampler`.
         :return: n-by-dim matrix with the selected points.
         :return: m-by-dim matrix with the selected points, where m <= n.
         """

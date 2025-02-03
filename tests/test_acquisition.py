@@ -24,7 +24,7 @@ __version__ = "0.5.3"
 __deprecated__ = False
 
 import numpy as np
-from blackboxopt.acquisition import expected_improvement
+from blackboxoptim.acquisition import expected_improvement
 
 
 def test_expected_improvement():

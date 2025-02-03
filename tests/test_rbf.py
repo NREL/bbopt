@@ -26,7 +26,7 @@ __deprecated__ = False
 import numpy as np
 import sys
 import pytest
-from blackboxopt.rbf import MedianLpfFilter, RbfModel, RbfKernel
+from blackboxoptim.rbf import MedianLpfFilter, RbfModel, RbfKernel
 
 
 class TestRbfModel:

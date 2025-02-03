@@ -10,7 +10,7 @@ Welcome to Black-box Opt's documentation!
    :maxdepth: 2
    :caption: Contents:
 
-   blackboxopt
+   blackboxoptim
    tests
 
 Indices and tables

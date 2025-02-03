@@ -1,7 +1,7 @@
-blackboxopt.acquisition module
+blackboxoptim.acquisition module
 ------------------------------
 
-.. automodule:: blackboxopt.acquisition
+.. automodule:: blackboxoptim.acquisition
    :members:
    :undoc-members:
    :show-inheritance:

@@ -1,8 +1,8 @@
 import numpy as np
 import pytest
 
-# from blackboxopt.optimize import gosac
-# from blackboxopt.rbf import RbfModel
+# from blackboxoptim.optimize import gosac
+# from blackboxoptim.rbf import RbfModel
 import tests.gosac_benchmark as gosacbmk
 
 

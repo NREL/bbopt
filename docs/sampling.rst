@@ -1,7 +1,7 @@
-blackboxopt.sampling module
+blackboxoptim.sampling module
 ---------------------------
 
-.. automodule:: blackboxopt.sampling
+.. automodule:: blackboxoptim.sampling
    :members:
    :undoc-members:
    :show-inheritance:

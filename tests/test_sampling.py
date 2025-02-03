@@ -25,7 +25,7 @@ __deprecated__ = False
 
 import numpy as np
 import pytest
-from blackboxopt.sampling import (
+from blackboxoptim.sampling import (
     Mitchel91Sampler,
     NormalSampler,
     Sampler,

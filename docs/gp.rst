@@ -1,7 +1,7 @@
-blackboxopt.gp module
+blackboxoptim.gp module
 ----------------------
 
-.. automodule:: blackboxopt.gp
+.. automodule:: blackboxoptim.gp
    :members:
    :undoc-members:
    :show-inheritance:

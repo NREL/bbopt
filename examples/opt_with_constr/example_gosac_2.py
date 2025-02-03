@@ -23,8 +23,8 @@ __credits__ = ["Juliane Mueller", "Weslley S. Pereira"]
 __version__ = "0.5.3"
 __deprecated__ = False
 
-from blackboxopt.optimize import gosac
-from blackboxopt.rbf import RbfModel
+from blackboxoptim.optimize import gosac
+from blackboxoptim.rbf import RbfModel
 
 import numpy as np
 

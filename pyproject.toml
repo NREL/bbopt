@@ -1,5 +1,5 @@
 [project]
-name = "blackboxopt"
+name = "blackboxoptim"
 version = "0.5.3"
 description = "Solve black-box optimization problems using surrogate-based algorithms"
 authors = [
@@ -22,8 +22,8 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/NREL/bbopt"
-Docs = "https://nrel.github.io/bbopt"
+Homepage = "https://github.com/NREL/blackboxoptim"
+Docs = "https://nrel.github.io/blackboxoptim"
 
 [build-system]
 requires = ["pdm-backend"]
@@ -54,7 +54,7 @@ example = [
 ]
 
 [tool.pdm.build]
-includes = ["blackboxopt/*.py"]
+includes = ["blackboxoptim/*.py"]
 source-includes = [
     "tests/test_*.py",
     "**/__init__.py",

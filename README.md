@@ -43,17 +43,17 @@ The Black-box optimization package currently supports the following algorithms:
 
 ### Binaries
 
-The binaries for the latest version are available at https://github.com/NREL/bbopt/releases/latest. They can be installed through standard installation, e.g.,
+The binaries for the latest version are available at https://github.com/NREL/blackboxoptim/releases/latest. They can be installed through standard installation, e.g.,
 
 using pip (https://pip.pypa.io/en/stable/cli/pip_install/):
 
 ```sh
-pip install git+https://github.com/NREL/bbopt.git#egg=blackboxopt
+pip install git+https://github.com/NREL/blackboxoptim.git#egg=blackboxoptim
 ```
 
 ### From source
 
-This package contains a [pyproject.toml](pyproject.toml) with the list of requirements and dependencies (More about `pyproject.toml` at https://packaging.python.org/en/latest/specifications/pyproject-toml/). With the source downloaded to your local machine, use `pip install [bbopt/source/directory]`.
+This package contains a [pyproject.toml](pyproject.toml) with the list of requirements and dependencies (More about `pyproject.toml` at https://packaging.python.org/en/latest/specifications/pyproject-toml/). With the source downloaded to your local machine, use `pip install [blackboxoptim/source/directory]`.
 
 ### For developers
 
@@ -61,7 +61,7 @@ This project is configured to use the package manager [pdm](https://pdm-project.
 
 ## Documentation
 
-This project uses [Sphinx](https://www.sphinx-doc.org/en/master/) to generate the documentation. The latest documentation is available at https://nrel.github.io/bbopt. To generate the documentation locally, run `make html` in the `docs` directory. The homepage of the documentation will then be found at `docs/_build/html/index.html`.
+This project uses [Sphinx](https://www.sphinx-doc.org/en/master/) to generate the documentation. The latest documentation is available at https://nrel.github.io/blackboxoptim. To generate the documentation locally, run `make html` in the `docs` directory. The homepage of the documentation will then be found at `docs/_build/html/index.html`.
 
 ## Testing
 

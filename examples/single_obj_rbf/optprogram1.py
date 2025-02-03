@@ -41,8 +41,8 @@ from math import sqrt
 from typing import Optional
 import numpy as np
 import matplotlib.pyplot as plt
-from blackboxopt import rbf, optimize, sampling
-from blackboxopt.acquisition import (
+from blackboxoptim import rbf, optimize, sampling
+from blackboxoptim.acquisition import (
     WeightedAcquisition,
     TargetValueAcquisition,
     AcquisitionFunction,
